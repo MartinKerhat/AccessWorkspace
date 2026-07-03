@@ -53,8 +53,8 @@ func TestRunAutomaticKeyVaultSyncUsesAutomaticModeAndPersistsState(t *testing.T)
 	now := time.Date(2026, time.May, 25, 8, 30, 0, 0, time.UTC)
 	store := &fakeKeyVaultSyncStore{
 		sources: []KeyVaultSource{{
-			Name:                "kvinsio",
-			VaultURL:            "https://kvinsio.vault.azure.net",
+			Name:                "kvdemo",
+			VaultURL:            "https://kvdemo.vault.azure.net",
 			SyncEnabled:         true,
 			SyncIntervalMinutes: 5,
 			AutoImportEnabled:   true,
@@ -65,8 +65,8 @@ func TestRunAutomaticKeyVaultSyncUsesAutomaticModeAndPersistsState(t *testing.T)
 		result: resources.KeyVaultSyncResult{
 			Automatic: true,
 			Sources: []resources.KeyVaultSyncSource{{
-				Name:            "kvinsio",
-				VaultURL:        "https://kvinsio.vault.azure.net",
+				Name:            "kvdemo",
+				VaultURL:        "https://kvdemo.vault.azure.net",
 				SyncEnabled:     true,
 				LastSyncedAt:    &now,
 				LastSyncStatus:  "ok",
@@ -97,7 +97,7 @@ func TestRunAutomaticKeyVaultSyncUsesAutomaticModeAndPersistsState(t *testing.T)
 	if !ok {
 		t.Fatalf("expected sync state payload to be a map, got %T", store.payload)
 	}
-	entry, ok := payload["https://kvinsio.vault.azure.net"].(map[string]any)
+	entry, ok := payload["https://kvdemo.vault.azure.net"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected keyed sync state entry, got %#v", payload)
 	}

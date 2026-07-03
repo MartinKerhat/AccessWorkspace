@@ -519,7 +519,7 @@ export function ResourceFormCard({
             </label>
             <label>
               <span>Folder path</span>
-              <input value={form.folderPath} onChange={(event) => update("folderPath", event.target.value)} placeholder="INSIO/infra" />
+              <input value={form.folderPath} onChange={(event) => update("folderPath", event.target.value)} placeholder="Workspace/Infra" />
             </label>
             <label>
               <span>Status</span>

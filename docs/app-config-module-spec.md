@@ -97,7 +97,7 @@ The module should model configuration across these dimensions:
 
 Example:
 
-- application: `insio-next`
+- application: `example-app`
 - components: `backend`, `frontend`, `mailbox`, `background-jobs`
 - environments: `ci`, `staging`, `preprod`, `production`
 
@@ -109,7 +109,7 @@ Represents one deployable product or service family.
 
 Examples:
 
-- `insio-next`
+- `example-app`
 - `billing-api`
 - `portal-ui`
 
@@ -432,7 +432,7 @@ Suggested actions:
 
 Examples:
 
-- a developer may edit `insio-next` only
+- a developer may edit `example-app` only
 - a team may edit `backend` and `frontend` but not `mailbox`
 - a user may edit `staging` and `preprod` but not `production`
 - a user may change a secret reference without being allowed to reveal the current live value
@@ -575,11 +575,11 @@ Useful metadata:
 - source mode
 - old versus new status where safe
 
-## Example: insio-next
+## Example: example-app
 
 ### Structure
 
-- application: `insio-next`
+- application: `example-app`
 - components:
   - `backend`
   - `frontend`
@@ -605,7 +605,7 @@ Useful metadata:
 
 For:
 
-- app `insio-next`
+- app `example-app`
 - environment `preprod`
 - component `backend`
 

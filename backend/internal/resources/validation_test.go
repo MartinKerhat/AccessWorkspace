@@ -127,7 +127,7 @@ func TestValidateInputRejectsFolderPathDeeperThanTwoLevels(t *testing.T) {
 		Type:       TypeSSH,
 		Owner:      "Operations",
 		TargetHost: "deep.internal",
-		FolderPath: "INSIO/infra/linux",
+		FolderPath: "workspace/infra/linux",
 		SecretMode: SecretModePrompt,
 	}
 

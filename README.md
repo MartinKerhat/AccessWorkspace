@@ -1,6 +1,6 @@
-# Access Workspace MVP
+# Access Workspace
 
-Monorepo MVP for an internal operational access workspace. It lets company users sign in through local development mode or Microsoft sign-in, browse category-based resources their groups can use, reveal approved secrets on demand, request launch payloads for SSH/RDP/web items, and inspect activity and audit history. Admins can manage local groups, configure Azure/Entra and Key Vault sources, and sync/import Key Vault metadata without duplicating live secret values locally.
+Monorepo for an internal operational access workspace. It lets company users sign in through local development mode or Microsoft sign-in, browse category-based resources their groups can use, reveal approved secrets on demand, request launch payloads for SSH/RDP/web items, and inspect activity and audit history. Admins can manage local groups, configure Azure/Entra and Key Vault sources, and sync/import Key Vault metadata without duplicating live secret values locally.
 
 ## Repo layout
 
@@ -21,7 +21,7 @@ Monorepo MVP for an internal operational access workspace. It lets company users
 - [Browser Extension Distribution](docs/browser-extension-distribution.md)
 - [QA Workflow](docs/qa-workflow.md)
 
-## What the MVP includes
+## What's included
 
 - Auth entry flow with local development sign-in and Microsoft sign-in bootstrap
 - Category-based workspace views for Connections, Key Vault, App registrations, Passwords, Activity, Audit, and Administration
@@ -225,7 +225,7 @@ locally. A typical production flow:
 - All secrets are supplied through the environment; nothing sensitive is committed to the repository or baked into the container image. See [Configuration](#configuration).
 - Inline secret values are encrypted with `RESOURCE_SECRET_KEY` before being stored in PostgreSQL. Use a unique key per deployment — the backend refuses to start without one, or with the legacy shared development key.
 - Resource metadata and secret material are stored separately in `resources` and `resource_secrets`.
-- The MVP supports `inline`, `external_reference`, and `prompt_on_launch` secret modes. Inline secret values are encrypted before they are stored in PostgreSQL.
+- The app supports `inline`, `external_reference`, and `prompt_on_launch` secret modes. Inline secret values are encrypted before they are stored in PostgreSQL.
 - Key Vault-backed resources keep metadata locally, but fetch the live secret value from Azure on demand.
 - Empty `allowed_groups` means the resource is visible to everyone who can access that category.
 - Launch actions return structured payloads rather than native OS execution.
