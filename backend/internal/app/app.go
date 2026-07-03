@@ -169,6 +169,11 @@ func New(cfg Config) (*App, error) {
 		pool.Close()
 		return nil, err
 	}
+	// For a local store, best-effort create the expected category folders so
+	// operators know where to drop builds (no-op on a read-only mount or blob).
+	if localSource, ok := artifactSource.(*artifacts.LocalSource); ok {
+		localSource.EnsureLayout(append(append([]artifacts.Category{}, artifacts.LauncherCategories...), artifacts.ExtensionCategories...)...)
+	}
 	artifactService := artifacts.NewService(artifactSource, cfg.ChromeWebStoreURL, cfg.FirefoxExtensionURL)
 
 	server := api.NewServer(api.Dependencies{

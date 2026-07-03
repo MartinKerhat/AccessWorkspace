@@ -41,6 +41,16 @@ function baseUrlFromApiBase() {
   return API_BASE.replace(/\/+$/, "").replace(/\/api$/, "");
 }
 
+// Artifact download URLs come from the backend as root-relative paths
+// ("/api/artifacts/download/..."). Prefix the API origin so they resolve both
+// same-origin (prod, behind the ingress) and cross-origin (dev, API on :8080).
+function absolutizeArtifactUrl(url: string): string {
+  if (!url || /^https?:\/\//i.test(url)) {
+    return url;
+  }
+  return `${baseUrlFromApiBase()}${url}`;
+}
+
 type AuthBootstrapResponse = {
   authMode: AuthMode;
   localLoginEnabled: boolean;
@@ -181,11 +191,31 @@ export const api = {
       authToken
     );
   },
-  launcherRuntime() {
-    return request<LauncherRuntime>("/launcher/runtime");
+  async launcherRuntime() {
+    const runtime = await request<LauncherRuntime>("/launcher/runtime");
+    return {
+      ...runtime,
+      downloadUrl: absolutizeArtifactUrl(runtime.downloadUrl),
+      downloads: (runtime.downloads ?? []).map((file) => ({
+        ...file,
+        downloadUrl: absolutizeArtifactUrl(file.downloadUrl)
+      }))
+    };
   },
-  browserExtensionRuntime() {
-    return request<BrowserExtensionRuntime>("/browser-extension/runtime");
+  async browserExtensionRuntime() {
+    const runtime = await request<BrowserExtensionRuntime>("/browser-extension/runtime");
+    return {
+      ...runtime,
+      downloadUrl: absolutizeArtifactUrl(runtime.downloadUrl),
+      packages: (runtime.packages ?? []).map((pkg) => ({
+        ...pkg,
+        downloadUrl: pkg.downloadUrl ? absolutizeArtifactUrl(pkg.downloadUrl) : pkg.downloadUrl,
+        files: (pkg.files ?? []).map((file) => ({
+          ...file,
+          downloadUrl: absolutizeArtifactUrl(file.downloadUrl)
+        }))
+      }))
+    };
   },
   createBrowserExtensionConnectToken(authToken: string) {
     return request<BrowserExtensionConnectToken>(

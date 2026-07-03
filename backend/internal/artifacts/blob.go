@@ -89,6 +89,48 @@ func (s *BlobSource) List(ctx context.Context, category Category) ([]Artifact, e
 	return items, nil
 }
 
+// Open streams a single blob's bytes so the backend can proxy the download,
+// keeping the storage account private (no browser access, no SAS in URLs).
+func (s *BlobSource) Open(ctx context.Context, category Category, name string) (io.ReadCloser, *ObjectInfo, error) {
+	if !safeArtifactName(name) || !category.AllowsExt(name) {
+		return nil, nil, ErrNotFound
+	}
+	segments := strings.Split(category.Prefix+"/"+name, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	full := s.ContainerURL + "/" + strings.Join(segments, "/")
+	if s.SAS != "" {
+		full += "?" + s.SAS
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	// No client timeout here: streaming a large file is bounded by the request
+	// context, not a fixed deadline like the (short) list client.
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, nil, ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("azure blob get failed: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+
+	info := &ObjectInfo{Name: name, ContentType: resp.Header.Get("Content-Type"), Size: resp.ContentLength}
+	if info.ContentType == "" {
+		info.ContentType = contentTypeFor(name)
+	}
+	return resp.Body, info, nil
+}
+
 func (s *BlobSource) downloadURL(blobName string) string {
 	segments := strings.Split(blobName, "/")
 	for i, segment := range segments {

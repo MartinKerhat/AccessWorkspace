@@ -2,6 +2,7 @@ package artifacts
 
 import (
 	"context"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -55,4 +56,33 @@ func (s *LocalSource) List(_ context.Context, category Category) ([]Artifact, er
 
 func (s *LocalSource) downloadURL(prefix, name string) string {
 	return s.BaseURL + "/downloads/" + path.Join(prefix, name)
+}
+
+// Open streams a single file from the category's folder on disk.
+func (s *LocalSource) Open(_ context.Context, category Category, name string) (io.ReadCloser, *ObjectInfo, error) {
+	if !safeArtifactName(name) || !category.AllowsExt(name) {
+		return nil, nil, ErrNotFound
+	}
+	full := filepath.Join(s.Dir, filepath.FromSlash(category.Prefix), name)
+	f, err := os.Open(full)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, ErrNotFound
+		}
+		return nil, nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	return f, &ObjectInfo{Name: name, ContentType: contentTypeFor(name), Size: info.Size()}, nil
+}
+
+// EnsureLayout best-effort creates the expected category folders so operators
+// know where to drop builds. Errors (e.g. a read-only mount) are ignored.
+func (s *LocalSource) EnsureLayout(categories ...Category) {
+	for _, category := range categories {
+		_ = os.MkdirAll(filepath.Join(s.Dir, filepath.FromSlash(category.Prefix)), 0o755)
+	}
 }

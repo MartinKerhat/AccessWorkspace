@@ -607,7 +607,6 @@ func notificationPolicyFromAny(value map[string]any) resources.AppRegistrationNo
 }
 
 func normalizeNotificationPolicy(policy resources.AppRegistrationNotificationPolicy) resources.AppRegistrationNotificationPolicy {
-	policy.Enabled = policy.Enabled
 	if len(policy.ReminderDays) == 0 {
 		policy.ReminderDays = defaultAppRegistrationNotificationPolicy().ReminderDays
 	}

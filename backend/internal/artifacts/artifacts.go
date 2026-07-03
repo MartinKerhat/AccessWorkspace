@@ -12,6 +12,8 @@ package artifacts
 
 import (
 	"context"
+	"errors"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -49,10 +51,41 @@ type Artifact struct {
 	DownloadURL string `json:"downloadUrl"`
 }
 
-// Source lists artifacts for a category. Each returned Artifact already carries
-// a resolved DownloadURL appropriate to the source.
+// Source lists artifacts for a category and streams their bytes. Each returned
+// Artifact carries a DownloadURL; the API rewrites it to the backend proxy path.
 type Source interface {
 	List(ctx context.Context, category Category) ([]Artifact, error)
+	// Open streams a single artifact's bytes so the backend can proxy the
+	// download from a private store. Returns ErrNotFound if it does not exist.
+	Open(ctx context.Context, category Category, name string) (io.ReadCloser, *ObjectInfo, error)
+}
+
+// ObjectInfo describes a single artifact being streamed.
+type ObjectInfo struct {
+	Name        string
+	ContentType string
+	Size        int64
+}
+
+// ErrNotFound is returned by Open when the requested artifact does not exist.
+var ErrNotFound = errors.New("artifact not found")
+
+// contentTypeFor maps a filename to a download-friendly content type.
+func contentTypeFor(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.HasSuffix(lower, ".zip"):
+		return "application/zip"
+	case strings.HasSuffix(lower, ".xpi"):
+		return "application/x-xpinstall"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+// safeArtifactName rejects names that could escape a category folder.
+func safeArtifactName(name string) bool {
+	return name != "" && !strings.Contains(name, "/") && !strings.Contains(name, `\`) && !strings.Contains(name, "..")
 }
 
 // Standard categories. The Key values are stable API identifiers.

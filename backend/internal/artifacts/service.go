@@ -2,8 +2,31 @@ package artifacts
 
 import (
 	"context"
+	"io"
+	"net/url"
 	"strings"
 )
+
+// allCategories is every launcher + extension category, used to resolve a
+// category by key for proxy downloads.
+func allCategories() []Category {
+	return append(append([]Category{}, LauncherCategories...), ExtensionCategories...)
+}
+
+func categoryByKey(key string) (Category, bool) {
+	for _, category := range allCategories() {
+		if category.Key == key {
+			return category, true
+		}
+	}
+	return Category{}, false
+}
+
+// proxyDownloadURL is the backend endpoint that streams an artifact. Downloads
+// flow through the API so the underlying store (Blob/volume) stays private.
+func proxyDownloadURL(categoryKey, name string) string {
+	return "/api/artifacts/download/" + categoryKey + "/" + url.PathEscape(name)
+}
 
 // Service turns raw source listings into the views the API exposes. It applies
 // the "store-primary" rule: when a browser store URL is configured, that store
@@ -48,8 +71,20 @@ func (s *Service) LauncherDownloads(ctx context.Context) ([]Artifact, error) {
 		}
 		all = append(all, items...)
 	}
+	for i := range all {
+		all[i].DownloadURL = proxyDownloadURL(all[i].Category, all[i].Name)
+	}
 	sortNewestFirst(all)
 	return all, nil
+}
+
+// Open streams a single artifact's bytes for the backend download proxy.
+func (s *Service) Open(ctx context.Context, categoryKey, name string) (io.ReadCloser, *ObjectInfo, error) {
+	category, ok := categoryByKey(categoryKey)
+	if !ok || !category.AllowsExt(name) {
+		return nil, nil, ErrNotFound
+	}
+	return s.source.Open(ctx, category, name)
 }
 
 // ExtensionPackages returns the browser-extension options, store-primary where a
@@ -76,6 +111,9 @@ func (s *Service) ExtensionPackages(ctx context.Context) ([]PackageView, error) 
 }
 
 func (s *Service) packageView(category Category, files []Artifact) PackageView {
+	for i := range files {
+		files[i].DownloadURL = proxyDownloadURL(files[i].Category, files[i].Name)
+	}
 	view := PackageView{
 		ID:      category.Key,
 		Browser: category.Browser,

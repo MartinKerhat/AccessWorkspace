@@ -127,6 +127,7 @@ type Server struct {
 type ArtifactService interface {
 	LauncherDownloads(ctx context.Context) ([]artifacts.Artifact, error)
 	ExtensionPackages(ctx context.Context) ([]artifacts.PackageView, error)
+	Open(ctx context.Context, category, name string) (io.ReadCloser, *artifacts.ObjectInfo, error)
 }
 
 func NewServer(deps Dependencies) *Server {
@@ -182,6 +183,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLauncherRuntime(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/browser-extension/runtime":
 		s.handleBrowserExtensionRuntime(w, r)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/artifacts/download/"):
+		s.handleArtifactDownload(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/launcher/rdp-signing/public":
 		s.handleRDPSigningPublic(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/auth/bootstrap":
@@ -413,6 +416,47 @@ func (s *Server) handleBrowserExtensionRuntime(w http.ResponseWriter, r *http.Re
 		"downloadUrl":     defaultDownloadURL,
 		"packages":        packages,
 	})
+}
+
+// handleArtifactDownload streams an artifact (launcher / browser extension) from
+// the private store through the backend, so the store never needs to be reachable
+// by the browser. Path: /api/artifacts/download/<category>/<name>.
+func (s *Server) handleArtifactDownload(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/api/artifacts/download/")
+	parts := strings.SplitN(rest, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	category := parts[0]
+	name, err := url.PathUnescape(parts[1])
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+
+	body, info, err := s.artifacts.Open(r.Context(), category, name)
+	if err != nil {
+		if errors.Is(err, artifacts.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "download failed"})
+		return
+	}
+	defer body.Close()
+
+	contentType := "application/octet-stream"
+	if info != nil && info.ContentType != "" {
+		contentType = info.ContentType
+	}
+	w.Header().Set("Content-Type", contentType)
+	if info != nil && info.Size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(info.Size, 10))
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, body)
 }
 
 func (s *Server) handleRDPSigningPublic(w http.ResponseWriter, r *http.Request) {
