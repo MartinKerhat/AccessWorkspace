@@ -1,0 +1,23 @@
+.gocache/
+.gomodcache/
+backend/access-workspace
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+*.log
+
+# Local environment files — never commit real secret values.
+# Only .env.example (template, no values) is tracked.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Downloadable build artifacts (launcher, browser extensions). Not committed —
+# host them in Azure Blob / GitHub Releases for production. Kept locally for
+# docker-compose dev via a bind mount. Only the layout README is tracked.
+/artifacts/**
+!/artifacts/README.md
+
+# Internal working notes for the assistant (not for publication).
+/.dev-notes/

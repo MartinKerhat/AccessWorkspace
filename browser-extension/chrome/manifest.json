@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Access Workspace Browser Fill",
+  "description": "Suggest and fill approved portal credentials from Access Workspace.",
+  "version": "0.2.5",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "all_frames": true,
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Access Workspace",
+    "default_popup": "popup.html"
+  }
+}
