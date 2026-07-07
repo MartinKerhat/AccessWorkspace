@@ -38,7 +38,14 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
 function baseUrlFromApiBase() {
-  return API_BASE.replace(/\/+$/, "").replace(/\/api$/, "");
+  const trimmed = API_BASE.replace(/\/+$/, "").replace(/\/api$/, "");
+  // A relative API base (prod, served same-origin behind the ingress) collapses
+  // to "" here. The browser extension runs in its own context and needs an
+  // absolute origin, so resolve it against the current page.
+  if (trimmed === "" || trimmed.startsWith("/")) {
+    return window.location.origin;
+  }
+  return trimmed;
 }
 
 // Artifact download URLs come from the backend as root-relative paths
