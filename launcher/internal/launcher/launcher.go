@@ -76,6 +76,9 @@ func resolveLaunchPayload(item payload.LaunchPayload) (payload.LaunchPayload, er
 	if resolved.Metadata == nil {
 		resolved.Metadata = map[string]interface{}{}
 	}
+	// Learn which deployment served this launch so deployment-wide prerequisites
+	// (RDP publisher trust) can be fetched from it, without any hardcoded URL.
+	rememberWorkspaceBaseURL(resolveURL)
 	return resolved, nil
 }
 
@@ -127,6 +130,15 @@ func runRDP(item payload.LaunchPayload) error {
 		}
 		if err := ensureRDPSigningTrust(item.Metadata); err != nil {
 			return err
+		}
+		if payload.MetadataBool(item.Metadata, "rdpSigningEnabled") {
+			// Best-effort: ensure this machine trusts the deployment's RDP
+			// publisher before mstsc opens the signed profile. Idempotent — it
+			// skips (no prompt) when the thumbprint is already trusted, so it
+			// only elevates the first time or when the cert rotates. If it fails
+			// (e.g. elevation declined) the launch still proceeds; mstsc just
+			// shows its untrusted-publisher warning.
+			_ = SyncAgentPrerequisites()
 		}
 		if signRequired {
 			if err := signRDPProfile(item.Metadata, tempFile); err != nil {

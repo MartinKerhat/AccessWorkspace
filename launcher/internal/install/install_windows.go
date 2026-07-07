@@ -63,9 +63,10 @@ func InstallOrUpgrade() (string, error) {
 	if err := registerAutorun(targetExe); err != nil {
 		return "", err
 	}
-	if err := synchronizeLauncherPrerequisites(targetExe); err != nil {
-		return "", err
-	}
+	// Best-effort: RDP publisher trust targets the workspace the launcher learns
+	// from launch payloads, which isn't known at first install. It is ensured
+	// lazily on the first RDP launch, so never fail install on it.
+	_ = synchronizeLauncherPrerequisites(targetExe)
 	if err := startBackgroundLauncher(targetExe); err != nil {
 		return "", err
 	}

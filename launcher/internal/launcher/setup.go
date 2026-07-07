@@ -20,8 +20,17 @@ type rdpSigningPublicConfig struct {
 	RootCertBase64        string `json:"rootCertBase64"`
 }
 
+// SyncAgentPrerequisites ensures deployment-wide RDP publisher trust is present.
+// It targets the workspace the launcher last handled a launch from (learned at
+// runtime, persisted by rememberWorkspaceBaseURL). If no workspace is known yet
+// — e.g. right after install, before any launch — it is a no-op: trust is
+// ensured lazily on the first RDP launch, once the deployment URL is known.
 func SyncAgentPrerequisites() error {
-	config, err := fetchRDPSigningPublicConfig()
+	base := loadWorkspaceBaseURL()
+	if base == "" {
+		return nil
+	}
+	config, err := fetchRDPSigningPublicConfig(base)
 	if err != nil {
 		return err
 	}
@@ -43,9 +52,9 @@ func installRDPPublisherTrustPackage(thumbprint string, leafCertBase64 string, r
 	})
 }
 
-func fetchRDPSigningPublicConfig() (rdpSigningPublicConfig, error) {
+func fetchRDPSigningPublicConfig(workspaceBaseURL string) (rdpSigningPublicConfig, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
-	response, err := client.Get(launcherinfo.RDPTrustURL)
+	response, err := client.Get(workspaceBaseURL + launcherinfo.RDPTrustPath)
 	if err != nil {
 		return rdpSigningPublicConfig{}, fmt.Errorf("fetch RDP publisher trust configuration: %w", err)
 	}
