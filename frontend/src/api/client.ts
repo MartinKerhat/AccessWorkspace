@@ -48,6 +48,18 @@ function baseUrlFromApiBase() {
   return trimmed;
 }
 
+// absoluteApiBase returns API_BASE as an absolute URL. Same-origin fetches from
+// the page use API_BASE directly, but URLs we hand to *external* agents (the
+// desktop launcher, the browser extension) must be absolute — a relative "/api"
+// is meaningless in their context.
+function absoluteApiBase() {
+  const trimmed = API_BASE.replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${window.location.origin}${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
+}
+
 // Artifact download URLs come from the backend as root-relative paths
 // ("/api/artifacts/download/..."). Prefix the API origin so they resolve both
 // same-origin (prod, behind the ingress) and cross-origin (dev, API on :8080).
@@ -171,7 +183,9 @@ export const api = {
     );
   },
   launcherTicketResolveUrl(ticket: string) {
-    return `${API_BASE}/launcher/tickets/${encodeURIComponent(ticket)}`;
+    // Handed to the desktop launcher, which fetches it from its own process —
+    // must be absolute, not the page-relative "/api".
+    return `${absoluteApiBase()}/launcher/tickets/${encodeURIComponent(ticket)}`;
   },
   listPasswordOptions(authToken: string) {
     return request<{ items: ResourceSummary[] }>("/passwords/options", {}, authToken);
