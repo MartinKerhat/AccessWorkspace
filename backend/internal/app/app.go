@@ -112,6 +112,10 @@ func New(cfg Config) (*App, error) {
 		pool.Close()
 		return nil, err
 	}
+	if err := authRepo.HashPlaintextSessionTokens(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
 	keyVaultService := keyvault.NewService(keyvault.SettingsProvider{
 		Runtime: func(ctx context.Context) (keyvault.RuntimeConfig, error) {
 			config, err := adminStore.GetEntraRuntime(ctx)

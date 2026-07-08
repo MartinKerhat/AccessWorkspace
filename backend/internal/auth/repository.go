@@ -56,7 +56,7 @@ func (r *Repository) CreateSession(ctx context.Context, userID string, ttl time.
 	_, err := r.db.Exec(ctx, `
 		insert into auth_sessions (token, user_id, expires_at)
 		values ($1, $2, now() + ($3 * interval '1 second'))
-	`, token, userID, int(ttl.Seconds()))
+	`, hashToken(token), userID, int(ttl.Seconds()))
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +69,7 @@ func (r *Repository) CreateBrowserExtensionConnectToken(ctx context.Context, use
 	_, err := r.db.Exec(ctx, `
 		insert into browser_extension_connect_tokens (token, user_id, auth_mode, expires_at)
 		values ($1, $2, $3, $4)
-	`, token, strings.TrimSpace(userID), string(mode), expiresAt)
+	`, hashToken(token), strings.TrimSpace(userID), string(mode), expiresAt)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -91,7 +91,7 @@ func (r *Repository) ExchangeBrowserExtensionConnectToken(ctx context.Context, t
 		delete from browser_extension_connect_tokens
 		where token = $1 and expires_at > now()
 		returning user_id, auth_mode
-	`, strings.TrimSpace(token)).Scan(&userID, &authMode)
+	`, hashToken(token)).Scan(&userID, &authMode)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", "", ErrUnauthenticated
@@ -125,7 +125,7 @@ func (r *Repository) UpsertBrowserExtensionSession(ctx context.Context, userID s
 	if _, err := tx.Exec(ctx, `
 		insert into browser_extension_sessions (token, user_id, installation_id, expires_at)
 		values ($1, $2, $3, now() + ($4 * interval '1 second'))
-	`, token, strings.TrimSpace(userID), strings.TrimSpace(installationID), int(ttl.Seconds())); err != nil {
+	`, hashToken(token), strings.TrimSpace(userID), strings.TrimSpace(installationID), int(ttl.Seconds())); err != nil {
 		return "", err
 	}
 
@@ -138,12 +138,13 @@ func (r *Repository) UpsertBrowserExtensionSession(ctx context.Context, userID s
 func (r *Repository) UserByToken(ctx context.Context, token string) (User, error) {
 	var user User
 	var blocked bool
+	tokenHash := hashToken(token)
 	err := r.db.QueryRow(ctx, `
 		select u.id, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights
 		from auth_sessions s
 		join app_users u on u.id = s.user_id
 		where s.token = $1 and s.expires_at > now()
-	`, token).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights)
+	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights)
 	if err == nil {
 		if blocked {
 			return User{}, ErrBlocked
@@ -159,7 +160,7 @@ func (r *Repository) UserByToken(ctx context.Context, token string) (User, error
 		from browser_extension_sessions s
 		join app_users u on u.id = s.user_id
 		where s.token = $1 and s.expires_at > now()
-	`, token).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights)
+	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrUnauthenticated
@@ -170,7 +171,7 @@ func (r *Repository) UserByToken(ctx context.Context, token string) (User, error
 		update browser_extension_sessions
 		set last_used_at = now()
 		where token = $1
-	`, token); touchErr != nil {
+	`, tokenHash); touchErr != nil {
 		return User{}, touchErr
 	}
 	if blocked {
@@ -223,7 +224,7 @@ func (r *Repository) DeleteSession(ctx context.Context, token string) error {
 			delete from auth_sessions where token = $1
 		)
 		delete from browser_extension_sessions where token = $1
-	`, token)
+	`, hashToken(token))
 	return err
 }
 
