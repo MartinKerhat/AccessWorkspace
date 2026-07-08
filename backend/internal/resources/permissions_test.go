@@ -38,3 +38,17 @@ func TestCanAccessAllowsEveryoneWhenNoGroupsAreConfigured(t *testing.T) {
 		t.Fatalf("expected empty allowed groups to be visible to everyone")
 	}
 }
+
+func TestCanAccessDeniesAdminOnPersonalResource(t *testing.T) {
+	resource := ResourceSummary{Personal: true, OwnerUserID: "alice"}
+	if CanAccess(fakeUser{id: "martin", admin: true}, resource) {
+		t.Fatalf("expected admin to be denied access to another user's personal resource")
+	}
+}
+
+func TestCanAccessAllowsOwnerOnPersonalResource(t *testing.T) {
+	resource := ResourceSummary{Personal: true, OwnerUserID: "alice"}
+	if !CanAccess(fakeUser{id: "alice"}, resource) {
+		t.Fatalf("expected owner to access their own personal resource")
+	}
+}

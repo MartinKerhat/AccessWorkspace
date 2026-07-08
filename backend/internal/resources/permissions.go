@@ -12,14 +12,17 @@ type Viewer interface {
 }
 
 func CanAccess(user Viewer, resource ResourceSummary) bool {
+	isOwner := strings.TrimSpace(resource.OwnerUserID) != "" && resource.OwnerUserID == user.GetID()
+	// Personal resources are visible ONLY to their owner — not admins, not groups,
+	// not anyone else. This deliberately overrides the admin bypass below.
+	if resource.Personal {
+		return isOwner
+	}
 	if user.GetIsAdmin() {
 		return true
 	}
-	if strings.TrimSpace(resource.OwnerUserID) != "" && resource.OwnerUserID == user.GetID() {
+	if isOwner {
 		return true
-	}
-	if resource.Personal {
-		return false
 	}
 	if len(resource.AllowedGroups) == 0 {
 		return true

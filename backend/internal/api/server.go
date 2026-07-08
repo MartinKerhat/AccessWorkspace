@@ -151,6 +151,7 @@ type LocalGroupAdminService interface {
 	CreateUser(ctx context.Context, input auth.CreateUserInput) (auth.UserAccessDetail, error)
 	GetUserAccess(ctx context.Context, id string) (auth.UserAccessDetail, error)
 	UpdateUserAccess(ctx context.Context, id string, input auth.UserAccessUpdateInput) (auth.UserAccessDetail, error)
+	DeleteUser(ctx context.Context, id string) (auth.DeleteUserResult, error)
 	CreateLocalGroup(ctx context.Context, input auth.LocalGroupInput) error
 	UpdateLocalGroup(ctx context.Context, name string, input auth.LocalGroupInput) error
 }
@@ -955,6 +956,27 @@ func (s *Server) handleAdminUserRoutes(w http.ResponseWriter, r *http.Request, u
 			},
 		})
 		writeJSON(w, http.StatusOK, item)
+		return
+	case http.MethodDelete:
+		if id == user.ID {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "you cannot delete your own account"})
+			return
+		}
+		result, err := s.localGroups.DeleteUser(r.Context(), id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		_ = s.audit.Log(r.Context(), audit.LogParams{
+			EventType: audit.EventUserDeleted,
+			UserID:    user.ID,
+			UserName:  user.Name,
+			Metadata: map[string]any{
+				"targetUserId":             id,
+				"personalResourcesDeleted": result.PersonalResourcesDeleted,
+			},
+		})
+		writeJSON(w, http.StatusOK, result)
 		return
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})

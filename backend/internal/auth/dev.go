@@ -75,6 +75,10 @@ type UserAccessUpdateInput struct {
 	DirectRights      []string `json:"directRights"`
 }
 
+type DeleteUserResult struct {
+	PersonalResourcesDeleted int `json:"personalResourcesDeleted"`
+}
+
 type CreateUserInput struct {
 	Username          string   `json:"username"`
 	DisplayName       string   `json:"displayName"`

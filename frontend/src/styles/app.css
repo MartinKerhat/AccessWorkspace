@@ -1474,6 +1474,16 @@ textarea {
   border: 1px solid rgba(159, 204, 255, 0.18);
 }
 
+.button.danger-button {
+  background: rgba(248, 113, 113, 0.14);
+  color: #ffd9d9;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+}
+
+.button.danger-button:disabled {
+  opacity: 0.5;
+}
+
 .payload-box {
   display: grid;
   gap: 10px;

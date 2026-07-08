@@ -262,6 +262,31 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (UserAc
 	return s.GetUserAccess(ctx, id)
 }
 
+func (s *Service) DeleteUser(ctx context.Context, id string) (DeleteUserResult, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return DeleteUserResult{}, ErrNotFound
+	}
+
+	target, err := s.repo.userByID(ctx, id)
+	if err != nil {
+		return DeleteUserResult{}, err
+	}
+
+	// Never delete the last remaining admin, or the workspace becomes unmanageable.
+	if target.IsAdmin {
+		admins, err := s.repo.countAdmins(ctx)
+		if err != nil {
+			return DeleteUserResult{}, err
+		}
+		if admins <= 1 {
+			return DeleteUserResult{}, fmt.Errorf("%w: cannot delete the last administrator", ErrInvalidInput)
+		}
+	}
+
+	return s.repo.DeleteUser(ctx, id)
+}
+
 func (s *Service) GetUserAccess(ctx context.Context, id string) (UserAccessDetail, error) {
 	user, err := s.repo.userByID(ctx, id)
 	if err != nil {

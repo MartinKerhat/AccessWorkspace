@@ -414,6 +414,82 @@ func (r *Repository) userByID(ctx context.Context, id string) (User, error) {
 	return item, nil
 }
 
+// DeleteUser removes a user and cascades cleanup of everything tied to that
+// user's identity. Personal resources (owner_user_id + personal) are deleted
+// outright — they are secrets only the owner could ever see, so once the owner
+// is gone they must not linger in the database. Sessions, tokens, and
+// notifications are removed by ON DELETE CASCADE from app_users; personal
+// resources, the user's connection credential overrides, and local-group
+// assignments have no FK to app_users and are cleaned up explicitly here.
+//
+// Shared resources owned by the user are intentionally left in place (they are
+// visible to others via allowed groups); only their now-dangling owner_user_id
+// remains, which no longer grants anyone access.
+func (r *Repository) DeleteUser(ctx context.Context, id string) (DeleteUserResult, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return DeleteUserResult{}, ErrNotFound
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return DeleteUserResult{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	var exists bool
+	if err := tx.QueryRow(ctx, `select exists(select 1 from app_users where id = $1)`, id).Scan(&exists); err != nil {
+		return DeleteUserResult{}, err
+	}
+	if !exists {
+		return DeleteUserResult{}, ErrNotFound
+	}
+
+	// Delete the user's personal resources. resource_secrets,
+	// connection_user_password_overrides referencing them, and any notification
+	// policies/rows keyed on the resource are removed via ON DELETE CASCADE.
+	tag, err := tx.Exec(ctx, `delete from resources where owner_user_id = $1 and personal = true`, id)
+	if err != nil {
+		return DeleteUserResult{}, err
+	}
+	personalDeleted := int(tag.RowsAffected())
+
+	// Remove the user's personal credential overrides on connections they don't own.
+	if _, err := tx.Exec(ctx, `delete from connection_user_password_overrides where user_id = $1`, id); err != nil {
+		return DeleteUserResult{}, err
+	}
+
+	// Drop the user from every local group's assignment list.
+	if _, err := tx.Exec(ctx, `
+		update local_groups
+		set assigned_user_ids = array_remove(assigned_user_ids, $1), updated_at = now()
+		where $1 = any(assigned_user_ids)
+	`, id); err != nil {
+		return DeleteUserResult{}, err
+	}
+
+	// Finally remove the account; FK cascades clear sessions, extension tokens,
+	// and app-registration notifications.
+	if _, err := tx.Exec(ctx, `delete from app_users where id = $1`, id); err != nil {
+		return DeleteUserResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return DeleteUserResult{}, err
+	}
+	return DeleteUserResult{PersonalResourcesDeleted: personalDeleted}, nil
+}
+
+func (r *Repository) countAdmins(ctx context.Context) (int, error) {
+	var count int
+	if err := r.db.QueryRow(ctx, `select count(*) from app_users where is_admin = true`).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (r *Repository) CreateLocalGroup(ctx context.Context, input LocalGroupInput) error {
 	input = normalizeLocalGroupInput(input)
 	_, err := r.db.Exec(ctx, `

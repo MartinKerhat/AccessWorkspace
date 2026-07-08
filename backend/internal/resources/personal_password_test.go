@@ -129,7 +129,7 @@ func TestCreateAllowsPersonalPasswordForNonAdmin(t *testing.T) {
 	}
 }
 
-func TestAdminCanConvertPersonalWebPortalPasswordToShared(t *testing.T) {
+func TestAdminCannotManageAnotherUsersPersonalPassword(t *testing.T) {
 	store := &personalPasswordStore{
 		resource: Resource{
 			ID:          "pwd-1",
@@ -154,32 +154,32 @@ func TestAdminCanConvertPersonalWebPortalPasswordToShared(t *testing.T) {
 		IsAdmin: true,
 	}
 
-	updated, err := service.Update(context.Background(), admin, "pwd-1", UpdateResourceInput{
-		Name:          "Grafana",
-		Type:          TypeWebPortal,
-		Personal:      false,
-		Description:   "Shared portal login",
-		Owner:         "Alice Admin",
-		OwnerTeam:     "ops-admins",
-		Status:        "active",
-		SourceKind:    SourceKindManual,
-		TargetURL:     "https://grafana.example/login",
-		Username:      "admin",
-		CopyAllowed:   true,
-		AllowedGroups: []string{"ops-admins"},
-		SecretMode:    SecretModeInline,
-	})
-	if err != nil {
-		t.Fatalf("expected admin update to succeed, got %v", err)
+	// An admin who does not own the personal password must not be able to update
+	// it — otherwise they could flip it to shared and then reveal the secret.
+	if _, err := service.Update(context.Background(), admin, "pwd-1", UpdateResourceInput{
+		Name:        "Grafana",
+		Type:        TypeWebPortal,
+		Personal:    false,
+		Owner:       "Alice Admin",
+		OwnerTeam:   "ops-admins",
+		Status:      "active",
+		SourceKind:  SourceKindManual,
+		TargetURL:   "https://grafana.example/login",
+		Username:    "admin",
+		CopyAllowed: true,
+		SecretMode:  SecretModeInline,
+	}); err != ErrForbidden {
+		t.Fatalf("expected admin update of another user's personal password to be forbidden, got %v", err)
 	}
-	if updated.Personal {
-		t.Fatalf("expected updated resource to become shared")
+
+	// An admin must not be able to reveal another user's personal password.
+	if _, err := service.Reveal(context.Background(), admin, "pwd-1"); err != ErrForbidden {
+		t.Fatalf("expected admin reveal of another user's personal password to be forbidden, got %v", err)
 	}
-	if store.updatedInput.Personal {
-		t.Fatalf("expected repository update input to keep personal=false")
-	}
-	if len(store.updatedInput.AllowedGroups) != 1 || store.updatedInput.AllowedGroups[0] != "ops-admins" {
-		t.Fatalf("expected allowed groups to be preserved for shared password, got %#v", store.updatedInput.AllowedGroups)
+
+	// An admin must not be able to view another user's personal password.
+	if _, err := service.Get(context.Background(), admin, "pwd-1"); err != ErrForbidden {
+		t.Fatalf("expected admin view of another user's personal password to be forbidden, got %v", err)
 	}
 }
 

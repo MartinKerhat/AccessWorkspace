@@ -1456,7 +1456,8 @@ func explainVisibleResourcesForUser(user auth.User, items []ResourceSummary) []V
 
 func visibilityScopeForResource(user devViewer, item ResourceSummary) (string, []string, bool) {
 	if item.Personal {
-		if item.OwnerUserID == user.ID || user.GetIsAdmin() {
+		// Personal resources are visible ONLY to their owner — admins included.
+		if item.OwnerUserID == user.ID {
 			return "personal", nil, true
 		}
 		return "", nil, false
@@ -1862,19 +1863,30 @@ func canCreatePersonalPassword(user auth.User, input CreateResourceInput) bool {
 }
 
 func canUpdateResource(user auth.User, existing Resource) bool {
+	isOwner := existing.OwnerUserID == user.ID &&
+		auth.CapabilitiesForUser(user).Categories[existing.Category].Edit
+	// Personal resources can only be managed by their owner. Admins are excluded
+	// so they cannot flip a personal secret to shared and then reveal it.
+	if existing.Personal {
+		return isOwner
+	}
 	if user.IsAdmin {
 		return true
 	}
-	return existing.OwnerUserID == user.ID &&
-		auth.CapabilitiesForUser(user).Categories[existing.Category].Edit
+	return isOwner
 }
 
 func canArchiveResource(user auth.User, resource Resource) bool {
+	isOwner := resource.OwnerUserID == user.ID &&
+		auth.CapabilitiesForUser(user).Categories[resource.Category].Edit
+	// Personal resources can only be managed by their owner — admins included.
+	if resource.Personal {
+		return isOwner
+	}
 	if user.IsAdmin {
 		return true
 	}
-	return resource.OwnerUserID == user.ID &&
-		auth.CapabilitiesForUser(user).Categories[resource.Category].Edit
+	return isOwner
 }
 
 func enforcePersonalPasswordOwnership(user auth.User, input CreateResourceInput) CreateResourceInput {

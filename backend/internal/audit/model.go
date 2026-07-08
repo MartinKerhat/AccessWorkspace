@@ -14,6 +14,7 @@ const (
 	EventResourceArchived  EventType = "resource_archived"
 	EventResourceRestored  EventType = "resource_restored"
 	EventUserAccessUpdated EventType = "user_access_updated"
+	EventUserDeleted       EventType = "user_deleted"
 )
 
 type Event struct {

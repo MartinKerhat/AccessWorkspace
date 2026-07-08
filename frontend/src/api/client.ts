@@ -362,6 +362,15 @@ export const api = {
       authToken
     );
   },
+  deleteAdminUser(id: string, authToken: string) {
+    return request<{ personalResourcesDeleted: number }>(
+      `/admin/users/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE"
+      },
+      authToken
+    );
+  },
   restoreArchivedResource(id: string, authToken: string) {
     return request<{ status: string }>(
       `/admin/archived-resources/${id}/restore`,

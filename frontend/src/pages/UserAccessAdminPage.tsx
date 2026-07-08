@@ -14,6 +14,7 @@ type Props = {
   onSelect: (id: string) => void;
   onCreate: (input: CreateUserInput) => Promise<boolean>;
   onSave: (input: UserAccessUpdateInput) => void;
+  onDelete: (user: UserAccessDetail) => void;
 };
 
 const emptyCreateUserDraft: CreateUserInput = {
@@ -71,7 +72,8 @@ export function UserAccessAdminPage({
   loading,
   onSelect,
   onCreate,
-  onSave
+  onSave,
+  onDelete
 }: Props) {
   const [query, setQuery] = useState("");
   const [draftBlocked, setDraftBlocked] = useState(false);
@@ -443,11 +445,31 @@ export function UserAccessAdminPage({
                   >
                     Save user access
                   </button>
+                  <button
+                    className="button ghost danger-button"
+                    disabled={loading || selectedUser.id === currentUserId}
+                    title={
+                      selectedUser.id === currentUserId
+                        ? "You cannot delete your own account"
+                        : "Delete this user and all of their personal saved passwords"
+                    }
+                    onClick={() => onDelete(selectedUser)}
+                  >
+                    Delete user
+                  </button>
                 </div>
               </div>
 
               {selectedUser.id === currentUserId && draftBlocked ? (
                 <p className="error-copy">Blocking this user will end the current admin session after save.</p>
+              ) : null}
+
+              {selectedUser.id !== currentUserId ? (
+                <p className="section-copy">
+                  Deleting this user permanently removes their account and cascades a cleanup of all of their personal saved
+                  passwords from the database. Personal secrets are never visible to anyone but their owner, so they cannot be
+                  transferred — they are deleted with the account.
+                </p>
               ) : null}
 
               <dl className="detail-grid">

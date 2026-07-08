@@ -1644,6 +1644,40 @@ export default function App() {
     }
   }
 
+  async function handleDeleteAdminUser(target: UserAccessDetail) {
+    if (!session) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete ${target.name}? This permanently removes the account and deletes all of their personal saved passwords from the database. This cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.deleteAdminUser(target.id, session.authToken);
+      if (selectedAdminUserId === target.id) {
+        setSelectedAdminUserId(undefined);
+        setSelectedAdminUser(undefined);
+        setSelectedAdminUserResources([]);
+      }
+      await Promise.all([loadKnownUsers(session.authToken), loadLocalGroups(session.authToken)]);
+      if (session.capabilities.canViewAudit) {
+        await loadAudit(session.authToken);
+      }
+      setMessage(
+        `User ${target.name} deleted (${result.personalResourcesDeleted} personal ${
+          result.personalResourcesDeleted === 1 ? "object" : "objects"
+        } removed)`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Deleting user failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const visibleCategories = (["connections", "keyvault", "appregistrations", "passwords"] as WorkspaceCategory[]).filter(
     (category) => session?.capabilities.categories[category]?.view
   );
@@ -2052,12 +2086,14 @@ export default function App() {
                   canEdit={Boolean(
                     selectedResource &&
                       session.capabilities.categories[selectedResource.category]?.edit &&
-                      (session.user.isAdmin || selectedResource.ownerUserId === session.user.id)
+                      ((!selectedResource.personal && session.user.isAdmin) ||
+                        selectedResource.ownerUserId === session.user.id)
                   )}
                   canRemove={Boolean(
                     selectedResource &&
                     session.capabilities.categories[selectedResource.category]?.edit &&
-                    (session.user.isAdmin || selectedResource.ownerUserId === session.user.id)
+                    ((!selectedResource.personal && session.user.isAdmin) ||
+                      selectedResource.ownerUserId === session.user.id)
                   )}
                   launcherRuntime={launcherRuntime}
                   browserExtensionRuntime={browserExtensionRuntime}
@@ -2133,6 +2169,7 @@ export default function App() {
                 onSelect={setSelectedAdminUserId}
                 onCreate={(input) => handleCreateAdminUser(input)}
                 onSave={(input) => void handleSaveAdminUserAccess(input)}
+                onDelete={(target) => void handleDeleteAdminUser(target)}
               />
             ) : null}
 
@@ -2230,14 +2267,15 @@ export default function App() {
               formState.mode === "edit" &&
               selectedResource &&
               selectedResource.category === "passwords" &&
-              (session.user.isAdmin || selectedResource.ownerUserId === session.user.id)
+              ((!selectedResource.personal && session.user.isAdmin) ||
+                selectedResource.ownerUserId === session.user.id)
                 ? handleRevealStoredPassword
                 : undefined
             }
             onArchive={
               formState.mode === "edit" &&
               selectedResource &&
-              (session.user.isAdmin ||
+              ((!selectedResource.personal && session.user.isAdmin) ||
                 (selectedResource.ownerUserId === session.user.id &&
                   session.capabilities.categories[selectedResource.category]?.edit))
                 ? handleArchive
