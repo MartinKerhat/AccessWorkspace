@@ -76,7 +76,8 @@ type UserAccessUpdateInput struct {
 }
 
 type DeleteUserResult struct {
-	PersonalResourcesDeleted int `json:"personalResourcesDeleted"`
+	PersonalResourcesDeleted  int `json:"personalResourcesDeleted"`
+	SharedResourcesReassigned int `json:"sharedResourcesReassigned"`
 }
 
 type CreateUserInput struct {

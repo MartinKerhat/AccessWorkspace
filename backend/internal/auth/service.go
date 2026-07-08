@@ -262,10 +262,16 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (UserAc
 	return s.GetUserAccess(ctx, id)
 }
 
-func (s *Service) DeleteUser(ctx context.Context, id string) (DeleteUserResult, error) {
+// DeleteUser removes the target user. Their shared resources are transferred to
+// actor (the admin performing the deletion) so nothing is left owned by a deleted
+// account; their personal resources are deleted by the repository cascade.
+func (s *Service) DeleteUser(ctx context.Context, actor User, id string) (DeleteUserResult, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return DeleteUserResult{}, ErrNotFound
+	}
+	if strings.TrimSpace(actor.Name) == "" {
+		return DeleteUserResult{}, fmt.Errorf("%w: acting administrator is required", ErrInvalidInput)
 	}
 
 	target, err := s.repo.userByID(ctx, id)
@@ -284,7 +290,7 @@ func (s *Service) DeleteUser(ctx context.Context, id string) (DeleteUserResult, 
 		}
 	}
 
-	return s.repo.DeleteUser(ctx, id)
+	return s.repo.DeleteUser(ctx, id, target.Name, actor.ID, actor.Name)
 }
 
 func (s *Service) GetUserAccess(ctx context.Context, id string) (UserAccessDetail, error) {

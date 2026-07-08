@@ -468,7 +468,8 @@ export function UserAccessAdminPage({
                 <p className="section-copy">
                   Deleting this user permanently removes their account and cascades a cleanup of all of their personal saved
                   passwords from the database. Personal secrets are never visible to anyone but their owner, so they cannot be
-                  transferred — they are deleted with the account.
+                  transferred — they are deleted with the account. Their shared objects are kept and reassigned to you as the
+                  new owner.
                 </p>
               ) : null}
 

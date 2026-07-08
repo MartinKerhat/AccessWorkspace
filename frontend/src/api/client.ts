@@ -363,7 +363,7 @@ export const api = {
     );
   },
   deleteAdminUser(id: string, authToken: string) {
-    return request<{ personalResourcesDeleted: number }>(
+    return request<{ personalResourcesDeleted: number; sharedResourcesReassigned: number }>(
       `/admin/users/${encodeURIComponent(id)}`,
       {
         method: "DELETE"

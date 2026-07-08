@@ -422,13 +422,25 @@ func (r *Repository) userByID(ctx context.Context, id string) (User, error) {
 // resources, the user's connection credential overrides, and local-group
 // assignments have no FK to app_users and are cleaned up explicitly here.
 //
-// Shared resources owned by the user are intentionally left in place (they are
-// visible to others via allowed groups); only their now-dangling owner_user_id
-// remains, which no longer grants anyone access.
-func (r *Repository) DeleteUser(ctx context.Context, id string) (DeleteUserResult, error) {
+// Shared resources owned by the user are kept (the team still needs them) but
+// their ownership is transferred to newOwner (the admin performing the deletion)
+// so no shared object is left pointing at a deleted account. owner is a required
+// field, so ownership must be reassigned rather than cleared.
+//
+// A shared object can be tied to the user two ways: by owner_user_id (set for
+// personal→shared conversions) or only by the free-text owner display name (set
+// when an admin creates a shared object and picks the user as owner —
+// owner_user_id stays empty in that case). We match on either so both are caught.
+func (r *Repository) DeleteUser(ctx context.Context, id string, targetName string, newOwnerID string, newOwnerName string) (DeleteUserResult, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return DeleteUserResult{}, ErrNotFound
+	}
+	targetName = strings.TrimSpace(targetName)
+	newOwnerID = strings.TrimSpace(newOwnerID)
+	newOwnerName = strings.TrimSpace(newOwnerName)
+	if newOwnerName == "" {
+		return DeleteUserResult{}, fmt.Errorf("%w: a replacement owner is required to reassign shared resources", ErrInvalidInput)
 	}
 
 	tx, err := r.db.Begin(ctx)
@@ -456,6 +468,21 @@ func (r *Repository) DeleteUser(ctx context.Context, id string) (DeleteUserResul
 	}
 	personalDeleted := int(tag.RowsAffected())
 
+	// Transfer the user's shared resources to the replacement owner so none is
+	// left owned by a deleted account (owner is a required field). Match by the
+	// owner_user_id link OR the owner display name so admin-created shared objects
+	// (which carry only the name) are reassigned too.
+	reassignTag, err := tx.Exec(ctx, `
+		update resources
+		set owner_user_id = $2, owner = $3, updated_at = now()
+		where personal = false
+		  and (owner_user_id = $1 or ($4 <> '' and owner = $4))
+	`, id, newOwnerID, newOwnerName, targetName)
+	if err != nil {
+		return DeleteUserResult{}, err
+	}
+	sharedReassigned := int(reassignTag.RowsAffected())
+
 	// Remove the user's personal credential overrides on connections they don't own.
 	if _, err := tx.Exec(ctx, `delete from connection_user_password_overrides where user_id = $1`, id); err != nil {
 		return DeleteUserResult{}, err
@@ -479,7 +506,10 @@ func (r *Repository) DeleteUser(ctx context.Context, id string) (DeleteUserResul
 	if err := tx.Commit(ctx); err != nil {
 		return DeleteUserResult{}, err
 	}
-	return DeleteUserResult{PersonalResourcesDeleted: personalDeleted}, nil
+	return DeleteUserResult{
+		PersonalResourcesDeleted:  personalDeleted,
+		SharedResourcesReassigned: sharedReassigned,
+	}, nil
 }
 
 func (r *Repository) countAdmins(ctx context.Context) (int, error) {

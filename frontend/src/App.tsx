@@ -1649,7 +1649,7 @@ export default function App() {
       return;
     }
     const confirmed = window.confirm(
-      `Delete ${target.name}? This permanently removes the account and deletes all of their personal saved passwords from the database. This cannot be undone.`
+      `Delete ${target.name}? This permanently removes the account and deletes all of their personal saved passwords. Their shared objects are kept and reassigned to you. This cannot be undone.`
     );
     if (!confirmed) {
       return;
@@ -1662,14 +1662,20 @@ export default function App() {
         setSelectedAdminUser(undefined);
         setSelectedAdminUserResources([]);
       }
-      await Promise.all([loadKnownUsers(session.authToken), loadLocalGroups(session.authToken)]);
+      await Promise.all([
+        loadKnownUsers(session.authToken),
+        loadLocalGroups(session.authToken),
+        loadAllResources(session.authToken)
+      ]);
       if (session.capabilities.canViewAudit) {
         await loadAudit(session.authToken);
       }
       setMessage(
-        `User ${target.name} deleted (${result.personalResourcesDeleted} personal ${
+        `User ${target.name} deleted — ${result.personalResourcesDeleted} personal ${
           result.personalResourcesDeleted === 1 ? "object" : "objects"
-        } removed)`
+        } removed, ${result.sharedResourcesReassigned} shared ${
+          result.sharedResourcesReassigned === 1 ? "object" : "objects"
+        } reassigned to you`
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Deleting user failed");
