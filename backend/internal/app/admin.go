@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -117,10 +118,21 @@ type EntraRuntimeConfig struct {
 type AdminConfigStore struct {
 	db       *pgxpool.Pool
 	defaults Config
+	cipher   *resources.SecretCipher
 }
 
-func NewAdminConfigStore(db *pgxpool.Pool, defaults Config) *AdminConfigStore {
-	return &AdminConfigStore{db: db, defaults: defaults}
+// sensitiveSettingKeys lists admin_settings values that are encrypted at rest
+// with the resource secret cipher. Every read goes through loadSettings, which
+// transparently decrypts them; every write must encrypt via encryptSetting.
+var sensitiveSettingKeys = map[string]bool{
+	"entra_client_secret":         true,
+	"notification_email_password": true,
+	"rdp_signing_pfx_base64":      true,
+	"rdp_signing_pfx_password":    true,
+}
+
+func NewAdminConfigStore(db *pgxpool.Pool, defaults Config, cipher *resources.SecretCipher) *AdminConfigStore {
+	return &AdminConfigStore{db: db, defaults: defaults, cipher: cipher}
 }
 
 func (c Config) AdminView() AdminConfigView {
@@ -178,7 +190,76 @@ func (s *AdminConfigStore) loadSettings(ctx context.Context) (map[string]string,
 		return nil, err
 	}
 
+	for key := range sensitiveSettingKeys {
+		value, ok := settings[key]
+		if !ok {
+			continue
+		}
+		plain, err := s.cipher.DecryptFromStorage(value)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt admin setting %q: %w", key, err)
+		}
+		settings[key] = plain
+	}
+
 	return settings, nil
+}
+
+func (s *AdminConfigStore) encryptSetting(key, value string) (string, error) {
+	if !sensitiveSettingKeys[key] {
+		return value, nil
+	}
+	encrypted, err := s.cipher.EncryptForStorage(value)
+	if err != nil {
+		return "", fmt.Errorf("encrypt admin setting %q: %w", key, err)
+	}
+	return encrypted, nil
+}
+
+// EncryptPlaintextSecretSettings re-encrypts sensitive admin settings written
+// before values were encrypted at rest. Runs at startup; rows that already
+// carry the encryption envelope are left untouched.
+func (s *AdminConfigStore) EncryptPlaintextSecretSettings(ctx context.Context) error {
+	keys := make([]string, 0, len(sensitiveSettingKeys))
+	for key := range sensitiveSettingKeys {
+		keys = append(keys, key)
+	}
+	rows, err := s.db.Query(ctx, `select key, value from admin_settings where key = any($1)`, keys)
+	if err != nil {
+		return err
+	}
+	pending := map[string]string{}
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			rows.Close()
+			return err
+		}
+		if strings.TrimSpace(value) == "" || resources.IsEncryptedForStorage(value) {
+			continue
+		}
+		pending[key] = value
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for key, value := range pending {
+		encrypted, err := s.cipher.EncryptForStorage(value)
+		if err != nil {
+			return fmt.Errorf("encrypt admin setting %q: %w", key, err)
+		}
+		// Guard on the old value so a concurrent update is not clobbered.
+		if _, err := s.db.Exec(ctx, `
+			update admin_settings
+			set value = $2, updated_at = now()
+			where key = $1 and value = $3
+		`, key, encrypted, value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *AdminConfigStore) Get(ctx context.Context) (any, error) {
@@ -536,23 +617,31 @@ func (s *AdminConfigStore) Update(ctx context.Context, payload any) (any, error)
 	}
 
 	if input.EntraClientSecret != "" {
-		_, err := s.db.Exec(ctx, `
+		encrypted, err := s.encryptSetting("entra_client_secret", input.EntraClientSecret)
+		if err != nil {
+			return AdminConfigView{}, err
+		}
+		_, err = s.db.Exec(ctx, `
 			insert into admin_settings (key, value, updated_at)
 			values ('entra_client_secret', $1, now())
 			on conflict (key) do update
 			set value = excluded.value, updated_at = now()
-		`, input.EntraClientSecret)
+		`, encrypted)
 		if err != nil {
 			return AdminConfigView{}, err
 		}
 	}
 	if input.NotificationEmailPassword != "" {
-		_, err := s.db.Exec(ctx, `
+		encrypted, err := s.encryptSetting("notification_email_password", input.NotificationEmailPassword)
+		if err != nil {
+			return AdminConfigView{}, err
+		}
+		_, err = s.db.Exec(ctx, `
 			insert into admin_settings (key, value, updated_at)
 			values ('notification_email_password', $1, now())
 			on conflict (key) do update
 			set value = excluded.value, updated_at = now()
-		`, input.NotificationEmailPassword)
+		`, encrypted)
 		if err != nil {
 			return AdminConfigView{}, err
 		}

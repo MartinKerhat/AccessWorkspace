@@ -94,12 +94,16 @@ func (s *AdminConfigStore) GenerateTestRDPSigningCertificate(ctx context.Context
 		"rdp_signing_generated_at":      packageData.GeneratedAt.Format(time.RFC3339),
 	}
 	for key, value := range items {
+		stored, err := s.encryptSetting(key, value)
+		if err != nil {
+			return nil, err
+		}
 		if _, err := s.db.Exec(ctx, `
 			insert into admin_settings (key, value, updated_at)
 			values ($1, $2, now())
 			on conflict (key) do update
 			set value = excluded.value, updated_at = now()
-		`, key, value); err != nil {
+		`, key, stored); err != nil {
 			return nil, err
 		}
 	}

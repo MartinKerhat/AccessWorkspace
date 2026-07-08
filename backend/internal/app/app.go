@@ -106,7 +106,12 @@ func New(cfg Config) (*App, error) {
 	authRepo := auth.NewRepository(pool)
 	resourceRepo := resources.NewRepository(pool)
 	notificationRepo := notifications.NewRepository(pool)
-	adminStore := NewAdminConfigStore(pool, cfg)
+	secretCipher := resources.NewSecretCipher(cfg.SecretEncryptionKey)
+	adminStore := NewAdminConfigStore(pool, cfg, secretCipher)
+	if err := adminStore.EncryptPlaintextSecretSettings(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
 	keyVaultService := keyvault.NewService(keyvault.SettingsProvider{
 		Runtime: func(ctx context.Context) (keyvault.RuntimeConfig, error) {
 			config, err := adminStore.GetEntraRuntime(ctx)
@@ -155,7 +160,6 @@ func New(cfg Config) (*App, error) {
 	auditService := audit.NewService(auditRepo)
 	authService := auth.NewService(authRepo, auth.Mode(cfg.AuthMode), cfg.EntraDirectRights)
 	notificationService := notifications.NewService(notificationRepo, resourceRepo, authService, adminStore)
-	secretCipher := resources.NewSecretCipher(cfg.SecretEncryptionKey)
 	resourceService := resources.NewService(resourceRepo, auditService, keyVaultService, appRegistrationService, notificationService, secretCipher, rdpSigningProvider{store: adminStore})
 
 	artifactSource, err := artifacts.NewSource(artifacts.Config{

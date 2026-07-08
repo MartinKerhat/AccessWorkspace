@@ -22,6 +22,12 @@ func NewSecretCipher(rawKey string) *SecretCipher {
 	return &SecretCipher{key: sum[:]}
 }
 
+// IsEncryptedForStorage reports whether the value already carries the
+// storage-encryption envelope produced by EncryptForStorage.
+func IsEncryptedForStorage(value string) bool {
+	return strings.HasPrefix(strings.TrimSpace(value), encryptedSecretPrefix)
+}
+
 func (c *SecretCipher) EncryptForStorage(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
