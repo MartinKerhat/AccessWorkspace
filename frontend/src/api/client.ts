@@ -282,6 +282,7 @@ export const api = {
       entraRedirectUri?: string;
       entraGroupSource?: string;
       entraEnabled?: boolean;
+      azureReaderUseAmbientIdentity?: boolean;
       keyVaultSources?: AdminConfig["keyVaultSources"];
       appRegistrationNotificationPolicy?: AdminConfig["appRegistrationNotificationPolicy"];
       notificationEmailEnabled?: boolean;

@@ -125,6 +125,7 @@ function toAdminForm(config: AdminConfig | null): AdminForm {
     entraGroupSource: config?.entraGroupSource ?? "graph",
     entraClientSecret: "",
     entraEnabled: config?.entraEnabled ?? false,
+    azureReaderUseAmbientIdentity: config?.azureReaderUseAmbientIdentity ?? false,
     rdpSigningEnabled: config?.rdpSigning.enabled ?? false,
     keyVaultSources: config?.keyVaultSources?.map((source) => ({
       ...emptyKeyVaultSource(),
@@ -847,6 +848,7 @@ export default function App() {
             entraGroupSource: adminForm.entraGroupSource,
             entraClientSecret: adminForm.entraClientSecret,
             entraEnabled: adminForm.entraEnabled,
+            azureReaderUseAmbientIdentity: adminForm.azureReaderUseAmbientIdentity,
             rdpSigningEnabled: adminForm.rdpSigningEnabled,
             keyVaultSources: adminForm.keyVaultSources
           },

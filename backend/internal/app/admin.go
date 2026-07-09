@@ -24,6 +24,7 @@ type AdminConfigView struct {
 	EntraClientSecretSet               bool                                        `json:"entraClientSecretSet"`
 	EntraConfigured                    bool                                        `json:"entraConfigured"`
 	EntraEnabled                       bool                                        `json:"entraEnabled"`
+	AzureReaderUseAmbientIdentity      bool                                        `json:"azureReaderUseAmbientIdentity"`
 	KeyVaultSources                    []KeyVaultSource                            `json:"keyVaultSources"`
 	KeyVaultSourceCount                int                                         `json:"keyVaultSourceCount"`
 	LocalGroupCount                    int                                         `json:"localGroupCount"`
@@ -113,6 +114,12 @@ type EntraRuntimeConfig struct {
 	GroupSource  string
 	ClientSecret string
 	Configured   bool
+	// ReaderUseAmbientIdentity makes the Key Vault / Graph reader services
+	// ignore the stored client secret and authenticate with the deployment's
+	// ambient Azure identity (workload identity, managed identity, env
+	// credentials). Microsoft sign-in keeps using the client secret — the
+	// OAuth code exchange needs a client credential regardless.
+	ReaderUseAmbientIdentity bool
 }
 
 type AdminConfigStore struct {
@@ -298,6 +305,7 @@ func (s *AdminConfigStore) Get(ctx context.Context) (any, error) {
 	if settings["entra_enabled"] == "true" {
 		view.EntraEnabled = true
 	}
+	view.AzureReaderUseAmbientIdentity = settings["azure_reader_use_ambient_identity"] == "true"
 	view.KeyVaultSources = mergeKeyVaultSyncState(
 		parseKeyVaultSources(settings["keyvault_sources_json"]),
 		parseKeyVaultSyncStates(settings["keyvault_sync_state_json"]),
@@ -377,6 +385,7 @@ func (s *AdminConfigStore) GetRuntime(ctx context.Context) (any, error) {
 	if settings["entra_enabled"] == "true" {
 		config.Enabled = true
 	}
+	config.ReaderUseAmbientIdentity = settings["azure_reader_use_ambient_identity"] == "true"
 	config.Configured = config.TenantID != "" && config.ClientID != "" && config.RedirectURI != "" && config.ClientSecret != ""
 	return config, nil
 }
@@ -549,6 +558,12 @@ func (s *AdminConfigStore) Update(ctx context.Context, payload any) (any, error)
 			items["entra_enabled"] = "false"
 			if value {
 				items["entra_enabled"] = "true"
+			}
+		}
+		if value, ok := values["azureReaderUseAmbientIdentity"].(bool); ok {
+			items["azure_reader_use_ambient_identity"] = "false"
+			if value {
+				items["azure_reader_use_ambient_identity"] = "true"
 			}
 		}
 		if value, ok := values["keyVaultSources"].([]any); ok {

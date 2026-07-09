@@ -48,9 +48,19 @@ type DiscoverResult struct {
 	Sources []DiscoverSourceResult `json:"sources"`
 }
 
+// TokenSource returns a bearer token for one scope. Used when no client
+// secret is configured in admin settings: the deployment's Azure identity
+// (workload identity, managed identity, or env credentials) takes over.
+type TokenSource func(ctx context.Context, scope string) (string, error)
+
 type SettingsProvider struct {
 	Runtime func(context.Context) (RuntimeConfig, error)
 	Sources func(context.Context) ([]Source, error)
+	// ChainToken is the fallback identity. Precedence is deliberate: an
+	// explicitly configured client secret always wins (no surprise behavior
+	// change for existing deployments); removing it from admin settings hands
+	// vault access to the ambient identity.
+	ChainToken TokenSource
 }
 
 type Service struct {
@@ -85,11 +95,11 @@ func (s *Service) Discover(ctx context.Context) (DiscoverResult, error) {
 		return DiscoverResult{}, err
 	}
 
-	if !runtime.Configured || len(sources) == 0 {
+	if len(sources) == 0 || (!runtime.Configured && s.provider.ChainToken == nil) {
 		return DiscoverResult{Sources: []DiscoverSourceResult{}}, nil
 	}
 
-	accessToken, err := s.clientCredentialsToken(ctx, runtime, vaultScope)
+	accessToken, err := s.accessToken(ctx, runtime, vaultScope)
 	if err != nil {
 		return DiscoverResult{}, err
 	}
@@ -117,10 +127,6 @@ func (s *Service) RevealSecret(ctx context.Context, reference string) (string, e
 	if err != nil {
 		return "", err
 	}
-	if !runtime.Configured {
-		return "", fmt.Errorf("key vault runtime is not configured")
-	}
-
 	reference = strings.TrimRight(strings.TrimSpace(reference), "/")
 	if reference == "" {
 		return "", fmt.Errorf("secret reference is required")
@@ -129,7 +135,7 @@ func (s *Service) RevealSecret(ctx context.Context, reference string) (string, e
 		return "", fmt.Errorf("secret reference does not belong to a configured key vault source")
 	}
 
-	accessToken, err := s.clientCredentialsToken(ctx, runtime, vaultScope)
+	accessToken, err := s.accessToken(ctx, runtime, vaultScope)
 	if err != nil {
 		return "", err
 	}
@@ -147,10 +153,6 @@ func (s *Service) CurrentSecretMetadata(ctx context.Context, reference string) (
 	if err != nil {
 		return SecretItem{}, err
 	}
-	if !runtime.Configured {
-		return SecretItem{}, fmt.Errorf("key vault runtime is not configured")
-	}
-
 	reference = strings.TrimRight(strings.TrimSpace(reference), "/")
 	if reference == "" {
 		return SecretItem{}, fmt.Errorf("secret reference is required")
@@ -159,7 +161,7 @@ func (s *Service) CurrentSecretMetadata(ctx context.Context, reference string) (
 		return SecretItem{}, fmt.Errorf("secret reference does not belong to a configured key vault source")
 	}
 
-	accessToken, err := s.clientCredentialsToken(ctx, runtime, vaultScope)
+	accessToken, err := s.accessToken(ctx, runtime, vaultScope)
 	if err != nil {
 		return SecretItem{}, err
 	}
@@ -235,6 +237,18 @@ func (s *Service) listSecrets(ctx context.Context, accessToken string, source So
 	}
 
 	return items, nil
+}
+
+// accessToken picks the auth path: an admin-settings client secret wins when
+// fully configured; otherwise the deployment's ambient Azure identity chain.
+func (s *Service) accessToken(ctx context.Context, runtime RuntimeConfig, scope string) (string, error) {
+	if runtime.Configured {
+		return s.clientCredentialsToken(ctx, runtime, scope)
+	}
+	if s.provider.ChainToken != nil {
+		return s.provider.ChainToken(ctx, scope)
+	}
+	return "", fmt.Errorf("key vault access is not configured: set app registration credentials in admin settings or provide an Azure identity (workload identity, managed identity, or env credentials)")
 }
 
 func (s *Service) clientCredentialsToken(ctx context.Context, config RuntimeConfig, scope string) (string, error) {

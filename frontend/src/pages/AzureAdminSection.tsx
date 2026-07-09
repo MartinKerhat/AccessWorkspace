@@ -75,6 +75,10 @@ export function AzureAdminSection({
             <dd>{adminConfig?.entraClientSecretSet ? "stored" : "not set"}</dd>
           </div>
           <div>
+            <dt>Reader identity</dt>
+            <dd>{adminConfig?.azureReaderUseAmbientIdentity ? "ambient (workload identity)" : "stored client secret"}</dd>
+          </div>
+          <div>
             <dt>Local groups</dt>
             <dd>{adminConfig?.localGroupCount ?? 0}</dd>
           </div>
@@ -86,7 +90,9 @@ export function AzureAdminSection({
         <div className="detail-section">
           <p className="eyebrow">App registration import</p>
           <p className="detail-description">
-            Uses this same Entra client credential flow. The backend app registration needs Microsoft Graph application permission Application.Read.All with admin consent.
+            Uses the stored Entra client credential flow, or the deployment's ambient Azure identity when the reader
+            identity toggle is enabled. Either identity needs Microsoft Graph application permission
+            Application.Read.All with admin consent for app registration import.
           </p>
         </div>
         <div className="action-row">

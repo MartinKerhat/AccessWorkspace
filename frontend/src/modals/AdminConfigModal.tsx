@@ -83,6 +83,20 @@ export function AdminConfigModal({ form, setForm, clientSecretSet, busy, onSave,
               placeholder={clientSecretSet ? "Leave blank to keep stored secret" : "Client secret for confidential app flow"}
             />
           </label>
+          <label className="wide checkbox">
+            <input
+              type="checkbox"
+              checked={form.azureReaderUseAmbientIdentity}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, azureReaderUseAmbientIdentity: event.target.checked }))
+              }
+            />
+            <span>
+              Key Vault and app registration reads use the ambient Azure identity (workload identity / managed
+              identity) instead of the stored client secret. Microsoft sign-in keeps using the client secret. Enable
+              only after the deployment identity is set up, otherwise sync and reveal will fail.
+            </span>
+          </label>
         </div>
         <div className="action-row">
           <button className="button primary" disabled={busy} onClick={onSave}>

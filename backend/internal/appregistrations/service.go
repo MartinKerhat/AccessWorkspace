@@ -58,8 +58,17 @@ type DiscoverResult struct {
 	Items []ApplicationItem `json:"items"`
 }
 
+// TokenSource returns a bearer token for one scope. Used when no client
+// secret is configured in admin settings: the deployment's Azure identity
+// (workload identity, managed identity, or env credentials) takes over.
+type TokenSource func(ctx context.Context, scope string) (string, error)
+
 type SettingsProvider struct {
 	Runtime func(context.Context) (RuntimeConfig, error)
+	// ChainToken is the fallback identity. An explicitly configured client
+	// secret always wins; removing it hands Graph access to the ambient
+	// identity.
+	ChainToken TokenSource
 }
 
 type Service struct {
@@ -114,11 +123,11 @@ func (s *Service) Discover(ctx context.Context) (DiscoverResult, error) {
 	if err != nil {
 		return DiscoverResult{}, err
 	}
-	if !runtime.Configured {
+	if !runtime.Configured && s.provider.ChainToken == nil {
 		return DiscoverResult{Items: []ApplicationItem{}}, nil
 	}
 
-	accessToken, err := s.clientCredentialsToken(ctx, runtime, graphScope)
+	accessToken, err := s.accessToken(ctx, runtime, graphScope)
 	if err != nil {
 		return DiscoverResult{}, err
 	}
@@ -135,16 +144,12 @@ func (s *Service) CurrentApplication(ctx context.Context, identifier string) (Ap
 	if err != nil {
 		return ApplicationItem{}, err
 	}
-	if !runtime.Configured {
-		return ApplicationItem{}, fmt.Errorf("app registration runtime is not configured")
-	}
-
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
 		return ApplicationItem{}, fmt.Errorf("application identifier is required")
 	}
 
-	accessToken, err := s.clientCredentialsToken(ctx, runtime, graphScope)
+	accessToken, err := s.accessToken(ctx, runtime, graphScope)
 	if err != nil {
 		return ApplicationItem{}, err
 	}
@@ -157,6 +162,18 @@ func (s *Service) CurrentApplication(ctx context.Context, identifier string) (Ap
 		}
 	}
 	return item, err
+}
+
+// accessToken picks the auth path: an admin-settings client secret wins when
+// fully configured; otherwise the deployment's ambient Azure identity chain.
+func (s *Service) accessToken(ctx context.Context, runtime RuntimeConfig, scope string) (string, error) {
+	if runtime.Configured {
+		return s.clientCredentialsToken(ctx, runtime, scope)
+	}
+	if s.provider.ChainToken != nil {
+		return s.provider.ChainToken(ctx, scope)
+	}
+	return "", fmt.Errorf("app registration access is not configured: set app registration credentials in admin settings or provide an Azure identity (workload identity, managed identity, or env credentials)")
 }
 
 func (s *Service) loadRuntime(ctx context.Context) (RuntimeConfig, error) {

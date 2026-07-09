@@ -9,6 +9,7 @@ import (
 	"access-workspace/backend/internal/artifacts"
 	"access-workspace/backend/internal/audit"
 	"access-workspace/backend/internal/auth"
+	"access-workspace/backend/internal/azureauth"
 	"access-workspace/backend/internal/db"
 	"access-workspace/backend/internal/keyvault"
 	"access-workspace/backend/internal/notifications"
@@ -120,11 +121,21 @@ func New(cfg Config) (*App, error) {
 		pool.Close()
 		return nil, err
 	}
+	// Ambient Azure identity (workload identity on AKS, managed identity on
+	// Azure hosts, env credentials elsewhere). Used by the reader services
+	// whenever no client secret is configured in admin settings.
+	chainToken := azureauth.NewChainTokenSource()
 	keyVaultService := keyvault.NewService(keyvault.SettingsProvider{
+		ChainToken: keyvault.TokenSource(chainToken),
 		Runtime: func(ctx context.Context) (keyvault.RuntimeConfig, error) {
 			config, err := adminStore.GetEntraRuntime(ctx)
 			if err != nil {
 				return keyvault.RuntimeConfig{}, err
+			}
+			if config.ReaderUseAmbientIdentity {
+				// Ignore the stored (login) client secret; the service falls
+				// through to the ambient identity chain.
+				return keyvault.RuntimeConfig{}, nil
 			}
 			return keyvault.RuntimeConfig{
 				Authority:    config.Authority,
@@ -150,10 +161,16 @@ func New(cfg Config) (*App, error) {
 		},
 	})
 	appRegistrationService := appregistrations.NewService(appregistrations.SettingsProvider{
+		ChainToken: appregistrations.TokenSource(chainToken),
 		Runtime: func(ctx context.Context) (appregistrations.RuntimeConfig, error) {
 			config, err := adminStore.GetEntraRuntime(ctx)
 			if err != nil {
 				return appregistrations.RuntimeConfig{}, err
+			}
+			if config.ReaderUseAmbientIdentity {
+				// Ignore the stored (login) client secret; the service falls
+				// through to the ambient identity chain.
+				return appregistrations.RuntimeConfig{}, nil
 			}
 			return appregistrations.RuntimeConfig{
 				Authority:    config.Authority,

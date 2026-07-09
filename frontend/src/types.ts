@@ -47,6 +47,7 @@ export type AdminForm = {
   entraGroupSource: string;
   entraClientSecret: string;
   entraEnabled: boolean;
+  azureReaderUseAmbientIdentity: boolean;
   keyVaultSources: KeyVaultSource[];
   rdpSigningEnabled: boolean;
 };
@@ -127,6 +128,7 @@ export type AdminConfig = {
   entraClientSecretSet: boolean;
   entraConfigured: boolean;
   entraEnabled: boolean;
+  azureReaderUseAmbientIdentity: boolean;
   keyVaultSources: KeyVaultSource[];
   keyVaultSourceCount: number;
   localGroupCount: number;
