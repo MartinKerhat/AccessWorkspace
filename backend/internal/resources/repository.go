@@ -20,6 +20,59 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+// UpgradeSecretEncryption rewrites stored secret values in older formats
+// (pre-encryption plaintext or v1 single-key ciphertext) as v2 envelopes, and
+// fully heals rows corrupted by the historical double-encryption bug —
+// including v2 envelopes whose inner content is still ciphertext. Runs at
+// startup; healthy v2 rows are left untouched.
+func (r *Repository) UpgradeSecretEncryption(ctx context.Context, cipher *SecretCipher) error {
+	rows, err := r.db.Query(ctx, `
+		select resource_id, secret_value
+		from resource_secrets
+		where secret_value <> ''
+	`)
+	if err != nil {
+		return err
+	}
+	pending := map[string]string{}
+	for rows.Next() {
+		var id, value string
+		if err := rows.Scan(&id, &value); err != nil {
+			rows.Close()
+			return err
+		}
+		pending[id] = value
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for id, value := range pending {
+		plain, layers, err := cipher.DecryptFully(ctx, value)
+		if err != nil {
+			return err
+		}
+		// Healthy v2 row: single layer, current format — leave untouched.
+		if layers == 1 && !NeedsEncryptionUpgrade(value) {
+			continue
+		}
+		encrypted, err := cipher.EncryptForStorage(ctx, plain, SecretClassShared)
+		if err != nil {
+			return err
+		}
+		// Guard on the old value so a concurrent update is not clobbered.
+		if _, err := r.db.Exec(ctx, `
+			update resource_secrets
+			set secret_value = $2, updated_at = now()
+			where resource_id = $1 and secret_value = $3
+		`, id, encrypted, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *Repository) List(ctx context.Context, filter Filter) ([]ResourceSummary, error) {
 	rows, err := r.db.Query(ctx, `
 		select

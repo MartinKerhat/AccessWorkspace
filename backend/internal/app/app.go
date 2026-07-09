@@ -108,7 +108,11 @@ func New(cfg Config) (*App, error) {
 	notificationRepo := notifications.NewRepository(pool)
 	secretCipher := resources.NewSecretCipher(cfg.SecretEncryptionKey)
 	adminStore := NewAdminConfigStore(pool, cfg, secretCipher)
-	if err := adminStore.EncryptPlaintextSecretSettings(ctx); err != nil {
+	if err := adminStore.UpgradeSecretSettings(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	if err := resourceRepo.UpgradeSecretEncryption(ctx, secretCipher); err != nil {
 		pool.Close()
 		return nil, err
 	}

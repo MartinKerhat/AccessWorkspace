@@ -195,7 +195,7 @@ func (s *AdminConfigStore) loadSettings(ctx context.Context) (map[string]string,
 		if !ok {
 			continue
 		}
-		plain, err := s.cipher.DecryptFromStorage(value)
+		plain, err := s.cipher.DecryptFromStorage(ctx, value)
 		if err != nil {
 			return nil, fmt.Errorf("decrypt admin setting %q: %w", key, err)
 		}
@@ -205,21 +205,22 @@ func (s *AdminConfigStore) loadSettings(ctx context.Context) (map[string]string,
 	return settings, nil
 }
 
-func (s *AdminConfigStore) encryptSetting(key, value string) (string, error) {
+func (s *AdminConfigStore) encryptSetting(ctx context.Context, key, value string) (string, error) {
 	if !sensitiveSettingKeys[key] {
 		return value, nil
 	}
-	encrypted, err := s.cipher.EncryptForStorage(value)
+	encrypted, err := s.cipher.EncryptForStorage(ctx, value, resources.SecretClassAppScope)
 	if err != nil {
 		return "", fmt.Errorf("encrypt admin setting %q: %w", key, err)
 	}
 	return encrypted, nil
 }
 
-// EncryptPlaintextSecretSettings re-encrypts sensitive admin settings written
-// before values were encrypted at rest. Runs at startup; rows that already
-// carry the encryption envelope are left untouched.
-func (s *AdminConfigStore) EncryptPlaintextSecretSettings(ctx context.Context) error {
+// UpgradeSecretSettings rewrites sensitive admin settings stored in an older
+// format (plaintext or v1 single-key ciphertext) as v2 envelopes, fully
+// healing values corrupted by the historical double-encryption bug. Runs at
+// startup; healthy v2 values are left untouched.
+func (s *AdminConfigStore) UpgradeSecretSettings(ctx context.Context) error {
 	keys := make([]string, 0, len(sensitiveSettingKeys))
 	for key := range sensitiveSettingKeys {
 		keys = append(keys, key)
@@ -235,7 +236,7 @@ func (s *AdminConfigStore) EncryptPlaintextSecretSettings(ctx context.Context) e
 			rows.Close()
 			return err
 		}
-		if strings.TrimSpace(value) == "" || resources.IsEncryptedForStorage(value) {
+		if strings.TrimSpace(value) == "" {
 			continue
 		}
 		pending[key] = value
@@ -246,7 +247,14 @@ func (s *AdminConfigStore) EncryptPlaintextSecretSettings(ctx context.Context) e
 	}
 
 	for key, value := range pending {
-		encrypted, err := s.cipher.EncryptForStorage(value)
+		plain, layers, err := s.cipher.DecryptFully(ctx, value)
+		if err != nil {
+			return fmt.Errorf("decrypt admin setting %q: %w", key, err)
+		}
+		if layers == 1 && !resources.NeedsEncryptionUpgrade(value) {
+			continue
+		}
+		encrypted, err := s.cipher.EncryptForStorage(ctx, plain, resources.SecretClassAppScope)
 		if err != nil {
 			return fmt.Errorf("encrypt admin setting %q: %w", key, err)
 		}
@@ -617,7 +625,7 @@ func (s *AdminConfigStore) Update(ctx context.Context, payload any) (any, error)
 	}
 
 	if input.EntraClientSecret != "" {
-		encrypted, err := s.encryptSetting("entra_client_secret", input.EntraClientSecret)
+		encrypted, err := s.encryptSetting(ctx, "entra_client_secret", input.EntraClientSecret)
 		if err != nil {
 			return AdminConfigView{}, err
 		}
@@ -632,7 +640,7 @@ func (s *AdminConfigStore) Update(ctx context.Context, payload any) (any, error)
 		}
 	}
 	if input.NotificationEmailPassword != "" {
-		encrypted, err := s.encryptSetting("notification_email_password", input.NotificationEmailPassword)
+		encrypted, err := s.encryptSetting(ctx, "notification_email_password", input.NotificationEmailPassword)
 		if err != nil {
 			return AdminConfigView{}, err
 		}

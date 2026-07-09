@@ -520,29 +520,69 @@ Key rule:
 
 ## Deployment boundary and GitOps model
 
-Recommended first delivery model:
+Decided delivery model (2026-07):
 
 - this app owns the configuration model
-- this app generates deployment artifacts
+- this app generates deployment artifacts and commits them to the GitOps repo
 - Git remains the deployable source of truth
 - Argo CD continues to reconcile the cluster
+- promotion across environments goes through Kargo: generated manifest changes
+  are freight, promoted stage by stage with gates; the module integrates with
+  the Kargo API to trigger promotions and surface status ("live in staging,
+  awaiting approval for production") in the resolved-config UI
 
-This means the first version should prefer:
+So the pipeline is:
 
-- `App Configs -> generated manifests -> GitOps repo -> Argo CD -> AKS`
+- `App Configs -> generated manifests -> GitOps repo -> Kargo promotion -> Argo CD -> AKS`
 
-This is safer than making the workspace write directly to Kubernetes on day one.
+**Rejected: writing Secrets/ConfigMaps directly into the cluster.** Considered
+and dropped for these reasons:
+
+- the end state in etcd is identical to what External Secrets produces — no
+  security gain, only a different (less proven) writer
+- the workspace would need cluster-wide Secret-write credentials on top of its
+  vault read access, concentrating exactly the cross-system power the security
+  refactor decomposes
+- deploy-time injection covers minute one only; drift healing, namespace
+  recreation, cluster rebuild/DR, rotation, and environment bootstrap all
+  require a continuously reconciling controller — that controller already
+  exists (External Secrets Operator) and should not be rebuilt in-house
+- out-of-band writes fight Argo CD resource ownership (prune/exclusion
+  split-brain)
 
 Future room:
 
-- direct sync to Azure App Configuration
-- direct sync to Kubernetes
+- direct sync to Azure App Configuration (export target)
+- delivery-time resolution via the External Secrets Operator **webhook
+  provider**: point generated ExternalSecrets at this app's resolved-config
+  API instead of raw vault paths, so resolution, access rules, and per-pull
+  audit apply at delivery time while ESO remains the in-cluster reconciler;
+  failure mode is soft (ESO keeps last synced values if the app is down).
+  Later phase — most of the value ships without it.
 
 ## External Secrets and ConfigMaps
 
-This module may reduce or eliminate hand-authored `ExternalSecret` and `ConfigMap` manifests over time.
+This module eliminates *hand-authored* `ExternalSecret` and `ConfigMap`
+manifests — not the operator. Division of labor:
 
-However:
+- **secrets stay in Key Vault**; this app is the catalog, editor, validator,
+  and generator above it — never the storage and never the cluster-writer.
+  Vault object names are generated and enforced by the module (plus KV tags
+  for round-tripping), so humans navigate the catalog, not the flat vault
+- environments may map to separate vaults (e.g. a tighter-RBAC `production`
+  vault, a looser `dev`/`staging` vault) — the practical access boundary in
+  Azure is the vault itself; the module owns the environment→vault mapping so
+  users still see one catalog
+- **plain config**: generated `ConfigMap` manifests committed to git,
+  promoted by Kargo, applied by Argo CD
+- **secrets**: generated `ExternalSecret` manifests (references only — no
+  secret values, safe and reviewable in git) through the same pipeline;
+  External Secrets Operator stays deployed and remains the reconciler
+- because the module knows which workloads consume which keys, it also
+  generates the rollout wiring (reloader annotations / checksum triggers) so
+  a changed value actually restarts the right deployments
+
+Still true:
 
 - removing `ExternalSecret` objects does not remove the need for a system that owns final Kubernetes `Secret` objects
 - changing `ConfigMap` or `Secret` data does not automatically guarantee workload rollout behavior
@@ -650,10 +690,11 @@ Deliver:
 
 Deliver:
 
-- GitOps export workflow
-- optional direct sync targets
+- GitOps export workflow with Kargo promotion integration
+- optional ESO webhook-provider mode (delivery-time resolution)
+- optional Azure App Configuration export
 - richer provider support
-- deployment status visibility
+- deployment status visibility via the Kargo API
 
 ## Suggested implementation notes
 
@@ -661,7 +702,22 @@ Backend direction:
 
 - keep this as a new category-specific module inside the modular monolith
 - separate config contract objects from resolved-value projections
-- reuse current encryption and audit patterns where appropriate
+- app-managed secret values must use the envelope encryption scheme (per-secret
+  data key, wrapped by the configured key-encryption provider) planned for the
+  workspace-wide encryption refactor — not the legacy single-key cipher; the
+  envelope storage seam should land before this module writes its first secret
+- consider a per-application (or per-application-per-environment) wrapping key
+  between data keys and the org key: it buys per-app rotation and blast-radius
+  containment, and later allows stricter escrow for `production` keys only;
+  decide together with this module's schema — do not go finer than that,
+  component/action granularity belongs to the access model, not crypto
+- generated outputs (`.env` preview, `Secret` manifests, GitOps export) are
+  plaintext by definition — storage encryption cannot protect them; `export`
+  of resolved secrets should be the most privileged and most audited action in
+  the module, above `reveal`
+- reuse current audit patterns where appropriate
+- the workspace's own configuration and key material are explicitly out of
+  scope for this module (no self-management)
 
 Frontend direction:
 

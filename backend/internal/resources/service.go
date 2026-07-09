@@ -165,7 +165,7 @@ func (s *Service) Create(ctx context.Context, user auth.User, input CreateResour
 	}
 	input = enforcePersonalPasswordOwnership(user, input)
 	input = normalizeInput(input)
-	if err := s.prepareSecretForStorage(&input); err != nil {
+	if err := s.prepareSecretForStorage(ctx, &input); err != nil {
 		return Resource{}, err
 	}
 	if err := validateInput(input); err != nil {
@@ -201,7 +201,7 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 	input = normalizeInput(input)
 	input = preserveManagedFields(existing, input, user)
 	input = preserveExistingSecret(existing, input)
-	if err := s.prepareSecretForStorage(&input); err != nil {
+	if err := s.prepareSecretForStorage(ctx, &input); err != nil {
 		return Resource{}, err
 	}
 	if err := validateInput(input); err != nil {
@@ -1373,7 +1373,7 @@ func (s *Service) resolveRevealValue(ctx context.Context, resource Resource) (st
 		return value, nil
 	}
 	if resource.Secret.Mode == SecretModeInline && s.cipher != nil {
-		return s.cipher.DecryptFromStorage(resource.Secret.Value)
+		return s.cipher.DecryptFromStorage(ctx, resource.Secret.Value)
 	}
 	return resource.Secret.Value, nil
 }
@@ -1384,7 +1384,7 @@ func (s *Service) resolveLaunchSecret(ctx context.Context, resource Resource) (s
 		return "", nil
 	case SecretModeInline:
 		if s.cipher != nil {
-			return s.cipher.DecryptFromStorage(resource.Secret.Value)
+			return s.cipher.DecryptFromStorage(ctx, resource.Secret.Value)
 		}
 		return resource.Secret.Value, nil
 	case SecretModeExternal:
@@ -1773,7 +1773,7 @@ func preserveManagedFields(existing Resource, input UpdateResourceInput, user au
 	return input
 }
 
-func (s *Service) prepareSecretForStorage(input *CreateResourceInput) error {
+func (s *Service) prepareSecretForStorage(ctx context.Context, input *CreateResourceInput) error {
 	if input == nil || s.cipher == nil {
 		return nil
 	}
@@ -1784,7 +1784,9 @@ func (s *Service) prepareSecretForStorage(input *CreateResourceInput) error {
 	if strings.TrimSpace(input.SecretValue) == "" {
 		return nil
 	}
-	encrypted, err := s.cipher.EncryptForStorage(input.SecretValue)
+	// Personal resources also use the shared class until per-owner wrapping
+	// keys land; the resources.personal column identifies rows to rewrap then.
+	encrypted, err := s.cipher.EncryptForStorage(ctx, input.SecretValue, SecretClassShared)
 	if err != nil {
 		return err
 	}

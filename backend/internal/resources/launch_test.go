@@ -75,7 +75,7 @@ func (s *launchTestStore) ReplaceAppRegistrationNotificationPolicies(context.Con
 
 func TestLaunchIssuesLauncherTicketForConnections(t *testing.T) {
 	cipher := NewSecretCipher("test-key")
-	encryptedSecret, err := cipher.EncryptForStorage("rdp-password")
+	encryptedSecret, err := cipher.EncryptForStorage(context.Background(), "rdp-password", SecretClassShared)
 	if err != nil {
 		t.Fatalf("encrypt secret: %v", err)
 	}
@@ -137,11 +137,11 @@ func TestLaunchIssuesLauncherTicketForConnections(t *testing.T) {
 
 func TestLaunchUsesPersonalPasswordOverrideWhenPresent(t *testing.T) {
 	cipher := NewSecretCipher("test-key")
-	sharedSecret, err := cipher.EncryptForStorage("shared-password")
+	sharedSecret, err := cipher.EncryptForStorage(context.Background(), "shared-password", SecretClassShared)
 	if err != nil {
 		t.Fatalf("encrypt shared secret: %v", err)
 	}
-	overrideSecret, err := cipher.EncryptForStorage("personal-password")
+	overrideSecret, err := cipher.EncryptForStorage(context.Background(), "personal-password", SecretClassShared)
 	if err != nil {
 		t.Fatalf("encrypt override secret: %v", err)
 	}

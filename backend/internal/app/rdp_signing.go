@@ -94,7 +94,7 @@ func (s *AdminConfigStore) GenerateTestRDPSigningCertificate(ctx context.Context
 		"rdp_signing_generated_at":      packageData.GeneratedAt.Format(time.RFC3339),
 	}
 	for key, value := range items {
-		stored, err := s.encryptSetting(key, value)
+		stored, err := s.encryptSetting(ctx, key, value)
 		if err != nil {
 			return nil, err
 		}
