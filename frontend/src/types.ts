@@ -101,6 +101,12 @@ export type CreateUserInput = {
   directLocalGroups: string[];
 };
 
+export type VaultStatus = {
+  hasVault: boolean;
+  unlocked: boolean;
+  methods: string[];
+};
+
 export type UserInvite = {
   token: string;
   userId: string;

@@ -213,6 +213,24 @@ func (r *Repository) attachVaultKeyToSession(ctx context.Context, table, token s
 	return err
 }
 
+// attachVaultKeyToCurrentSession writes the unlocked private key onto
+// whichever session row (web or extension) the raw token belongs to.
+func (r *Repository) attachVaultKeyToCurrentSession(ctx context.Context, token string, privateKey []byte) error {
+	if len(privateKey) == 0 {
+		return nil
+	}
+	wrapped, err := vaultSeal(deriveSessionWrapKey(token), privateKey)
+	if err != nil {
+		return err
+	}
+	hash := hashToken(token)
+	if _, err := r.db.Exec(ctx, `update auth_sessions set vault_private_key = $2 where token = $1`, hash, wrapped); err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `update browser_extension_sessions set vault_private_key = $2 where token = $1`, hash, wrapped)
+	return err
+}
+
 // openSessionVaultKey unwraps a session-carried private key. Returns nil on
 // any failure — the vault is simply locked for this request.
 func openSessionVaultKey(token, wrapped string) []byte {

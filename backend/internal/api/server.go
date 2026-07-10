@@ -203,6 +203,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleChangePassword(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/invite/accept":
 		s.handleAcceptInvite(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/auth/vault":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultStatus(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/setup":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultSetup(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/unlock":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultUnlock(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/passphrase":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultAddPassphrase(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/browser-extension-session":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -910,6 +930,68 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, us
 		UserName:  user.Name,
 		Metadata:  map[string]any{"action": "password_changed"},
 	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func requestBearerToken(r *http.Request) string {
+	header := strings.TrimSpace(r.Header.Get("Authorization"))
+	if !strings.HasPrefix(strings.ToLower(header), "bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(header[7:])
+}
+
+func (s *Server) handleVaultStatus(w http.ResponseWriter, r *http.Request, user auth.User) {
+	status, err := s.authenticator.GetVaultStatus(r.Context(), user)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleVaultSetup(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input struct {
+		Passphrase string `json:"passphrase"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.authenticator.SetupVault(r.Context(), user, requestBearerToken(r), input.Passphrase); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input struct {
+		Passphrase string `json:"passphrase"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.authenticator.UnlockVault(r.Context(), user, requestBearerToken(r), input.Passphrase); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleVaultAddPassphrase(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input struct {
+		Passphrase string `json:"passphrase"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.authenticator.AddVaultPassphrase(r.Context(), user, input.Passphrase); err != nil {
+		writeError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -1663,7 +1745,7 @@ func writeError(w http.ResponseWriter, err error) {
 		message = keyVaultErr.Error()
 		log.Printf("key vault api error: %v", err)
 	}
-	if errors.Is(err, resources.ErrVaultLocked) {
+	if errors.Is(err, resources.ErrVaultLocked) || errors.Is(err, auth.ErrVaultLocked) {
 		// 423 Locked: the personal vault needs an unlock in this session;
 		// the frontend/extension react by starting the unlock flow.
 		writeJSON(w, http.StatusLocked, map[string]string{

@@ -209,6 +209,121 @@ func TestPersonalVaultEndToEnd(t *testing.T) {
 	}
 }
 
+func TestVaultPassphraseUnlockEndToEnd(t *testing.T) {
+	dsn := os.Getenv("VERIFY_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("VERIFY_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	if err := db.RunMigrations(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	authRepo := auth.NewRepository(pool)
+	authService := auth.NewService(authRepo, auth.ModeEntra, "")
+	secretCipher := NewSecretCipher("verify-test-key-000000000000000000000000")
+	service := NewService(NewRepository(pool), &captureAuditLogger{}, fakeKeyVaultResolver{}, nil, nil, secretCipher, authRepo)
+
+	// Simulate an SSO user: account exists, no local password, no vault.
+	if _, err := pool.Exec(ctx, `
+		insert into app_users (id, username, display_name, email, password_hash, is_admin)
+		values ('sso-user', 'entra:sso-user', 'SSO User', 'sso@example.com', '!external', true)
+		on conflict (id) do nothing
+	`); err != nil {
+		t.Fatalf("seed sso user: %v", err)
+	}
+	ssoLogin, err := authService.IssueSession(ctx, auth.User{ID: "sso-user", Name: "SSO User", Email: "sso@example.com", IsAdmin: true}, auth.ModeEntra)
+	if err != nil {
+		t.Fatalf("issue sso session: %v", err)
+	}
+	ssoUser, err := authRepo.UserByToken(ctx, ssoLogin.Token)
+	if err != nil {
+		t.Fatalf("load sso session: %v", err)
+	}
+
+	// No vault yet: status reflects it, personal secret still saves
+	// (shared-class fallback), but reveal is not vault-locked because it's
+	// shared-class until a vault exists.
+	status, err := authService.GetVaultStatus(ctx, ssoUser)
+	if err != nil || status.HasVault {
+		t.Fatalf("expected no vault, got %+v err=%v", status, err)
+	}
+
+	// Set up the vault with a passphrase; the session unlocks.
+	const passphrase = "sso-vault-passphrase-1"
+	if err := authService.SetupVault(ctx, ssoUser, ssoLogin.Token, passphrase); err != nil {
+		t.Fatalf("setup vault: %v", err)
+	}
+	unlockedUser, err := authRepo.UserByToken(ctx, ssoLogin.Token)
+	if err != nil || len(unlockedUser.VaultPrivateKey) != 32 {
+		t.Fatalf("expected session unlocked after setup, err=%v", err)
+	}
+
+	// Personal secret now seals to the vault.
+	personal, err := service.Create(ctx, unlockedUser, CreateResourceInput{
+		Name:          "sso-personal",
+		Type:          TypeSharedSecret,
+		Personal:      true,
+		Owner:         "SSO User",
+		Username:      "sso@example.com",
+		SecretMode:    SecretModeInline,
+		SecretValue:   "sso-secret-pw",
+		RevealAllowed: true,
+	})
+	if err != nil {
+		t.Fatalf("create personal: %v", err)
+	}
+	var stored string
+	if err := pool.QueryRow(ctx, `select secret_value from resource_secrets where resource_id = $1`, personal.ID).Scan(&stored); err != nil {
+		t.Fatalf("read stored: %v", err)
+	}
+	if !strings.HasPrefix(stored, "enc:v2:personal:owner:") {
+		t.Fatalf("expected personal envelope, got %q", stored)
+	}
+
+	// A fresh SSO session starts LOCKED; reveal fails until unlocked.
+	freshLogin, err := authService.IssueSession(ctx, auth.User{ID: "sso-user", Name: "SSO User", Email: "sso@example.com", IsAdmin: true}, auth.ModeEntra)
+	if err != nil {
+		t.Fatalf("second sso session: %v", err)
+	}
+	freshUser, err := authRepo.UserByToken(ctx, freshLogin.Token)
+	if err != nil {
+		t.Fatalf("load fresh session: %v", err)
+	}
+	if len(freshUser.VaultPrivateKey) != 0 {
+		t.Fatalf("expected fresh SSO session to start locked")
+	}
+	if _, err := service.Reveal(ctx, freshUser, personal.ID); !errors.Is(err, ErrVaultLocked) {
+		t.Fatalf("expected locked reveal, got %v", err)
+	}
+
+	// Wrong passphrase is rejected; correct one unlocks and reveal works.
+	if err := authService.UnlockVault(ctx, freshUser, freshLogin.Token, "wrong-passphrase"); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("expected wrong passphrase rejected, got %v", err)
+	}
+	if err := authService.UnlockVault(ctx, freshUser, freshLogin.Token, passphrase); err != nil {
+		t.Fatalf("unlock: %v", err)
+	}
+	reUser, err := authRepo.UserByToken(ctx, freshLogin.Token)
+	if err != nil || len(reUser.VaultPrivateKey) != 32 {
+		t.Fatalf("expected unlocked after passphrase, err=%v", err)
+	}
+	if reveal, err := service.Reveal(ctx, reUser, personal.ID); err != nil || reveal.SecretValue != "sso-secret-pw" {
+		t.Fatalf("reveal after unlock: got %q err=%v", reveal.SecretValue, err)
+	}
+
+	// Status now shows a vault with the passphrase method.
+	status, err = authService.GetVaultStatus(ctx, reUser)
+	if err != nil || !status.HasVault || !status.Unlocked {
+		t.Fatalf("expected unlocked vault status, got %+v err=%v", status, err)
+	}
+}
+
 func TestAccountLifecycleEndToEnd(t *testing.T) {
 	dsn := os.Getenv("VERIFY_DATABASE_URL")
 	if dsn == "" {

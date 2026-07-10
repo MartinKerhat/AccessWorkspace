@@ -28,6 +28,7 @@ import type {
   ConnectionCredentialOverride,
   CreateUserInput,
   UserInvite,
+  VaultStatus,
   UserNotification,
   VisibleResourceSummary,
   UserSummary,
@@ -90,6 +91,21 @@ type AuthLoginResponse = {
   capabilities: WorkspaceCapabilities;
 };
 
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export function isVaultLocked(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "vault_locked";
+}
+
 async function request<T>(path: string, options: RequestInit = {}, authToken?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -101,8 +117,8 @@ async function request<T>(path: string, options: RequestInit = {}, authToken?: s
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed with status ${response.status}`);
+    const body = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+    throw new ApiError(body?.error ?? `Request failed with status ${response.status}`, response.status, body?.code);
   }
 
   return response.json() as Promise<T>;
@@ -132,6 +148,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ token, password })
     });
+  },
+  vaultStatus(authToken: string) {
+    return request<VaultStatus>("/auth/vault", {}, authToken);
+  },
+  vaultSetup(passphrase: string, authToken: string) {
+    return request<{ status: string }>("/auth/vault/setup", { method: "POST", body: JSON.stringify({ passphrase }) }, authToken);
+  },
+  vaultUnlock(passphrase: string, authToken: string) {
+    return request<{ status: string }>("/auth/vault/unlock", { method: "POST", body: JSON.stringify({ passphrase }) }, authToken);
   },
   changePassword(currentPassword: string, newPassword: string, authToken: string) {
     return request<{ status: string }>(

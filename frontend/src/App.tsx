@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "./api/client";
+import { api, isVaultLocked } from "./api/client";
 import { ResourceFormModal } from "./modals/ResourceFormModal";
 import { AdminConfigModal } from "./modals/AdminConfigModal";
 import { ChangePasswordModal } from "./modals/ChangePasswordModal";
+import { VaultUnlockModal } from "./modals/VaultUnlockModal";
 import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
 import { KeyVaultImportModal } from "./modals/KeyVaultImportModal";
@@ -415,6 +416,7 @@ export default function App() {
   const [appRegistrationSyncing, setAppRegistrationSyncing] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [vaultPrompt, setVaultPrompt] = useState<{ hasVault: boolean; retry: () => Promise<void> } | null>(null);
   const [inviteToken, setInviteToken] = useState<string>(() =>
     new URLSearchParams(window.location.search).get("invite") ?? ""
   );
@@ -1321,6 +1323,64 @@ export default function App() {
     }
   }
 
+  // Personal secrets need the vault unlocked in this session. On a 423 the
+  // action is parked, the unlock/setup modal opens, and the same action is
+  // retried automatically after a successful unlock.
+  async function guardVaultLocked(error: unknown, retry: () => Promise<void>): Promise<boolean> {
+    if (!isVaultLocked(error) || !session) {
+      return false;
+    }
+    try {
+      const status = await api.vaultStatus(session.authToken);
+      setVaultPrompt({ hasVault: status.hasVault, retry });
+    } catch {
+      setVaultPrompt({ hasVault: true, retry });
+    }
+    return true;
+  }
+
+  // Proactive entry point from the account menu: set up the vault (SSO users
+  // with none) or unlock it for this session. A no-op retry keeps the modal
+  // generic — the reactive 423 path supplies a real retry instead.
+  async function openVaultPrompt() {
+    if (!session) {
+      return;
+    }
+    try {
+      const status = await api.vaultStatus(session.authToken);
+      if (status.unlocked) {
+        setMessage("Personal vault is already unlocked");
+        return;
+      }
+      setVaultPrompt({ hasVault: status.hasVault, retry: async () => {} });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Checking the vault failed");
+    }
+  }
+
+  async function submitVaultPassphrase(passphrase: string): Promise<boolean> {
+    if (!session || !vaultPrompt) {
+      return false;
+    }
+    setBusy(true);
+    try {
+      if (vaultPrompt.hasVault) {
+        await api.vaultUnlock(passphrase, session.authToken);
+      } else {
+        await api.vaultSetup(passphrase, session.authToken);
+      }
+      const retry = vaultPrompt.retry;
+      setVaultPrompt(null);
+      await retry();
+      return true;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unlocking the vault failed");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleReveal() {
     if (!selectedResourceId || !session) {
       return undefined;
@@ -1332,6 +1392,9 @@ export default function App() {
       await refreshAfterSensitiveAction();
       return response.secretValue;
     } catch (error) {
+      if (await guardVaultLocked(error, () => handleReveal().then(() => undefined))) {
+        return undefined;
+      }
       setMessage(error instanceof Error ? error.message : "Reveal failed");
       return undefined;
     } finally {
@@ -1349,6 +1412,9 @@ export default function App() {
       await refreshAfterSensitiveAction();
       return response.secretValue;
     } catch (error) {
+      if (await guardVaultLocked(error, () => handleRevealStoredPassword().then(() => undefined))) {
+        return undefined;
+      }
       setMessage(error instanceof Error ? error.message : "Reveal failed");
       return undefined;
     } finally {
@@ -1420,6 +1486,9 @@ export default function App() {
       }
       await refreshAfterSensitiveAction();
     } catch (error) {
+      if (await guardVaultLocked(error, () => handleLaunch())) {
+        return;
+      }
       setMessage(error instanceof Error ? error.message : "Launch failed");
     } finally {
       setBusy(false);
@@ -2103,6 +2172,15 @@ export default function App() {
                     className="button ghost"
                     onClick={() => {
                       setAccountMenuOpen(false);
+                      void openVaultPrompt();
+                    }}
+                  >
+                    Personal vault
+                  </button>
+                  <button
+                    className="button ghost"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
                       setChangePasswordOpen(true);
                     }}
                   >
@@ -2381,6 +2459,15 @@ export default function App() {
 
         {changePasswordOpen ? (
           <ChangePasswordModal busy={busy} onSave={changePassword} onClose={() => setChangePasswordOpen(false)} />
+        ) : null}
+
+        {vaultPrompt ? (
+          <VaultUnlockModal
+            hasVault={vaultPrompt.hasVault}
+            busy={busy}
+            onSubmit={submitVaultPassphrase}
+            onCancel={() => setVaultPrompt(null)}
+          />
         ) : null}
 
         {adminModalOpen ? (

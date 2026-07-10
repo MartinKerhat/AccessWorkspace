@@ -13,6 +13,7 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 var ErrBlocked = errors.New("user is blocked")
 var ErrNotFound = errors.New("not found")
 var ErrInvalidInput = errors.New("invalid input")
+var ErrVaultLocked = errors.New("personal vault is locked")
 
 type Bootstrap struct {
 	AuthMode           Mode `json:"authMode"`
@@ -44,6 +45,10 @@ type Authenticator interface {
 	Logout(ctx context.Context, token string) error
 	ChangeOwnPassword(ctx context.Context, user User, currentPassword, newPassword string) error
 	AcceptInvite(ctx context.Context, token, password string) (LoginResult, error)
+	GetVaultStatus(ctx context.Context, user User) (VaultStatus, error)
+	SetupVault(ctx context.Context, user User, token, passphrase string) error
+	UnlockVault(ctx context.Context, user User, token, secret string) error
+	AddVaultPassphrase(ctx context.Context, user User, passphrase string) error
 	ListLocalGroups(ctx context.Context) ([]LocalGroup, error)
 	ListUsers(ctx context.Context) ([]UserSummary, error)
 	CreateUser(ctx context.Context, input CreateUserInput) (UserAccessDetail, error)

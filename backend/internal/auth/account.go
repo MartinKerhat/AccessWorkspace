@@ -190,6 +190,54 @@ func (s *Service) AcceptInvite(ctx context.Context, token, password string) (Log
 	return result, nil
 }
 
+// GetVaultStatus reports the user's vault state; unlocked reflects whether
+// this request's session already carries the key.
+func (s *Service) GetVaultStatus(ctx context.Context, user User) (VaultStatus, error) {
+	status, err := s.repo.VaultStatus(ctx, user.ID)
+	if err != nil {
+		return VaultStatus{}, err
+	}
+	status.Unlocked = len(user.VaultPrivateKey) > 0
+	return status, nil
+}
+
+// SetupVault creates a first vault for a user who has none (SSO users on
+// first personal-secret use) and unlocks it for the current session.
+func (s *Service) SetupVault(ctx context.Context, user User, token, passphrase string) error {
+	if len(strings.TrimSpace(passphrase)) < 8 {
+		return fmt.Errorf("%w: passphrase must be at least 8 characters", ErrInvalidInput)
+	}
+	privateKey, err := s.repo.SetupVaultWithPassphrase(ctx, user.ID, passphrase)
+	if err != nil {
+		return err
+	}
+	return s.repo.attachVaultKeyToCurrentSession(ctx, token, privateKey)
+}
+
+// UnlockVault opens the vault with a passphrase (or login password) and
+// attaches the key to the current session. Wrong secret → ErrUnauthenticated.
+func (s *Service) UnlockVault(ctx context.Context, user User, token, secret string) error {
+	privateKey, err := s.repo.UnlockVaultWithSecret(ctx, user.ID, secret)
+	if err != nil {
+		return err
+	}
+	if len(privateKey) == 0 {
+		return ErrUnauthenticated
+	}
+	return s.repo.attachVaultKeyToCurrentSession(ctx, token, privateKey)
+}
+
+// AddVaultPassphrase adds a passphrase unlock to an already-unlocked vault.
+func (s *Service) AddVaultPassphrase(ctx context.Context, user User, passphrase string) error {
+	if len(strings.TrimSpace(passphrase)) < 8 {
+		return fmt.Errorf("%w: passphrase must be at least 8 characters", ErrInvalidInput)
+	}
+	if len(user.VaultPrivateKey) == 0 {
+		return ErrVaultLocked
+	}
+	return s.repo.AddPassphraseMethod(ctx, user.ID, user.VaultPrivateKey, passphrase)
+}
+
 func (r *Repository) verifyPassword(ctx context.Context, userID, password string) error {
 	var passwordHash string
 	err := r.db.QueryRow(ctx, `select password_hash from app_users where id = $1`, strings.TrimSpace(userID)).Scan(&passwordHash)
