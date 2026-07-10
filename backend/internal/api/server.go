@@ -223,6 +223,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleVaultAddPassphrase(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/passkey/setup":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultPasskeySetup(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/passkey/unlock":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultPasskeyUnlock(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/passkey/add":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultPasskeyAdd(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/browser-extension-session":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -989,6 +1004,51 @@ func (s *Server) handleVaultAddPassphrase(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := s.authenticator.AddVaultPassphrase(r.Context(), user, input.Passphrase); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+type vaultPasskeyInput struct {
+	CredentialID string `json:"credentialId"`
+	PRFSalt      string `json:"prfSalt"`
+	PRFSecret    string `json:"prfSecret"`
+}
+
+func (s *Server) handleVaultPasskeySetup(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input vaultPasskeyInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.authenticator.SetupVaultWithPasskey(r.Context(), user, requestBearerToken(r), input.CredentialID, input.PRFSalt, input.PRFSecret); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleVaultPasskeyUnlock(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input vaultPasskeyInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.authenticator.UnlockVaultWithPasskey(r.Context(), user, requestBearerToken(r), input.CredentialID, input.PRFSecret); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleVaultPasskeyAdd(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input vaultPasskeyInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.authenticator.AddVaultPasskey(r.Context(), user, input.CredentialID, input.PRFSalt, input.PRFSecret); err != nil {
 		writeError(w, err)
 		return
 	}

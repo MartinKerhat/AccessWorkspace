@@ -158,6 +158,12 @@ export const api = {
   vaultUnlock(passphrase: string, authToken: string) {
     return request<{ status: string }>("/auth/vault/unlock", { method: "POST", body: JSON.stringify({ passphrase }) }, authToken);
   },
+  vaultPasskeySetup(payload: { credentialId: string; prfSalt: string; prfSecret: string }, authToken: string) {
+    return request<{ status: string }>("/auth/vault/passkey/setup", { method: "POST", body: JSON.stringify(payload) }, authToken);
+  },
+  vaultPasskeyUnlock(payload: { credentialId: string; prfSecret: string }, authToken: string) {
+    return request<{ status: string }>("/auth/vault/passkey/unlock", { method: "POST", body: JSON.stringify(payload) }, authToken);
+  },
   changePassword(currentPassword: string, newPassword: string, authToken: string) {
     return request<{ status: string }>(
       "/auth/password",

@@ -25,6 +25,9 @@ type VaultStatus struct {
 	HasVault bool     `json:"hasVault"`
 	Unlocked bool     `json:"unlocked"`
 	Methods  []string `json:"methods"`
+	// Passkeys lets the browser build a WebAuthn get() to unlock without a
+	// passphrase (credential IDs + PRF salts; none are secret).
+	Passkeys []PasskeyDescriptor `json:"passkeys"`
 }
 
 // VaultStatus reports whether the user has a vault and which unlock methods

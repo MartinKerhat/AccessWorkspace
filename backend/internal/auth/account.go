@@ -198,7 +198,43 @@ func (s *Service) GetVaultStatus(ctx context.Context, user User) (VaultStatus, e
 		return VaultStatus{}, err
 	}
 	status.Unlocked = len(user.VaultPrivateKey) > 0
+	descriptors, err := s.repo.ListPasskeyDescriptors(ctx, user.ID)
+	if err != nil {
+		return VaultStatus{}, err
+	}
+	status.Passkeys = descriptors
 	return status, nil
+}
+
+// SetupVaultWithPasskey creates a first vault wrapped under a WebAuthn PRF
+// secret (Windows Hello / Touch ID) — no passphrase — and unlocks the session.
+func (s *Service) SetupVaultWithPasskey(ctx context.Context, user User, token, credentialID, prfSalt, prfSecret string) error {
+	privateKey, err := s.repo.SetupVaultWithPasskey(ctx, user.ID, credentialID, prfSalt, prfSecret)
+	if err != nil {
+		return err
+	}
+	return s.repo.attachVaultKeyToCurrentSession(ctx, token, privateKey)
+}
+
+// UnlockVaultWithPasskey opens the vault with a credential's PRF output and
+// attaches the key to the current session.
+func (s *Service) UnlockVaultWithPasskey(ctx context.Context, user User, token, credentialID, prfSecret string) error {
+	privateKey, err := s.repo.UnlockVaultWithPasskey(ctx, user.ID, credentialID, prfSecret)
+	if err != nil {
+		return err
+	}
+	if len(privateKey) == 0 {
+		return ErrUnauthenticated
+	}
+	return s.repo.attachVaultKeyToCurrentSession(ctx, token, privateKey)
+}
+
+// AddVaultPasskey registers an extra passkey against an unlocked vault.
+func (s *Service) AddVaultPasskey(ctx context.Context, user User, credentialID, prfSalt, prfSecret string) error {
+	if len(user.VaultPrivateKey) == 0 {
+		return ErrVaultLocked
+	}
+	return s.repo.AddPasskeyMethod(ctx, user.ID, user.VaultPrivateKey, credentialID, prfSalt, prfSecret)
 }
 
 // SetupVault creates a first vault for a user who has none (SSO users on

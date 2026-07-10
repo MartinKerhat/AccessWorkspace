@@ -246,12 +246,17 @@ func TestVaultPassphraseUnlockEndToEnd(t *testing.T) {
 		t.Fatalf("load sso session: %v", err)
 	}
 
-	// No vault yet: status reflects it, personal secret still saves
-	// (shared-class fallback), but reveal is not vault-locked because it's
-	// shared-class until a vault exists.
+	// No vault yet: status reflects it, and a personal write is REFUSED
+	// (no silent org-readable fallback) so the client runs vault setup.
 	status, err := authService.GetVaultStatus(ctx, ssoUser)
 	if err != nil || status.HasVault {
 		t.Fatalf("expected no vault, got %+v err=%v", status, err)
+	}
+	if _, err := service.Create(ctx, ssoUser, CreateResourceInput{
+		Name: "no-vault-personal", Type: TypeSharedSecret, Personal: true, Owner: "SSO User",
+		Username: "sso@example.com", SecretMode: SecretModeInline, SecretValue: "x", RevealAllowed: true,
+	}); !errors.Is(err, ErrVaultLocked) {
+		t.Fatalf("expected personal write with no vault to be refused, got %v", err)
 	}
 
 	// Set up the vault with a passphrase; the session unlocks.

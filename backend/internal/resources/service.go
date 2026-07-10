@@ -1808,23 +1808,25 @@ func (s *Service) prepareSecretForStorage(ctx context.Context, input *CreateReso
 	if strings.TrimSpace(input.SecretValue) == "" {
 		return nil
 	}
-	// Personal secrets are sealed to the owner's vault public key when a
-	// vault exists — writing needs no unlock. Owners without a vault yet
-	// (SSO users before passkey/passphrase setup) fall back to the shared
-	// class so nothing breaks; those rows migrate lazily once a vault exists.
+	// Personal secrets are sealed to the owner's vault public key — writing
+	// needs no unlock, only that the vault exists. If the owner has no vault
+	// yet, refuse with ErrVaultLocked so the client runs vault setup rather
+	// than silently storing a "personal" secret in the org-readable class.
+	// (SSO users get their vault at login; local users at login/creation.)
 	if input.Personal && s.vaults != nil {
 		publicKey, err := s.vaults.VaultPublicKey(ctx, strings.TrimSpace(input.OwnerUserID))
 		if err != nil {
 			return err
 		}
-		if len(publicKey) > 0 {
-			encrypted, err := s.cipher.EncryptPersonalForStorage(ctx, input.SecretValue, publicKey)
-			if err != nil {
-				return err
-			}
-			input.SecretValue = encrypted
-			return nil
+		if len(publicKey) == 0 {
+			return ErrVaultLocked
 		}
+		encrypted, err := s.cipher.EncryptPersonalForStorage(ctx, input.SecretValue, publicKey)
+		if err != nil {
+			return err
+		}
+		input.SecretValue = encrypted
+		return nil
 	}
 	encrypted, err := s.cipher.EncryptForStorage(ctx, input.SecretValue, SecretClassShared)
 	if err != nil {

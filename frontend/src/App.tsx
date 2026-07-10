@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, isVaultLocked } from "./api/client";
+import { passkeysSupported, registerPasskey, unlockWithPasskey, isPrfUnavailable } from "./webauthn";
 import { ResourceFormModal } from "./modals/ResourceFormModal";
 import { AdminConfigModal } from "./modals/AdminConfigModal";
 import { ChangePasswordModal } from "./modals/ChangePasswordModal";
@@ -59,6 +60,7 @@ import type {
   ResourceSummary,
   RevealResult,
   UserInvite,
+  VaultStatus,
   UserNotification,
   VisibleResourceSummary,
   UserSummary,
@@ -416,7 +418,8 @@ export default function App() {
   const [appRegistrationSyncing, setAppRegistrationSyncing] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [vaultPrompt, setVaultPrompt] = useState<{ hasVault: boolean; retry: () => Promise<void> } | null>(null);
+  const [vaultPrompt, setVaultPrompt] = useState<{ status: VaultStatus; retry: () => Promise<void> } | null>(null);
+  const [passkeyCapable, setPasskeyCapable] = useState(false);
   const [inviteToken, setInviteToken] = useState<string>(() =>
     new URLSearchParams(window.location.search).get("invite") ?? ""
   );
@@ -429,6 +432,7 @@ export default function App() {
   const [notificationPolicyModalState, setNotificationPolicyModalState] = useState<NotificationPolicyModalState>({ mode: "closed" });
   const previousViewRef = useRef<View | null>(null);
   const previousAdminSectionRef = useRef<AdminSection | null>(null);
+  const vaultCheckedTokenRef = useRef<string | null>(null);
 
   const user = session?.user ?? null;
 
@@ -437,6 +441,35 @@ export default function App() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    void passkeysSupported().then(setPasskeyCapable);
+  }, []);
+
+  // SSO users have no login password to derive a vault key from, so their
+  // personal-password passphrase is handled right after sign-in: set it the
+  // first time, enter it on later logins. Runs once per session token; local
+  // users are already unlocked from their login password, so they never see
+  // it. A fresh SSO session (new token) starts locked and re-prompts.
+  useEffect(() => {
+    if (!session || session.authMode !== "entra") {
+      return;
+    }
+    if (vaultCheckedTokenRef.current === session.authToken) {
+      return;
+    }
+    vaultCheckedTokenRef.current = session.authToken;
+    void (async () => {
+      try {
+        const status = await api.vaultStatus(session.authToken);
+        if (!status.unlocked) {
+          setVaultPrompt({ status, retry: async () => {} });
+        }
+      } catch {
+        // Non-fatal: the reactive 423 path still prompts on first personal use.
+      }
+    })();
+  }, [session]);
 
   useEffect(() => {
     if (view === "admin") {
@@ -1332,9 +1365,9 @@ export default function App() {
     }
     try {
       const status = await api.vaultStatus(session.authToken);
-      setVaultPrompt({ hasVault: status.hasVault, retry });
+      setVaultPrompt({ status, retry });
     } catch {
-      setVaultPrompt({ hasVault: true, retry });
+      setVaultPrompt({ status: { hasVault: true, unlocked: false, methods: [], passkeys: [] }, retry });
     }
     return true;
   }
@@ -1349,13 +1382,22 @@ export default function App() {
     try {
       const status = await api.vaultStatus(session.authToken);
       if (status.unlocked) {
-        setMessage("Personal vault is already unlocked");
+        setMessage("Personal passwords are already unlocked");
         return;
       }
-      setVaultPrompt({ hasVault: status.hasVault, retry: async () => {} });
+      setVaultPrompt({ status, retry: async () => {} });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Checking the vault failed");
     }
+  }
+
+  async function afterVaultUnlocked(): Promise<boolean> {
+    const retry = vaultPrompt?.retry;
+    setVaultPrompt(null);
+    if (retry) {
+      await retry();
+    }
+    return true;
   }
 
   async function submitVaultPassphrase(passphrase: string): Promise<boolean> {
@@ -1364,17 +1406,40 @@ export default function App() {
     }
     setBusy(true);
     try {
-      if (vaultPrompt.hasVault) {
+      if (vaultPrompt.status.hasVault) {
         await api.vaultUnlock(passphrase, session.authToken);
       } else {
         await api.vaultSetup(passphrase, session.authToken);
       }
-      const retry = vaultPrompt.retry;
-      setVaultPrompt(null);
-      await retry();
-      return true;
+      return await afterVaultUnlocked();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unlocking the vault failed");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitVaultPasskey(): Promise<boolean> {
+    if (!session || !vaultPrompt) {
+      return false;
+    }
+    setBusy(true);
+    try {
+      if (vaultPrompt.status.hasVault) {
+        const unlock = await unlockWithPasskey(vaultPrompt.status.passkeys);
+        await api.vaultPasskeyUnlock(unlock, session.authToken);
+      } else {
+        const registration = await registerPasskey(session.user.id, session.user.name);
+        await api.vaultPasskeySetup(registration, session.authToken);
+      }
+      return await afterVaultUnlocked();
+    } catch (error) {
+      if (isPrfUnavailable(error)) {
+        setMessage("This device can't use Windows Hello for the vault. Use a passphrase instead.");
+      } else {
+        setMessage(error instanceof Error ? error.message : "Windows Hello failed");
+      }
       return false;
     } finally {
       setBusy(false);
@@ -1584,6 +1649,9 @@ export default function App() {
       }
       setFormState(closedFormState);
     } catch (error) {
+      if (await guardVaultLocked(error, () => handleCreate(input))) {
+        return;
+      }
       setMessage(error instanceof Error ? error.message : "Create failed");
     } finally {
       setBusy(false);
@@ -1605,6 +1673,9 @@ export default function App() {
       }
       setFormState(closedFormState);
     } catch (error) {
+      if (await guardVaultLocked(error, () => handleUpdate(input))) {
+        return;
+      }
       setMessage(error instanceof Error ? error.message : "Update failed");
     } finally {
       setBusy(false);
@@ -2463,9 +2534,12 @@ export default function App() {
 
         {vaultPrompt ? (
           <VaultUnlockModal
-            hasVault={vaultPrompt.hasVault}
+            hasVault={vaultPrompt.status.hasVault}
+            passkeyCapable={passkeyCapable}
+            hasPasskey={vaultPrompt.status.passkeys.length > 0}
             busy={busy}
-            onSubmit={submitVaultPassphrase}
+            onPasskey={submitVaultPasskey}
+            onPassphrase={submitVaultPassphrase}
             onCancel={() => setVaultPrompt(null)}
           />
         ) : null}

@@ -101,10 +101,16 @@ export type CreateUserInput = {
   directLocalGroups: string[];
 };
 
+export type VaultPasskeyDescriptor = {
+  credentialId: string;
+  prfSalt: string;
+};
+
 export type VaultStatus = {
   hasVault: boolean;
   unlocked: boolean;
   methods: string[];
+  passkeys: VaultPasskeyDescriptor[];
 };
 
 export type UserInvite = {
