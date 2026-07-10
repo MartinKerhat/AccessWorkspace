@@ -7,7 +7,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	software.sslmate.com/src/go-pkcs12 v0.7.2
 )
 
