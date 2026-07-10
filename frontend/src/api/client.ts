@@ -164,6 +164,9 @@ export const api = {
   vaultPasskeyUnlock(payload: { credentialId: string; prfSecret: string }, authToken: string) {
     return request<{ status: string }>("/auth/vault/passkey/unlock", { method: "POST", body: JSON.stringify(payload) }, authToken);
   },
+  vaultLock(authToken: string) {
+    return request<{ status: string }>("/auth/vault/lock", { method: "POST" }, authToken);
+  },
   changePassword(currentPassword: string, newPassword: string, authToken: string) {
     return request<{ status: string }>(
       "/auth/password",

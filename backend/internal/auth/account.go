@@ -206,6 +206,11 @@ func (s *Service) GetVaultStatus(ctx context.Context, user User) (VaultStatus, e
 	return status, nil
 }
 
+// LockVault re-locks the vault for the current session (clears the key).
+func (s *Service) LockVault(ctx context.Context, token string) error {
+	return s.repo.clearSessionVaultKey(ctx, token)
+}
+
 // SetupVaultWithPasskey creates a first vault wrapped under a WebAuthn PRF
 // secret (Windows Hello / Touch ID) — no passphrase — and unlocks the session.
 func (s *Service) SetupVaultWithPasskey(ctx context.Context, user User, token, credentialID, prfSalt, prfSecret string) error {

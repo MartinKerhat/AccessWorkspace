@@ -52,6 +52,7 @@ type Authenticator interface {
 	SetupVaultWithPasskey(ctx context.Context, user User, token, credentialID, prfSalt, prfSecret string) error
 	UnlockVaultWithPasskey(ctx context.Context, user User, token, credentialID, prfSecret string) error
 	AddVaultPasskey(ctx context.Context, user User, credentialID, prfSalt, prfSecret string) error
+	LockVault(ctx context.Context, token string) error
 	ListLocalGroups(ctx context.Context) ([]LocalGroup, error)
 	ListUsers(ctx context.Context) ([]UserSummary, error)
 	CreateUser(ctx context.Context, input CreateUserInput) (UserAccessDetail, error)

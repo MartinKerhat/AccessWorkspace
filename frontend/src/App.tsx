@@ -420,6 +420,7 @@ export default function App() {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [vaultPrompt, setVaultPrompt] = useState<{ status: VaultStatus; retry: () => Promise<void> } | null>(null);
   const [passkeyCapable, setPasskeyCapable] = useState(false);
+  const [vaultUnlocked, setVaultUnlocked] = useState(false);
   const [inviteToken, setInviteToken] = useState<string>(() =>
     new URLSearchParams(window.location.search).get("invite") ?? ""
   );
@@ -446,13 +447,13 @@ export default function App() {
     void passkeysSupported().then(setPasskeyCapable);
   }, []);
 
-  // SSO users have no login password to derive a vault key from, so their
-  // personal-password passphrase is handled right after sign-in: set it the
-  // first time, enter it on later logins. Runs once per session token; local
-  // users are already unlocked from their login password, so they never see
-  // it. A fresh SSO session (new token) starts locked and re-prompts.
+  // After sign-in, surface the personal-passwords unlock once per session.
+  // Local users arrive already unlocked (their login password derived the
+  // key), so status.unlocked is true and nothing shows; SSO users have no
+  // such key, so they're prompted to set up (first time) or unlock (Windows
+  // Hello / passphrase). Runs once per session token.
   useEffect(() => {
-    if (!session || session.authMode !== "entra") {
+    if (!session) {
       return;
     }
     if (vaultCheckedTokenRef.current === session.authToken) {
@@ -462,6 +463,7 @@ export default function App() {
     void (async () => {
       try {
         const status = await api.vaultStatus(session.authToken);
+        setVaultUnlocked(status.unlocked);
         if (!status.unlocked) {
           setVaultPrompt({ status, retry: async () => {} });
         }
@@ -771,6 +773,9 @@ export default function App() {
     setBrowserExtensionManagerOpen(false);
     setLauncherDownloadsOpen(false);
     setBrowserExtensionConnectState(null);
+    setVaultUnlocked(false);
+    setVaultPrompt(null);
+    vaultCheckedTokenRef.current = null;
     setSession(null);
     setAllResources([]);
     setSelectedResourceId(undefined);
@@ -1372,17 +1377,19 @@ export default function App() {
     return true;
   }
 
-  // Proactive entry point from the account menu: set up the vault (SSO users
-  // with none) or unlock it for this session. A no-op retry keeps the modal
-  // generic — the reactive 423 path supplies a real retry instead.
-  async function openVaultPrompt() {
+  // Account-menu entry point: when locked, open the setup/unlock prompt; when
+  // unlocked, re-lock this session (the meaningful action once unlocked, so
+  // the button is never a dead end).
+  async function toggleVaultLock() {
     if (!session) {
       return;
     }
     try {
       const status = await api.vaultStatus(session.authToken);
       if (status.unlocked) {
-        setMessage("Personal passwords are already unlocked");
+        await api.vaultLock(session.authToken);
+        setVaultUnlocked(false);
+        setMessage("Personal passwords locked");
         return;
       }
       setVaultPrompt({ status, retry: async () => {} });
@@ -1394,6 +1401,7 @@ export default function App() {
   async function afterVaultUnlocked(): Promise<boolean> {
     const retry = vaultPrompt?.retry;
     setVaultPrompt(null);
+    setVaultUnlocked(true);
     if (retry) {
       await retry();
     }
@@ -2243,10 +2251,10 @@ export default function App() {
                     className="button ghost"
                     onClick={() => {
                       setAccountMenuOpen(false);
-                      void openVaultPrompt();
+                      void toggleVaultLock();
                     }}
                   >
-                    Personal vault
+                    {vaultUnlocked ? "Lock personal passwords" : "Unlock personal passwords"}
                   </button>
                   <button
                     className="button ghost"

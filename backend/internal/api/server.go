@@ -238,6 +238,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleVaultPasskeyAdd(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/lock":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		if err := s.authenticator.LockVault(r.Context(), requestBearerToken(r)); err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/browser-extension-session":
 		if !requireAuth(w, user, authErr) {
 			return

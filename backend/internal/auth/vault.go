@@ -231,6 +231,17 @@ func (r *Repository) attachVaultKeyToCurrentSession(ctx context.Context, token s
 	return err
 }
 
+// clearSessionVaultKey re-locks the vault for the current session by dropping
+// its stored key. Other sessions keep their own key.
+func (r *Repository) clearSessionVaultKey(ctx context.Context, token string) error {
+	hash := hashToken(token)
+	if _, err := r.db.Exec(ctx, `update auth_sessions set vault_private_key = '' where token = $1`, hash); err != nil {
+		return err
+	}
+	_, err := r.db.Exec(ctx, `update browser_extension_sessions set vault_private_key = '' where token = $1`, hash)
+	return err
+}
+
 // openSessionVaultKey unwraps a session-carried private key. Returns nil on
 // any failure — the vault is simply locked for this request.
 func openSessionVaultKey(token, wrapped string) []byte {
