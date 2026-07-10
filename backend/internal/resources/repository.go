@@ -53,8 +53,24 @@ func (r *Repository) UpgradeSecretEncryption(ctx context.Context, cipher *Secret
 		if err != nil {
 			return err
 		}
-		// Healthy v2 row: single layer, current format — leave untouched.
+		// Healthy v2 row: single layer, current format. Rewrap the DEK if the
+		// active KEK provider changed (e.g. local -> key vault); otherwise
+		// leave untouched.
 		if layers == 1 && !NeedsEncryptionUpgrade(value) {
+			if !cipher.NeedsRewrap(value) {
+				continue
+			}
+			rewrapped, err := cipher.RewrapForStorage(ctx, value)
+			if err != nil {
+				return err
+			}
+			if _, err := r.db.Exec(ctx, `
+				update resource_secrets
+				set secret_value = $2, updated_at = now()
+				where resource_id = $1 and secret_value = $3
+			`, id, rewrapped, value); err != nil {
+				return err
+			}
 			continue
 		}
 		encrypted, err := cipher.EncryptForStorage(ctx, plain, SecretClassShared)

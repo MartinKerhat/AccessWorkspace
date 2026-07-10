@@ -66,6 +66,68 @@ func NewSecretCipher(rawKey string) *SecretCipher {
 	}
 }
 
+// UseKEKProvider makes the given provider wrap all NEW DEKs while keeping
+// every previously registered provider available for reads — existing rows
+// stay decryptable and are migrated by rewrap, not by re-encryption. Call
+// during startup wiring only (not concurrency-safe afterwards).
+func (c *SecretCipher) UseKEKProvider(provider KEKProvider) {
+	c.kek = provider
+	c.unwrap[provider.ID()] = provider
+}
+
+// RegisterKEKProvider makes a provider available for UNWRAPPING without
+// making it wrap new DEKs. Used when rolling back to another provider: rows
+// wrapped by this one stay readable and get rewrapped by the startup
+// migration. Call during startup wiring only.
+func (c *SecretCipher) RegisterKEKProvider(provider KEKProvider) {
+	c.unwrap[provider.ID()] = provider
+}
+
+// NeedsRewrap reports whether a stored v2 value's DEK is wrapped by a
+// provider other than the active one (e.g. `local` rows after the deployment
+// switched to the Key Vault KEK).
+func (c *SecretCipher) NeedsRewrap(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if !strings.HasPrefix(trimmed, envelopePrefix) {
+		return false
+	}
+	parts := strings.SplitN(strings.TrimPrefix(trimmed, envelopePrefix), ":", 4)
+	return len(parts) == 4 && parts[1] != c.kek.ID()
+}
+
+// RewrapForStorage re-wraps a v2 envelope's DEK under the active provider
+// without touching the sealed value — the plaintext is never reconstructed.
+// Values that are not v2 or already use the active provider pass through.
+func (c *SecretCipher) RewrapForStorage(ctx context.Context, value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if !c.NeedsRewrap(trimmed) {
+		return trimmed, nil
+	}
+	parts := strings.SplitN(strings.TrimPrefix(trimmed, envelopePrefix), ":", 4)
+	class, oldKekID := parts[0], parts[1]
+	provider, ok := c.unwrap[oldKekID]
+	if !ok {
+		return "", fmt.Errorf("secret requires unavailable key provider %q", oldKekID)
+	}
+	wrapped, err := base64.StdEncoding.DecodeString(parts[2])
+	if err != nil {
+		return "", err
+	}
+	dek, err := provider.UnwrapDEK(ctx, wrapped)
+	if err != nil {
+		return "", err
+	}
+	rewrapped, err := c.kek.WrapDEK(ctx, dek)
+	for i := range dek {
+		dek[i] = 0
+	}
+	if err != nil {
+		return "", err
+	}
+	return envelopePrefix + class + ":" + c.kek.ID() + ":" +
+		base64.StdEncoding.EncodeToString(rewrapped) + ":" + parts[3], nil
+}
+
 // IsEncryptedForStorage reports whether the value already carries one of the
 // storage-encryption envelopes.
 func IsEncryptedForStorage(value string) bool {

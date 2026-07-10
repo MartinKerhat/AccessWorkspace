@@ -27,6 +27,9 @@ type Config struct {
 	DefaultUser         string
 	AuthMode            string
 	SecretEncryptionKey string
+	KEKProvider         string
+	KEKVaultURL         string
+	KEKKeyName          string
 	BootstrapAdminUser  string
 	BootstrapAdminPass  string
 	BootstrapAdminName  string
@@ -58,6 +61,9 @@ func ConfigFromEnv() Config {
 		DefaultUser:         envOrDefault("DEFAULT_DEV_USER", "alice"),
 		AuthMode:            envOrDefault("AUTH_MODE", "dev"),
 		SecretEncryptionKey: strings.TrimSpace(os.Getenv("RESOURCE_SECRET_KEY")),
+		KEKProvider:         strings.ToLower(envOrDefault("KEK_PROVIDER", "local")),
+		KEKVaultURL:         strings.TrimSpace(os.Getenv("KEK_VAULT_URL")),
+		KEKKeyName:          envOrDefault("KEK_KEY_NAME", "access-workspace-kek"),
 		BootstrapAdminUser:  strings.TrimSpace(os.Getenv("BOOTSTRAP_ADMIN_USERNAME")),
 		BootstrapAdminPass:  strings.TrimSpace(os.Getenv("BOOTSTRAP_ADMIN_PASSWORD")),
 		BootstrapAdminName:  strings.TrimSpace(os.Getenv("BOOTSTRAP_ADMIN_DISPLAY_NAME")),
@@ -87,6 +93,20 @@ func (c Config) Validate() error {
 	}
 	if c.SecretEncryptionKey == legacyDevSecretKey {
 		return fmt.Errorf("RESOURCE_SECRET_KEY must not be the legacy shared development key; generate a unique secret per deployment")
+	}
+
+	switch c.KEKProvider {
+	case "", "local":
+		// Key derived from RESOURCE_SECRET_KEY; no further config.
+	case "azure_key_vault":
+		if c.KEKVaultURL == "" {
+			return fmt.Errorf("KEK_VAULT_URL is required when KEK_PROVIDER=azure_key_vault")
+		}
+		if c.KEKKeyName == "" {
+			return fmt.Errorf("KEK_KEY_NAME is required when KEK_PROVIDER=azure_key_vault")
+		}
+	default:
+		return fmt.Errorf("KEK_PROVIDER must be \"local\" or \"azure_key_vault\", got %q", c.KEKProvider)
 	}
 
 	// A bootstrap admin needs both a username and a password, or neither.

@@ -259,6 +259,20 @@ func (s *AdminConfigStore) UpgradeSecretSettings(ctx context.Context) error {
 			return fmt.Errorf("decrypt admin setting %q: %w", key, err)
 		}
 		if layers == 1 && !resources.NeedsEncryptionUpgrade(value) {
+			if !s.cipher.NeedsRewrap(value) {
+				continue
+			}
+			rewrapped, err := s.cipher.RewrapForStorage(ctx, value)
+			if err != nil {
+				return fmt.Errorf("rewrap admin setting %q: %w", key, err)
+			}
+			if _, err := s.db.Exec(ctx, `
+				update admin_settings
+				set value = $2, updated_at = now()
+				where key = $1 and value = $3
+			`, key, rewrapped, value); err != nil {
+				return err
+			}
 			continue
 		}
 		encrypted, err := s.cipher.EncryptForStorage(ctx, plain, resources.SecretClassAppScope)

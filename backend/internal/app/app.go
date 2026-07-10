@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"sync"
+	"time"
 
 	"access-workspace/backend/internal/api"
 	"access-workspace/backend/internal/appregistrations"
@@ -107,7 +108,30 @@ func New(cfg Config) (*App, error) {
 	authRepo := auth.NewRepository(pool)
 	resourceRepo := resources.NewRepository(pool)
 	notificationRepo := notifications.NewRepository(pool)
+	// Ambient Azure identity (workload identity on AKS, managed identity on
+	// Azure hosts, env credentials elsewhere). Shared by the KEK provider and
+	// the reader services.
+	azureChain := azureauth.NewChain()
+
 	secretCipher := resources.NewSecretCipher(cfg.SecretEncryptionKey)
+	if cfg.KEKVaultURL != "" {
+		kek, err := resources.NewAzureKeyVaultKEK(cfg.KEKVaultURL, cfg.KEKKeyName, azureChain.Credential())
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		// 5-minute DEK cache: hot paths skip the per-secret network unwrap
+		// and stay far from Key Vault rate limits; DEKs live in memory only.
+		cached := resources.NewCachingKEKProvider(kek, 5*time.Minute)
+		if cfg.KEKProvider == "azure_key_vault" {
+			secretCipher.UseKEKProvider(cached)
+		} else {
+			// Vault configured but not active (e.g. rolled back to local):
+			// keep vault-wrapped rows readable so the startup migration can
+			// rewrap them back.
+			secretCipher.RegisterKEKProvider(cached)
+		}
+	}
 	adminStore := NewAdminConfigStore(pool, cfg, secretCipher)
 	if err := adminStore.UpgradeSecretSettings(ctx); err != nil {
 		pool.Close()
@@ -121,10 +145,7 @@ func New(cfg Config) (*App, error) {
 		pool.Close()
 		return nil, err
 	}
-	// Ambient Azure identity (workload identity on AKS, managed identity on
-	// Azure hosts, env credentials elsewhere). Used by the reader services
-	// whenever no client secret is configured in admin settings.
-	chainToken := azureauth.NewChainTokenSource()
+	chainToken := azureChain.TokenSource()
 	keyVaultService := keyvault.NewService(keyvault.SettingsProvider{
 		ChainToken: keyvault.TokenSource(chainToken),
 		Runtime: func(ctx context.Context) (keyvault.RuntimeConfig, error) {

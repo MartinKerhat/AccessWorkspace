@@ -28,13 +28,45 @@ type chain struct {
 	done bool
 }
 
-// NewChainTokenSource builds a TokenSource over DefaultAzureCredential. The
-// credential is constructed lazily on first use: deployments that never need
-// it (settings-based client secret, or no Azure at all) pay nothing and see
-// no startup errors.
+// Chain is a lazily-initialized DefaultAzureCredential: deployments that
+// never need it (settings-based client secret, or no Azure at all) pay
+// nothing and see no startup errors.
+type Chain struct {
+	inner chain
+}
+
+func NewChain() *Chain {
+	return &Chain{}
+}
+
+// TokenSource returns tokens per scope through the chain.
+func (c *Chain) TokenSource() TokenSource {
+	return c.inner.token
+}
+
+// Credential exposes the underlying azcore credential for Azure SDK clients
+// (e.g. Key Vault keys). Construction still happens lazily on first token.
+func (c *Chain) Credential() azcore.TokenCredential {
+	return lazyCredential{chain: &c.inner}
+}
+
+// lazyCredential defers DefaultAzureCredential construction to the first
+// GetToken call so that merely wiring it up never fails at startup.
+type lazyCredential struct {
+	chain *chain
+}
+
+func (l lazyCredential) GetToken(ctx context.Context, options policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	cred, err := l.chain.credential()
+	if err != nil {
+		return azcore.AccessToken{}, fmt.Errorf("azure credential chain unavailable: %w", err)
+	}
+	return cred.GetToken(ctx, options)
+}
+
+// NewChainTokenSource builds a TokenSource over DefaultAzureCredential.
 func NewChainTokenSource() TokenSource {
-	c := &chain{}
-	return c.token
+	return NewChain().TokenSource()
 }
 
 func (c *chain) credential() (azcore.TokenCredential, error) {

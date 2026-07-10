@@ -34,6 +34,33 @@ func TestValidate_RejectsLegacyDevKey(t *testing.T) {
 	}
 }
 
+func TestValidate_KEKProvider(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.KEKProvider = "local"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected local provider to validate, got: %v", err)
+	}
+
+	cfg.KEKProvider = "azure_key_vault"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when azure_key_vault has no vault URL")
+	}
+	cfg.KEKVaultURL = "https://kvinsio.vault.azure.net"
+	cfg.KEKKeyName = ""
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when azure_key_vault has no key name")
+	}
+	cfg.KEKKeyName = "access-workspace-kek"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected valid azure_key_vault config, got: %v", err)
+	}
+
+	cfg.KEKProvider = "vault"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for unknown KEK provider")
+	}
+}
+
 func TestValidate_NonProductionEnvsAllowSeedAndReset(t *testing.T) {
 	// Anything that is not "production" runs unrestricted.
 	for _, env := range []string{"", "development", "staging", "preprod", "ci", "test"} {
