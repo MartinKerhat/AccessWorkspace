@@ -179,7 +179,7 @@ func (s *Service) Create(ctx context.Context, user auth.User, input CreateResour
 	}
 	input = enforcePersonalPasswordOwnership(user, input)
 	input = normalizeInput(input)
-	if err := s.prepareSecretForStorage(ctx, &input); err != nil {
+	if err := s.prepareSecretForStorage(ctx, user, &input); err != nil {
 		return Resource{}, err
 	}
 	if err := validateInput(input); err != nil {
@@ -211,11 +211,19 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 	if !canUpdateResource(user, existing) {
 		return Resource{}, ErrForbidden
 	}
+	// Converting shared → personal seals the secret to the editor's vault, so
+	// only the current owner may do it. A non-owner (e.g. an admin editing
+	// someone else's shared resource) must first reassign ownership to
+	// themselves, then personalize as the new owner — never in one step,
+	// which would let them pull an org secret straight into their own vault.
+	if input.Personal && !existing.Personal && existing.OwnerUserID != user.ID {
+		return Resource{}, ErrForbidden
+	}
 	input = enforcePersonalPasswordOwnership(user, input)
 	input = normalizeInput(input)
 	input = preserveManagedFields(existing, input, user)
 	input = preserveExistingSecret(existing, input)
-	if err := s.prepareSecretForStorage(ctx, &input); err != nil {
+	if err := s.prepareSecretForStorage(ctx, user, &input); err != nil {
 		return Resource{}, err
 	}
 	if err := validateInput(input); err != nil {
@@ -1797,7 +1805,7 @@ func preserveManagedFields(existing Resource, input UpdateResourceInput, user au
 	return input
 }
 
-func (s *Service) prepareSecretForStorage(ctx context.Context, input *CreateResourceInput) error {
+func (s *Service) prepareSecretForStorage(ctx context.Context, user auth.User, input *CreateResourceInput) error {
 	if input == nil || s.cipher == nil {
 		return nil
 	}
@@ -1805,14 +1813,42 @@ func (s *Service) prepareSecretForStorage(ctx context.Context, input *CreateReso
 		input.SecretValue = ""
 		return nil
 	}
-	if strings.TrimSpace(input.SecretValue) == "" {
+	value := strings.TrimSpace(input.SecretValue)
+	if value == "" {
 		return nil
 	}
-	// Personal secrets are sealed to the owner's vault public key — writing
-	// needs no unlock, only that the vault exists. If the owner has no vault
-	// yet, refuse with ErrVaultLocked so the client runs vault setup rather
-	// than silently storing a "personal" secret in the org-readable class.
-	// (SSO users get their vault at login; local users at login/creation.)
+
+	// An already-encrypted value means the secret was preserved (edit without
+	// re-entering it). If the personal↔shared scope now differs from how it is
+	// stored, switch classes — a re-wrap of the same secret, not a re-type.
+	// personal→shared needs the owner's unlocked session to read the personal
+	// envelope; shared→personal the server can do (it holds the org key and
+	// the owner's public key).
+	if IsEncryptedForStorage(value) {
+		if IsPersonalEnvelope(value) == input.Personal {
+			input.SecretValue = value
+			return nil
+		}
+		var plain string
+		var err error
+		if IsPersonalEnvelope(value) {
+			plain, err = s.cipher.DecryptPersonalFromStorage(ctx, value, user.VaultPrivateKey)
+		} else {
+			plain, err = s.cipher.DecryptFromStorage(ctx, value)
+		}
+		if err != nil {
+			return err
+		}
+		return s.encryptForScope(ctx, input, plain)
+	}
+
+	return s.encryptForScope(ctx, input, value)
+}
+
+// encryptForScope seals plaintext into the class matching input.Personal:
+// personal → sealed to the owner's vault public key (ErrVaultLocked if the
+// owner has no vault yet, so the client runs setup); shared → org key.
+func (s *Service) encryptForScope(ctx context.Context, input *CreateResourceInput, plain string) error {
 	if input.Personal && s.vaults != nil {
 		publicKey, err := s.vaults.VaultPublicKey(ctx, strings.TrimSpace(input.OwnerUserID))
 		if err != nil {
@@ -1821,14 +1857,14 @@ func (s *Service) prepareSecretForStorage(ctx context.Context, input *CreateReso
 		if len(publicKey) == 0 {
 			return ErrVaultLocked
 		}
-		encrypted, err := s.cipher.EncryptPersonalForStorage(ctx, input.SecretValue, publicKey)
+		encrypted, err := s.cipher.EncryptPersonalForStorage(ctx, plain, publicKey)
 		if err != nil {
 			return err
 		}
 		input.SecretValue = encrypted
 		return nil
 	}
-	encrypted, err := s.cipher.EncryptForStorage(ctx, input.SecretValue, SecretClassShared)
+	encrypted, err := s.cipher.EncryptForStorage(ctx, plain, SecretClassShared)
 	if err != nil {
 		return err
 	}

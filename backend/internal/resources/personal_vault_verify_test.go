@@ -329,6 +329,144 @@ func TestVaultPassphraseUnlockEndToEnd(t *testing.T) {
 	}
 }
 
+func TestPersonalSharedSwitchEndToEnd(t *testing.T) {
+	dsn := os.Getenv("VERIFY_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("VERIFY_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	if err := db.RunMigrations(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	authRepo := auth.NewRepository(pool)
+	authService := auth.NewService(authRepo, auth.ModeDev, "")
+	secretCipher := NewSecretCipher("verify-test-key-000000000000000000000000")
+	resourceRepo := NewRepository(pool)
+	service := NewService(resourceRepo, &captureAuditLogger{}, fakeKeyVaultResolver{}, nil, nil, secretCipher, authRepo)
+
+	const password = "switch-owner-password-1"
+	owner, err := authService.CreateUser(ctx, auth.CreateUserInput{
+		Username: "switch-owner", DisplayName: "Switch Owner", Email: "switch@example.com",
+		Password: password, IsAdmin: true,
+	})
+	if err != nil {
+		t.Fatalf("create owner: %v", err)
+	}
+	login, err := authService.Login(ctx, "switch-owner", password)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	ownerUser, err := authRepo.UserByToken(ctx, login.Token)
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+
+	// Create a personal password.
+	res, err := service.Create(ctx, ownerUser, CreateResourceInput{
+		Name: "switcher", Type: TypeSharedSecret, Personal: true, Owner: "Switch Owner",
+		Username: "switch@example.com", SecretMode: SecretModeInline, SecretValue: "the-pw", RevealAllowed: true,
+	})
+	if err != nil {
+		t.Fatalf("create personal: %v", err)
+	}
+	assertClass := func(id, wantPrefix string) string {
+		var v string
+		if err := pool.QueryRow(ctx, `select secret_value from resource_secrets where resource_id = $1`, id).Scan(&v); err != nil {
+			t.Fatalf("read %s: %v", id, err)
+		}
+		if !strings.HasPrefix(v, wantPrefix) {
+			t.Fatalf("expected %s to start with %q, got %q", id, wantPrefix, v)
+		}
+		return v
+	}
+	assertClass(res.ID, "enc:v2:personal:owner:")
+
+	// Switch personal → shared WITHOUT re-entering the secret (owner session
+	// unlocked). It must re-wrap to shared and become org-readable.
+	toShared := resourceToUpdateInput(res)
+	toShared.Personal = false
+	toShared.SecretValue = ""
+	if _, err := service.Update(ctx, ownerUser, res.ID, toShared); err != nil {
+		t.Fatalf("switch to shared: %v", err)
+	}
+	assertClass(res.ID, "enc:v2:shared:")
+	// The server-side chain (no vault key) can now read it — that's "shared".
+	var sharedVal string
+	_ = pool.QueryRow(ctx, `select secret_value from resource_secrets where resource_id = $1`, res.ID).Scan(&sharedVal)
+	if plain, err := secretCipher.DecryptFromStorage(ctx, sharedVal); err != nil || plain != "the-pw" {
+		t.Fatalf("expected shared secret org-readable, got %q err=%v", plain, err)
+	}
+
+	// Switch shared → personal WITHOUT re-entering; re-seals to the owner vault.
+	toPersonal := resourceToUpdateInput(res)
+	toPersonal.Personal = true
+	toPersonal.OwnerUserID = owner.ID
+	toPersonal.Owner = "Switch Owner"
+	toPersonal.SecretValue = ""
+	if _, err := service.Update(ctx, ownerUser, res.ID, toPersonal); err != nil {
+		t.Fatalf("switch to personal: %v", err)
+	}
+	personalVal := assertClass(res.ID, "enc:v2:personal:owner:")
+	if _, err := secretCipher.DecryptFromStorage(ctx, personalVal); !errors.Is(err, ErrVaultLocked) {
+		t.Fatalf("expected re-personalized secret to be server-unreadable, got %v", err)
+	}
+	if reveal, err := service.Reveal(ctx, ownerUser, res.ID); err != nil || reveal.SecretValue != "the-pw" {
+		t.Fatalf("owner reveal after round-trip: got %q err=%v", reveal.SecretValue, err)
+	}
+
+	// personal→shared with a LOCKED session must refuse (needs owner's key).
+	lockedOwner := ownerUser
+	lockedOwner.VaultPrivateKey = nil
+	toSharedLocked := resourceToUpdateInput(res)
+	toSharedLocked.Personal = false
+	toSharedLocked.SecretValue = ""
+	if _, err := service.Update(ctx, lockedOwner, res.ID, toSharedLocked); !errors.Is(err, ErrVaultLocked) {
+		t.Fatalf("expected locked personal→shared switch to require unlock, got %v", err)
+	}
+
+	// Authorization: a non-owner admin CANNOT flip someone else's shared
+	// resource straight to personal (that would seal it to their own vault).
+	// Return it to shared first (owner, unlocked).
+	backToShared := resourceToUpdateInput(res)
+	backToShared.Personal = false
+	backToShared.SecretValue = ""
+	if _, err := service.Update(ctx, ownerUser, res.ID, backToShared); err != nil {
+		t.Fatalf("return to shared: %v", err)
+	}
+	otherAdmin, err := authService.CreateUser(ctx, auth.CreateUserInput{
+		Username: "other-admin", DisplayName: "Other Admin", Email: "other@example.com",
+		Password: "other-admin-password-1", IsAdmin: true,
+	})
+	if err != nil {
+		t.Fatalf("create other admin: %v", err)
+	}
+	otherLogin, err := authService.Login(ctx, "other-admin", "other-admin-password-1")
+	if err != nil {
+		t.Fatalf("other login: %v", err)
+	}
+	otherUser, err := authRepo.UserByToken(ctx, otherLogin.Token)
+	if err != nil {
+		t.Fatalf("other session: %v", err)
+	}
+	seize := resourceToUpdateInput(res)
+	seize.Personal = true
+	seize.SecretValue = ""
+	if _, err := service.Update(ctx, otherUser, res.ID, seize); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected non-owner shared→personal seizure to be forbidden, got %v", err)
+	}
+	// The secret stayed shared and readable — nothing was seized.
+	if reveal, err := service.Reveal(ctx, otherUser, res.ID); err != nil || reveal.SecretValue != "the-pw" {
+		t.Fatalf("expected shared resource intact after blocked seizure, got %q err=%v", reveal.SecretValue, err)
+	}
+	_ = otherAdmin
+}
+
 func TestAccountLifecycleEndToEnd(t *testing.T) {
 	dsn := os.Getenv("VERIFY_DATABASE_URL")
 	if dsn == "" {
