@@ -42,6 +42,8 @@ type Authenticator interface {
 	IssueBrowserExtensionConnectToken(ctx context.Context, user User, mode Mode) (BrowserExtensionConnectToken, error)
 	ExchangeBrowserExtensionConnectToken(ctx context.Context, token string, installationID string) (LoginResult, error)
 	Logout(ctx context.Context, token string) error
+	ChangeOwnPassword(ctx context.Context, user User, currentPassword, newPassword string) error
+	AcceptInvite(ctx context.Context, token, password string) (LoginResult, error)
 	ListLocalGroups(ctx context.Context) ([]LocalGroup, error)
 	ListUsers(ctx context.Context) ([]UserSummary, error)
 	CreateUser(ctx context.Context, input CreateUserInput) (UserAccessDetail, error)
@@ -58,6 +60,8 @@ type Service struct {
 	browserExtensionTTL     time.Duration
 	connectTokenTTL         time.Duration
 	defaultDirectRightsJSON string
+	inviteMailer            InviteMailer
+	inviteBaseURL           string
 }
 
 func NewService(repo *Repository, mode Mode, defaultDirectRightsJSON string) *Service {
@@ -84,7 +88,24 @@ func (s *Service) Login(ctx context.Context, username, password string) (LoginRe
 	if err != nil {
 		return LoginResult{}, err
 	}
-	return s.issueSession(ctx, user, s.mode, false)
+	result, err := s.issueSession(ctx, user, s.mode, false)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	// Local login carries the password: create the personal vault on first
+	// login and unlock it for this session. The password itself is never
+	// stored — it only derives the key that wraps the vault's private key.
+	vaultKey, err := s.repo.EnsureLocalUserVault(ctx, result.User.ID, password)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if len(vaultKey) > 0 {
+		if err := s.repo.attachVaultKeyToSession(ctx, "auth_sessions", result.Token, vaultKey); err != nil {
+			return LoginResult{}, err
+		}
+		result.User.VaultPrivateKey = vaultKey
+	}
+	return result, nil
 }
 
 func (s *Service) IssueSession(ctx context.Context, user User, mode Mode) (LoginResult, error) {
@@ -103,7 +124,7 @@ func (s *Service) IssueBrowserExtensionConnectToken(ctx context.Context, user Us
 	if blocked {
 		return BrowserExtensionConnectToken{}, ErrBlocked
 	}
-	token, expiresAt, err := s.repo.CreateBrowserExtensionConnectToken(ctx, resolvedUser.ID, mode, s.connectTokenTTL)
+	token, expiresAt, err := s.repo.CreateBrowserExtensionConnectToken(ctx, resolvedUser.ID, mode, s.connectTokenTTL, user.VaultPrivateKey)
 	if err != nil {
 		return BrowserExtensionConnectToken{}, err
 	}
@@ -121,7 +142,7 @@ func (s *Service) ExchangeBrowserExtensionConnectToken(ctx context.Context, toke
 	if token == "" || installationID == "" {
 		return LoginResult{}, ErrInvalidInput
 	}
-	userID, mode, err := s.repo.ExchangeBrowserExtensionConnectToken(ctx, token)
+	userID, mode, vaultKey, err := s.repo.ExchangeBrowserExtensionConnectToken(ctx, token)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -140,7 +161,7 @@ func (s *Service) ExchangeBrowserExtensionConnectToken(ctx context.Context, toke
 	if blocked {
 		return LoginResult{}, ErrBlocked
 	}
-	sessionToken, err := s.repo.UpsertBrowserExtensionSession(ctx, resolvedUser.ID, installationID, s.browserExtensionTTL)
+	sessionToken, err := s.repo.UpsertBrowserExtensionSession(ctx, resolvedUser.ID, installationID, s.browserExtensionTTL, vaultKey)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -251,13 +272,23 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (UserAc
 		return UserAccessDetail{}, fmt.Errorf("%w: email is required", ErrInvalidInput)
 	case !strings.Contains(input.Email, "@"):
 		return UserAccessDetail{}, fmt.Errorf("%w: email address must be valid", ErrInvalidInput)
-	case len(input.Password) < 8:
+	case input.Invite && input.Password != "":
+		return UserAccessDetail{}, fmt.Errorf("%w: invited users set their own password via the invite link", ErrInvalidInput)
+	case !input.Invite && len(input.Password) < 8:
 		return UserAccessDetail{}, fmt.Errorf("%w: password must be at least 8 characters", ErrInvalidInput)
 	}
 
 	id, err := s.repo.CreateUser(ctx, input)
 	if err != nil {
 		return UserAccessDetail{}, err
+	}
+	// With a direct password the vault exists from day one (known gap: the
+	// admin who typed the password could unlock it — prefer invites, where
+	// the vault is born from a password no admin has seen).
+	if !input.Invite {
+		if _, err := s.repo.EnsureLocalUserVault(ctx, id, input.Password); err != nil {
+			return UserAccessDetail{}, err
+		}
 	}
 	return s.GetUserAccess(ctx, id)
 }

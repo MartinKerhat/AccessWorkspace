@@ -95,9 +95,19 @@ export type CreateUserInput = {
   displayName: string;
   email: string;
   password: string;
+  invite: boolean;
   isAdmin: boolean;
   blocked: boolean;
   directLocalGroups: string[];
+};
+
+export type UserInvite = {
+  token: string;
+  userId: string;
+  purpose: string;
+  expiresAt: string;
+  personalResourcesDeleted?: number;
+  emailSent?: boolean;
 };
 
 export type AuthMode = "dev" | "entra";

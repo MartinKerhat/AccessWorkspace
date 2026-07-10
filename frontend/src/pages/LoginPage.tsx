@@ -3,13 +3,69 @@ type Props = {
   loading?: boolean;
   message?: string;
   microsoftEnabled?: boolean;
+  inviteToken?: string;
   onSignIn: (username: string, password: string) => Promise<void>;
   onMicrosoftSignIn?: () => void;
+  onAcceptInvite?: (password: string) => Promise<void>;
 };
 
-export function LoginPage({ loading, message, microsoftEnabled, onSignIn, onMicrosoftSignIn }: Props) {
+export function LoginPage({ loading, message, microsoftEnabled, inviteToken, onSignIn, onMicrosoftSignIn, onAcceptInvite }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [invitePasswordConfirm, setInvitePasswordConfirm] = useState("");
+
+  if (inviteToken && onAcceptInvite) {
+    const mismatch = invitePasswordConfirm !== "" && invitePassword !== invitePasswordConfirm;
+    const tooShort = invitePassword !== "" && invitePassword.length < 8;
+    const ready = invitePassword.length >= 8 && invitePassword === invitePasswordConfirm;
+    return (
+      <div className="login-shell">
+        <section className="login-panel">
+          <div className="login-panel-header">
+            <div>
+              <p className="eyebrow">Account setup</p>
+              <h2>Set your password</h2>
+            </div>
+          </div>
+          <p className="section-copy">
+            Choose the password for your workspace account. It cannot be recovered if forgotten — a reset deletes your
+            personal saved passwords.
+          </p>
+          {message ? <div className="banner compact">{message}</div> : null}
+          <div className="form-grid">
+            <label className="wide">
+              <span>New password</span>
+              <input
+                type="password"
+                value={invitePassword}
+                onChange={(event) => setInvitePassword(event.target.value)}
+                placeholder="At least 8 characters"
+              />
+            </label>
+            <label className="wide">
+              <span>Confirm password</span>
+              <input
+                type="password"
+                value={invitePasswordConfirm}
+                onChange={(event) => setInvitePasswordConfirm(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && ready && !loading) {
+                    void onAcceptInvite(invitePassword);
+                  }
+                }}
+              />
+            </label>
+          </div>
+          {tooShort ? <p className="section-copy">Password must be at least 8 characters.</p> : null}
+          {mismatch ? <p className="section-copy">Passwords do not match.</p> : null}
+          <button className="button primary" disabled={loading || !ready} onClick={() => void onAcceptInvite(invitePassword)}>
+            {loading ? "Setting up..." : "Set password and sign in"}
+          </button>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="login-shell">

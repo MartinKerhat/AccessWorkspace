@@ -19,6 +19,10 @@ type User struct {
 	DirectRights []string `json:"directRights,omitempty"`
 	IsAdmin     bool     `json:"isAdmin"`
 	Blocked     bool     `json:"blocked,omitempty"`
+	// VaultPrivateKey is the session-unlocked personal-vault private key,
+	// unwrapped per request from the session row via the raw bearer token.
+	// Never serialized. nil = vault locked (or absent) for this request.
+	VaultPrivateKey []byte `json:"-"`
 }
 
 type LocalGroup struct {
@@ -85,6 +89,10 @@ type CreateUserInput struct {
 	DisplayName       string   `json:"displayName"`
 	Email             string   `json:"email"`
 	Password          string   `json:"password"`
+	// Invite creates the account without a password; the user sets their own
+	// via a one-time invite link (so no admin ever knows it — a requirement
+	// of the personal-vault design).
+	Invite            bool     `json:"invite"`
 	IsAdmin           bool     `json:"isAdmin"`
 	Blocked           bool     `json:"blocked"`
 	DirectLocalGroups []string `json:"directLocalGroups"`

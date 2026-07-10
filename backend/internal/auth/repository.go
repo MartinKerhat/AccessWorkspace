@@ -63,23 +63,33 @@ func (r *Repository) CreateSession(ctx context.Context, userID string, ttl time.
 	return token, nil
 }
 
-func (r *Repository) CreateBrowserExtensionConnectToken(ctx context.Context, userID string, mode Mode, ttl time.Duration) (string, time.Time, error) {
+func (r *Repository) CreateBrowserExtensionConnectToken(ctx context.Context, userID string, mode Mode, ttl time.Duration, vaultPrivateKey []byte) (string, time.Time, error) {
 	token := uuid.NewString()
 	expiresAt := time.Now().UTC().Add(ttl)
+	// Hand the caller's unlocked vault over to the extension: wrapped under
+	// the raw connect token, it survives exactly one exchange.
+	wrappedVaultKey := ""
+	if len(vaultPrivateKey) > 0 {
+		wrapped, err := vaultSeal(deriveSessionWrapKey(token), vaultPrivateKey)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		wrappedVaultKey = wrapped
+	}
 	_, err := r.db.Exec(ctx, `
-		insert into browser_extension_connect_tokens (token, user_id, auth_mode, expires_at)
-		values ($1, $2, $3, $4)
-	`, hashToken(token), strings.TrimSpace(userID), string(mode), expiresAt)
+		insert into browser_extension_connect_tokens (token, user_id, auth_mode, expires_at, vault_private_key)
+		values ($1, $2, $3, $4, $5)
+	`, hashToken(token), strings.TrimSpace(userID), string(mode), expiresAt, wrappedVaultKey)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	return token, expiresAt, nil
 }
 
-func (r *Repository) ExchangeBrowserExtensionConnectToken(ctx context.Context, token string) (string, Mode, error) {
+func (r *Repository) ExchangeBrowserExtensionConnectToken(ctx context.Context, token string) (string, Mode, []byte, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
@@ -87,26 +97,37 @@ func (r *Repository) ExchangeBrowserExtensionConnectToken(ctx context.Context, t
 
 	var userID string
 	var authMode string
+	var wrappedVaultKey string
 	err = tx.QueryRow(ctx, `
 		delete from browser_extension_connect_tokens
 		where token = $1 and expires_at > now()
-		returning user_id, auth_mode
-	`, hashToken(token)).Scan(&userID, &authMode)
+		returning user_id, auth_mode, vault_private_key
+	`, hashToken(token)).Scan(&userID, &authMode, &wrappedVaultKey)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", "", ErrUnauthenticated
+			return "", "", nil, ErrUnauthenticated
 		}
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
-	return userID, Mode(authMode), nil
+	// Unlock handover: only the raw connect token (never stored) opens this.
+	vaultPrivateKey := openSessionVaultKey(token, wrappedVaultKey)
+	return userID, Mode(authMode), vaultPrivateKey, nil
 }
 
-func (r *Repository) UpsertBrowserExtensionSession(ctx context.Context, userID string, installationID string, ttl time.Duration) (string, error) {
+func (r *Repository) UpsertBrowserExtensionSession(ctx context.Context, userID string, installationID string, ttl time.Duration, vaultPrivateKey []byte) (string, error) {
 	token := uuid.NewString()
+	wrappedVaultKey := ""
+	if len(vaultPrivateKey) > 0 {
+		wrapped, err := vaultSeal(deriveSessionWrapKey(token), vaultPrivateKey)
+		if err != nil {
+			return "", err
+		}
+		wrappedVaultKey = wrapped
+	}
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return "", err
@@ -123,9 +144,9 @@ func (r *Repository) UpsertBrowserExtensionSession(ctx context.Context, userID s
 	}
 
 	if _, err := tx.Exec(ctx, `
-		insert into browser_extension_sessions (token, user_id, installation_id, expires_at)
-		values ($1, $2, $3, now() + ($4 * interval '1 second'))
-	`, hashToken(token), strings.TrimSpace(userID), strings.TrimSpace(installationID), int(ttl.Seconds())); err != nil {
+		insert into browser_extension_sessions (token, user_id, installation_id, expires_at, vault_private_key)
+		values ($1, $2, $3, now() + ($4 * interval '1 second'), $5)
+	`, hashToken(token), strings.TrimSpace(userID), strings.TrimSpace(installationID), int(ttl.Seconds()), wrappedVaultKey); err != nil {
 		return "", err
 	}
 
@@ -138,17 +159,19 @@ func (r *Repository) UpsertBrowserExtensionSession(ctx context.Context, userID s
 func (r *Repository) UserByToken(ctx context.Context, token string) (User, error) {
 	var user User
 	var blocked bool
+	var wrappedVaultKey string
 	tokenHash := hashToken(token)
 	err := r.db.QueryRow(ctx, `
-		select u.id, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights
+		select u.id, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights, s.vault_private_key
 		from auth_sessions s
 		join app_users u on u.id = s.user_id
 		where s.token = $1 and s.expires_at > now()
-	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights)
+	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &wrappedVaultKey)
 	if err == nil {
 		if blocked {
 			return User{}, ErrBlocked
 		}
+		user.VaultPrivateKey = openSessionVaultKey(token, wrappedVaultKey)
 		return user, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -156,17 +179,18 @@ func (r *Repository) UserByToken(ctx context.Context, token string) (User, error
 	}
 
 	err = r.db.QueryRow(ctx, `
-		select u.id, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights
+		select u.id, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights, s.vault_private_key
 		from browser_extension_sessions s
 		join app_users u on u.id = s.user_id
 		where s.token = $1 and s.expires_at > now()
-	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights)
+	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &wrappedVaultKey)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrUnauthenticated
 		}
 		return User{}, err
 	}
+	user.VaultPrivateKey = openSessionVaultKey(token, wrappedVaultKey)
 	if _, touchErr := r.db.Exec(ctx, `
 		update browser_extension_sessions
 		set last_used_at = now()
@@ -306,9 +330,15 @@ func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (str
 	input.Password = strings.TrimSpace(input.Password)
 	input.DirectLocalGroups = uniqueNormalized(input.DirectLocalGroups)
 
-	passwordHash, err := HashPassword(input.Password)
-	if err != nil {
-		return "", err
+	// No password = invite-pending account: the marker is not a valid bcrypt
+	// hash, so login is impossible until the invite link sets a real one.
+	passwordHash := invitePendingPasswordHash
+	if input.Password != "" {
+		hash, err := HashPassword(input.Password)
+		if err != nil {
+			return "", err
+		}
+		passwordHash = hash
 	}
 
 	tx, err := r.db.Begin(ctx)

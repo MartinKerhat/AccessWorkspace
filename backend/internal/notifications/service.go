@@ -222,19 +222,26 @@ func calendarDayDistanceUTC(now time.Time, expiry time.Time) int {
 }
 
 func (s *Service) sendEmail(ctx context.Context, recipient auth.UserSummary, notification resources.UserNotification) error {
+	return s.SendPlainEmail(ctx, recipient.Email, notification.Title, notification.Body)
+}
+
+// SendPlainEmail delivers a plain-text email through the configured SMTP
+// runtime. Errors when email delivery is not enabled/configured — callers
+// decide whether that is fatal (reminders) or best-effort (invite links).
+func (s *Service) SendPlainEmail(ctx context.Context, toEmail, subject, body string) error {
 	config, err := s.policies.GetNotificationEmailRuntime(ctx)
 	if err != nil {
 		return err
 	}
-	if !config.Enabled || !config.Configured || strings.TrimSpace(recipient.Email) == "" {
+	if !config.Enabled || !config.Configured || strings.TrimSpace(toEmail) == "" {
 		return errors.New("notification email delivery is not configured")
 	}
 	var message bytes.Buffer
-	message.WriteString(fmt.Sprintf("To: %s\r\n", recipient.Email))
+	message.WriteString(fmt.Sprintf("To: %s\r\n", toEmail))
 	message.WriteString(fmt.Sprintf("From: %s\r\n", config.From))
-	message.WriteString(fmt.Sprintf("Subject: %s\r\n", notification.Title))
+	message.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 	message.WriteString("\r\n")
-	message.WriteString(notification.Body)
+	message.WriteString(body)
 	message.WriteString("\r\n")
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
@@ -242,7 +249,7 @@ func (s *Service) sendEmail(ctx context.Context, recipient auth.UserSummary, not
 	if strings.TrimSpace(config.Username) != "" || strings.TrimSpace(config.Password) != "" {
 		authMethod = smtp.PlainAuth("", config.Username, config.Password, config.Host)
 	}
-	return smtp.SendMail(address, authMethod, config.From, []string{recipient.Email}, message.Bytes())
+	return smtp.SendMail(address, authMethod, config.From, []string{toEmail}, message.Bytes())
 }
 
 func (r *Repository) ensureReminder(ctx context.Context, notification resources.UserNotification) (resources.UserNotification, bool, error) {

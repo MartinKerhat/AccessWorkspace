@@ -73,6 +73,13 @@ type RDPSigningRuntimeConfig struct {
 	RootCertBase64        string
 }
 
+// VaultPublicKeyResolver looks up a user's personal-vault public key.
+// nil result = the user has no vault (personal secrets fall back to the
+// shared class until one exists). Implemented by auth.Repository.
+type VaultPublicKeyResolver interface {
+	VaultPublicKey(ctx context.Context, userID string) ([]byte, error)
+}
+
 type Service struct {
 	repo             ResourceStore
 	audit            AuditLogger
@@ -80,6 +87,7 @@ type Service struct {
 	appRegistrations AppRegistrationResolver
 	notifications    AppRegistrationNotificationEvaluator
 	cipher           *SecretCipher
+	vaults           VaultPublicKeyResolver
 	launchTickets    *launchTicketStore
 	rdpSigning       RDPSigningConfigProvider
 	syncMu           sync.Mutex
@@ -88,6 +96,7 @@ type Service struct {
 func NewService(repo ResourceStore, audit AuditLogger, keyVault KeyVaultSecretResolver, appRegistrations AppRegistrationResolver, notifications AppRegistrationNotificationEvaluator, cipherOrProviders ...any) *Service {
 	var selectedCipher *SecretCipher
 	var rdpSigning RDPSigningConfigProvider
+	var vaults VaultPublicKeyResolver
 	for _, item := range cipherOrProviders {
 		switch value := item.(type) {
 		case *SecretCipher:
@@ -98,6 +107,10 @@ func NewService(repo ResourceStore, audit AuditLogger, keyVault KeyVaultSecretRe
 			if value != nil {
 				rdpSigning = value
 			}
+		case VaultPublicKeyResolver:
+			if value != nil {
+				vaults = value
+			}
 		}
 	}
 	return &Service{
@@ -107,6 +120,7 @@ func NewService(repo ResourceStore, audit AuditLogger, keyVault KeyVaultSecretRe
 		appRegistrations: appRegistrations,
 		notifications:    notifications,
 		cipher:           selectedCipher,
+		vaults:           vaults,
 		launchTickets:    newLaunchTicketStore(),
 		rdpSigning:       rdpSigning,
 	}
@@ -327,7 +341,7 @@ func (s *Service) Reveal(ctx context.Context, user auth.User, id string) (Reveal
 		ResourceName: &resource.Name,
 		Metadata:     map[string]any{"type": resource.Type},
 	})
-	secretValue, err := s.resolveRevealValue(ctx, resource)
+	secretValue, err := s.resolveRevealValue(ctx, user, resource)
 	if err != nil {
 		return RevealResult{}, err
 	}
@@ -349,7 +363,7 @@ func (s *Service) Launch(ctx context.Context, user auth.User, id string) (Launch
 	}
 	resource = s.applyConnectionCredentialOverride(ctx, user, resource)
 	payload := buildLaunchPayload(resource)
-	payload, err = s.buildLauncherPayload(ctx, resource, payload)
+	payload, err = s.buildLauncherPayload(ctx, user, resource, payload)
 	if err != nil {
 		return LaunchPayload{}, err
 	}
@@ -457,7 +471,7 @@ func (s *Service) FillPortalCredential(ctx context.Context, user auth.User, reso
 		return PortalCredentialFillResult{}, ErrForbidden
 	}
 
-	password, err := s.resolveRevealValue(ctx, resource)
+	password, err := s.resolveRevealValue(ctx, user, resource)
 	if err != nil {
 		return PortalCredentialFillResult{}, err
 	}
@@ -1307,7 +1321,7 @@ func (s *Service) applyConnectionCredentialOverride(ctx context.Context, user au
 	return resource
 }
 
-func (s *Service) buildLauncherPayload(ctx context.Context, resource Resource, browserPayload LaunchPayload) (LaunchPayload, error) {
+func (s *Service) buildLauncherPayload(ctx context.Context, user auth.User, resource Resource, browserPayload LaunchPayload) (LaunchPayload, error) {
 	if resource.Type != TypeSSH && resource.Type != TypeRDP {
 		return browserPayload, nil
 	}
@@ -1335,7 +1349,7 @@ func (s *Service) buildLauncherPayload(ctx context.Context, resource Resource, b
 		}
 	}
 
-	secretValue, err := s.resolveLaunchSecret(ctx, resource)
+	secretValue, err := s.resolveLaunchSecret(ctx, user, resource)
 	if err != nil {
 		return LaunchPayload{}, err
 	}
@@ -1360,7 +1374,17 @@ func cloneLaunchMetadata(input map[string]any) map[string]any {
 	return out
 }
 
-func (s *Service) resolveRevealValue(ctx context.Context, resource Resource) (string, error) {
+// decryptStoredSecret is the single read entrypoint for inline secret
+// values: personal envelopes open with the requester's session vault key
+// (ErrVaultLocked when absent), everything else through the org cipher.
+func (s *Service) decryptStoredSecret(ctx context.Context, user auth.User, value string) (string, error) {
+	if IsPersonalEnvelope(value) {
+		return s.cipher.DecryptPersonalFromStorage(ctx, value, user.VaultPrivateKey)
+	}
+	return s.cipher.DecryptFromStorage(ctx, value)
+}
+
+func (s *Service) resolveRevealValue(ctx context.Context, user auth.User, resource Resource) (string, error) {
 	if resource.Type == TypeKeyVaultSecret &&
 		resource.SourceKind == SourceKindAzureKeyVault &&
 		resource.Secret.Mode == SecretModeExternal &&
@@ -1373,18 +1397,18 @@ func (s *Service) resolveRevealValue(ctx context.Context, resource Resource) (st
 		return value, nil
 	}
 	if resource.Secret.Mode == SecretModeInline && s.cipher != nil {
-		return s.cipher.DecryptFromStorage(ctx, resource.Secret.Value)
+		return s.decryptStoredSecret(ctx, user, resource.Secret.Value)
 	}
 	return resource.Secret.Value, nil
 }
 
-func (s *Service) resolveLaunchSecret(ctx context.Context, resource Resource) (string, error) {
+func (s *Service) resolveLaunchSecret(ctx context.Context, user auth.User, resource Resource) (string, error) {
 	switch resource.Secret.Mode {
 	case SecretModePrompt:
 		return "", nil
 	case SecretModeInline:
 		if s.cipher != nil {
-			return s.cipher.DecryptFromStorage(ctx, resource.Secret.Value)
+			return s.decryptStoredSecret(ctx, user, resource.Secret.Value)
 		}
 		return resource.Secret.Value, nil
 	case SecretModeExternal:
@@ -1784,8 +1808,24 @@ func (s *Service) prepareSecretForStorage(ctx context.Context, input *CreateReso
 	if strings.TrimSpace(input.SecretValue) == "" {
 		return nil
 	}
-	// Personal resources also use the shared class until per-owner wrapping
-	// keys land; the resources.personal column identifies rows to rewrap then.
+	// Personal secrets are sealed to the owner's vault public key when a
+	// vault exists — writing needs no unlock. Owners without a vault yet
+	// (SSO users before passkey/passphrase setup) fall back to the shared
+	// class so nothing breaks; those rows migrate lazily once a vault exists.
+	if input.Personal && s.vaults != nil {
+		publicKey, err := s.vaults.VaultPublicKey(ctx, strings.TrimSpace(input.OwnerUserID))
+		if err != nil {
+			return err
+		}
+		if len(publicKey) > 0 {
+			encrypted, err := s.cipher.EncryptPersonalForStorage(ctx, input.SecretValue, publicKey)
+			if err != nil {
+				return err
+			}
+			input.SecretValue = encrypted
+			return nil
+		}
+	}
 	encrypted, err := s.cipher.EncryptForStorage(ctx, input.SecretValue, SecretClassShared)
 	if err != nil {
 		return err

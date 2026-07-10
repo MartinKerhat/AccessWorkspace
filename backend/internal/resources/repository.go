@@ -21,61 +21,88 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 // UpgradeSecretEncryption rewrites stored secret values in older formats
-// (pre-encryption plaintext or v1 single-key ciphertext) as v2 envelopes, and
+// (pre-encryption plaintext or v1 single-key ciphertext) as v2 envelopes,
 // fully heals rows corrupted by the historical double-encryption bug —
-// including v2 envelopes whose inner content is still ciphertext. Runs at
-// startup; healthy v2 rows are left untouched.
-func (r *Repository) UpgradeSecretEncryption(ctx context.Context, cipher *SecretCipher) error {
+// including v2 envelopes whose inner content is still ciphertext — and moves
+// PERSONAL secrets whose owner has a vault into personal envelopes (sealing
+// needs only the owner's public key, so this runs without the owner).
+// Runs at startup; healthy rows in their final class are left untouched.
+func (r *Repository) UpgradeSecretEncryption(ctx context.Context, cipher *SecretCipher, vaults VaultPublicKeyResolver) error {
 	rows, err := r.db.Query(ctx, `
-		select resource_id, secret_value
-		from resource_secrets
-		where secret_value <> ''
+		select rs.resource_id, rs.secret_value, res.personal, res.owner_user_id
+		from resource_secrets rs
+		join resources res on res.id = rs.resource_id
+		where rs.secret_value <> ''
 	`)
 	if err != nil {
 		return err
 	}
-	pending := map[string]string{}
+	type pendingRow struct {
+		value       string
+		personal    bool
+		ownerUserID string
+	}
+	pending := map[string]pendingRow{}
 	for rows.Next() {
-		var id, value string
-		if err := rows.Scan(&id, &value); err != nil {
+		var id, value, ownerUserID string
+		var personal bool
+		if err := rows.Scan(&id, &value, &personal, &ownerUserID); err != nil {
 			rows.Close()
 			return err
 		}
-		pending[id] = value
+		// Personal envelopes are cryptographically out of the server's reach
+		// (by design) — migrations must never touch them.
+		if IsPersonalEnvelope(value) {
+			continue
+		}
+		pending[id] = pendingRow{value: value, personal: personal, ownerUserID: strings.TrimSpace(ownerUserID)}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	for id, value := range pending {
+	for id, row := range pending {
+		value := row.value
+
+		// The row's destination: personal envelope when the owner has a
+		// vault, shared envelope otherwise (owners without vaults — SSO
+		// users pre-unlock-setup — migrate on a later boot).
+		var ownerPublicKey []byte
+		if row.personal && row.ownerUserID != "" && vaults != nil {
+			publicKey, err := vaults.VaultPublicKey(ctx, row.ownerUserID)
+			if err != nil {
+				return err
+			}
+			ownerPublicKey = publicKey
+		}
+
 		plain, layers, err := cipher.DecryptFully(ctx, value)
 		if err != nil {
 			return err
 		}
-		// Healthy v2 row: single layer, current format. Rewrap the DEK if the
-		// active KEK provider changed (e.g. local -> key vault); otherwise
-		// leave untouched.
-		if layers == 1 && !NeedsEncryptionUpgrade(value) {
+
+		var encrypted string
+		switch {
+		case len(ownerPublicKey) > 0:
+			// Convert to a personal envelope (also covers healthy shared v2
+			// rows — the class changes, so the row is always rewritten).
+			encrypted, err = cipher.EncryptPersonalForStorage(ctx, plain, ownerPublicKey)
+		case layers == 1 && !NeedsEncryptionUpgrade(value):
+			// Healthy shared/app v2 row: rewrap the DEK if the active KEK
+			// provider changed; otherwise leave untouched.
 			if !cipher.NeedsRewrap(value) {
 				continue
 			}
-			rewrapped, err := cipher.RewrapForStorage(ctx, value)
-			if err != nil {
-				return err
-			}
-			if _, err := r.db.Exec(ctx, `
-				update resource_secrets
-				set secret_value = $2, updated_at = now()
-				where resource_id = $1 and secret_value = $3
-			`, id, rewrapped, value); err != nil {
-				return err
-			}
-			continue
+			encrypted, err = cipher.RewrapForStorage(ctx, value)
+		default:
+			encrypted, err = cipher.EncryptForStorage(ctx, plain, SecretClassShared)
 		}
-		encrypted, err := cipher.EncryptForStorage(ctx, plain, SecretClassShared)
 		if err != nil {
 			return err
+		}
+		if encrypted == value {
+			continue
 		}
 		// Guard on the old value so a concurrent update is not clobbered.
 		if _, err := r.db.Exec(ctx, `

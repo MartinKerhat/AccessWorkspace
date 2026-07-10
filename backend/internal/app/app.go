@@ -137,7 +137,7 @@ func New(cfg Config) (*App, error) {
 		pool.Close()
 		return nil, err
 	}
-	if err := resourceRepo.UpgradeSecretEncryption(ctx, secretCipher); err != nil {
+	if err := resourceRepo.UpgradeSecretEncryption(ctx, secretCipher, authRepo); err != nil {
 		pool.Close()
 		return nil, err
 	}
@@ -206,7 +206,10 @@ func New(cfg Config) (*App, error) {
 	auditService := audit.NewService(auditRepo)
 	authService := auth.NewService(authRepo, auth.Mode(cfg.AuthMode), cfg.EntraDirectRights)
 	notificationService := notifications.NewService(notificationRepo, resourceRepo, authService, adminStore)
-	resourceService := resources.NewService(resourceRepo, auditService, keyVaultService, appRegistrationService, notificationService, secretCipher, rdpSigningProvider{store: adminStore})
+	// Invite/reset links are emailed via the notifications SMTP config when
+	// available; the link is always returned for manual sharing regardless.
+	authService.ConfigureInviteDelivery(notificationService, cfg.FrontendURL)
+	resourceService := resources.NewService(resourceRepo, auditService, keyVaultService, appRegistrationService, notificationService, secretCipher, rdpSigningProvider{store: adminStore}, authRepo)
 
 	artifactSource, err := artifacts.NewSource(artifacts.Config{
 		Source:  cfg.ArtifactsSource,

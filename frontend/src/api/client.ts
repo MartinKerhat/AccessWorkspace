@@ -27,6 +27,7 @@ import type {
   BrowserExtensionConnectToken,
   ConnectionCredentialOverride,
   CreateUserInput,
+  UserInvite,
   UserNotification,
   VisibleResourceSummary,
   UserSummary,
@@ -125,6 +126,28 @@ export const api = {
   },
   authMe(authToken: string) {
     return request<AuthMeResponse>("/auth/me", {}, authToken);
+  },
+  acceptInvite(token: string, password: string) {
+    return request<AuthLoginResponse>("/auth/invite/accept", {
+      method: "POST",
+      body: JSON.stringify({ token, password })
+    });
+  },
+  changePassword(currentPassword: string, newPassword: string, authToken: string) {
+    return request<{ status: string }>(
+      "/auth/password",
+      {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword })
+      },
+      authToken
+    );
+  },
+  issueUserInvite(userId: string, authToken: string) {
+    return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/invite`, { method: "POST" }, authToken);
+  },
+  resetUserPassword(userId: string, authToken: string) {
+    return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/reset-password`, { method: "POST" }, authToken);
   },
   authLogout(authToken: string) {
     return request<{ status: string }>("/auth/logout", { method: "POST" }, authToken);
@@ -334,8 +357,9 @@ export const api = {
   listUsers(authToken: string) {
     return request<{ items: UserSummary[] }>("/admin/users", {}, authToken);
   },
-  createAdminUser(input: CreateUserInput, authToken: string) {
-    return request<UserAccessDetail>(
+  async createAdminUser(input: CreateUserInput, authToken: string) {
+    // Invite mode responds with { user, invite }; direct mode with the user.
+    const response = await request<UserAccessDetail | { user: UserAccessDetail; invite: UserInvite }>(
       "/admin/users",
       {
         method: "POST",
@@ -343,6 +367,10 @@ export const api = {
       },
       authToken
     );
+    if ("invite" in response) {
+      return response;
+    }
+    return { user: response, invite: null as UserInvite | null };
   },
   listAdminNotificationDeliveries(authToken: string) {
     return request<{ items: NotificationDeliveryRecord[] }>("/admin/notification-deliveries", {}, authToken);

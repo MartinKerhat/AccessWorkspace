@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CreateUserInput, LocalGroup, UserAccessDetail, UserAccessUpdateInput, UserSummary, VisibleResourceSummary } from "../types";
+import type { CreateUserInput, LocalGroup, UserAccessDetail, UserAccessUpdateInput, UserInvite, UserSummary, VisibleResourceSummary } from "../types";
 import { categoryLabel, type WorkspaceCategory } from "../workspaceCategories";
 
 type Props = {
@@ -12,9 +12,10 @@ type Props = {
   currentUserId: string;
   loading?: boolean;
   onSelect: (id: string) => void;
-  onCreate: (input: CreateUserInput) => Promise<boolean>;
+  onCreate: (input: CreateUserInput) => Promise<{ ok: boolean; invite: UserInvite | null }>;
   onSave: (input: UserAccessUpdateInput) => void;
   onDelete: (user: UserAccessDetail) => void;
+  onResetPassword: (user: UserAccessDetail) => Promise<UserInvite | null>;
 };
 
 const emptyCreateUserDraft: CreateUserInput = {
@@ -22,10 +23,15 @@ const emptyCreateUserDraft: CreateUserInput = {
   displayName: "",
   email: "",
   password: "",
+  invite: true,
   isAdmin: false,
   blocked: false,
   directLocalGroups: []
 };
+
+function inviteLinkURL(invite: UserInvite) {
+  return `${window.location.origin}${window.location.pathname}?invite=${encodeURIComponent(invite.token)}`;
+}
 
 const assignmentSourceLabels: Record<string, string> = {
   direct_assignment: "Direct assignment",
@@ -73,7 +79,8 @@ export function UserAccessAdminPage({
   onSelect,
   onCreate,
   onSave,
-  onDelete
+  onDelete,
+  onResetPassword
 }: Props) {
   const [query, setQuery] = useState("");
   const [draftBlocked, setDraftBlocked] = useState(false);
@@ -90,6 +97,8 @@ export function UserAccessAdminPage({
   const [createDraft, setCreateDraft] = useState<CreateUserInput>(emptyCreateUserDraft);
   const [createGroupPickerOpen, setCreateGroupPickerOpen] = useState(false);
   const [createGroupSearch, setCreateGroupSearch] = useState("");
+  const [pendingInvite, setPendingInvite] = useState<{ userName: string; invite: UserInvite } | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   useEffect(() => {
     setDraftBlocked(Boolean(selectedUser?.blocked));
@@ -238,6 +247,42 @@ export function UserAccessAdminPage({
         </div>
       </div>
 
+      {pendingInvite ? (
+        <div className="detail-section">
+          <p className="eyebrow">{pendingInvite.invite.purpose === "reset" ? "Password reset link" : "Invite link"}</p>
+          <h3>
+            {pendingInvite.invite.emailSent
+              ? `Invite emailed to ${pendingInvite.userName}`
+              : `Share this one-time link with ${pendingInvite.userName}`}
+          </h3>
+          <p className="section-copy">
+            {pendingInvite.invite.emailSent
+              ? "You can also share the link directly. "
+              : "Email delivery is not configured, so share the link directly. "}
+            It works once and expires {new Date(pendingInvite.invite.expiresAt).toLocaleString()}.
+          </p>
+          <div className="form-grid">
+            <label className="wide">
+              <span>One-time link</span>
+              <input readOnly value={inviteLinkURL(pendingInvite.invite)} onFocus={(event) => event.target.select()} />
+            </label>
+          </div>
+          <div className="action-row">
+            <button
+              className="button primary"
+              onClick={() => {
+                void navigator.clipboard.writeText(inviteLinkURL(pendingInvite.invite)).then(() => setInviteCopied(true));
+              }}
+            >
+              {inviteCopied ? "Copied" : "Copy link"}
+            </button>
+            <button className="button ghost" onClick={() => setPendingInvite(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {createOpen ? (
         <div className="detail-section">
           <div className="panel-header compact-panel-header">
@@ -269,14 +314,26 @@ export function UserAccessAdminPage({
                 onChange={(event) => setCreateDraft((current) => ({ ...current, username: event.target.value }))}
               />
             </label>
-            <label>
-              <span>Password</span>
+            <label className="checkbox">
               <input
-                type="password"
-                value={createDraft.password}
-                onChange={(event) => setCreateDraft((current) => ({ ...current, password: event.target.value }))}
+                type="checkbox"
+                checked={createDraft.invite}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, invite: event.target.checked, password: "" }))
+                }
               />
+              <span>Send an invite link — the user sets their own password.</span>
             </label>
+            {!createDraft.invite ? (
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={createDraft.password}
+                  onChange={(event) => setCreateDraft((current) => ({ ...current, password: event.target.value }))}
+                />
+              </label>
+            ) : null}
             <label className="checkbox">
               <input
                 type="checkbox"
@@ -352,9 +409,14 @@ export function UserAccessAdminPage({
               className="button primary"
               disabled={loading}
               onClick={() => {
-                void onCreate(createDraft).then((created) => {
-                  if (!created) {
+                const displayName = createDraft.displayName;
+                void onCreate(createDraft).then((result) => {
+                  if (!result.ok) {
                     return;
+                  }
+                  if (result.invite) {
+                    setPendingInvite({ userName: displayName, invite: result.invite });
+                    setInviteCopied(false);
                   }
                   setCreateDraft(emptyCreateUserDraft);
                   setCreateOpen(false);
@@ -363,7 +425,7 @@ export function UserAccessAdminPage({
                 });
               }}
             >
-              Create user
+              {createDraft.invite ? "Create user and get invite link" : "Create user"}
             </button>
           </div>
         </div>
@@ -444,6 +506,31 @@ export function UserAccessAdminPage({
                     }
                   >
                     Save user access
+                  </button>
+                  <button
+                    className="button ghost danger-button"
+                    disabled={loading || selectedUser.id === currentUserId}
+                    title={
+                      selectedUser.id === currentUserId
+                        ? "Use Change password in your account menu instead"
+                        : "Force a password reset"
+                    }
+                    onClick={() => {
+                      const confirmed = window.confirm(
+                        `Reset ${selectedUser.name}'s password?\n\nThis signs them out everywhere and permanently deletes their personal saved passwords. This cannot be undone.\n\nYou will get a one-time link for them to set a new password.`
+                      );
+                      if (!confirmed) {
+                        return;
+                      }
+                      void onResetPassword(selectedUser).then((invite) => {
+                        if (invite) {
+                          setPendingInvite({ userName: selectedUser.name, invite });
+                          setInviteCopied(false);
+                        }
+                      });
+                    }}
+                  >
+                    Reset password
                   </button>
                   <button
                     className="button ghost danger-button"

@@ -7,9 +7,12 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"io"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/nacl/box"
 )
 
 // legacyEncryptV1 produces v1-format ciphertext the way the pre-envelope
@@ -220,6 +223,70 @@ func TestSecretCipherWrongKeyFails(t *testing.T) {
 	}
 	if _, err := NewSecretCipher("key-two").DecryptFromStorage(ctx, encrypted); err == nil {
 		t.Fatalf("expected decryption with a different master key to fail")
+	}
+}
+
+func TestPersonalEnvelopeRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	secretCipher := NewSecretCipher("test-key")
+	pub, priv, err := box.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+
+	encrypted, err := secretCipher.EncryptPersonalForStorage(ctx, "my-personal-password", pub[:])
+	if err != nil {
+		t.Fatalf("encrypt personal: %v", err)
+	}
+	if !strings.HasPrefix(encrypted, "enc:v2:personal:owner:") {
+		t.Fatalf("expected personal envelope, got %q", encrypted)
+	}
+	if !IsPersonalEnvelope(encrypted) || IsPersonalEnvelope("enc:v2:shared:local:AA:BB") {
+		t.Fatalf("IsPersonalEnvelope misclassifies")
+	}
+
+	// Owner's private key opens it.
+	plain, err := secretCipher.DecryptPersonalFromStorage(ctx, encrypted, priv[:])
+	if err != nil || plain != "my-personal-password" {
+		t.Fatalf("decrypt with owner key: got %q err=%v", plain, err)
+	}
+
+	// No key -> vault locked; server-side chain -> vault locked too.
+	if _, err := secretCipher.DecryptPersonalFromStorage(ctx, encrypted, nil); !errors.Is(err, ErrVaultLocked) {
+		t.Fatalf("expected ErrVaultLocked without key, got %v", err)
+	}
+	if _, err := secretCipher.DecryptFromStorage(ctx, encrypted); !errors.Is(err, ErrVaultLocked) {
+		t.Fatalf("expected ErrVaultLocked via server chain, got %v", err)
+	}
+
+	// A different user's key must fail.
+	_, otherPriv, err := box.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate other keypair: %v", err)
+	}
+	if _, err := secretCipher.DecryptPersonalFromStorage(ctx, encrypted, otherPriv[:]); err == nil {
+		t.Fatalf("expected foreign key to fail")
+	}
+
+	// Idempotence: round-tripping the ciphertext through either encrypt path
+	// leaves it unchanged (update-without-secret regression).
+	again, err := secretCipher.EncryptPersonalForStorage(ctx, encrypted, pub[:])
+	if err != nil || again != encrypted {
+		t.Fatalf("expected personal encrypt idempotence, err=%v", err)
+	}
+	viaShared, err := secretCipher.EncryptForStorage(ctx, encrypted, SecretClassShared)
+	if err != nil || viaShared != encrypted {
+		t.Fatalf("expected shared encrypt path to pass personal envelope through, err=%v", err)
+	}
+
+	// Non-personal values fall through DecryptPersonalFromStorage.
+	shared, err := secretCipher.EncryptForStorage(ctx, "shared-value", SecretClassShared)
+	if err != nil {
+		t.Fatalf("encrypt shared: %v", err)
+	}
+	plain, err = secretCipher.DecryptPersonalFromStorage(ctx, shared, priv[:])
+	if err != nil || plain != "shared-value" {
+		t.Fatalf("expected fall-through for shared value, got %q err=%v", plain, err)
 	}
 }
 

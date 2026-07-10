@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api/client";
 import { ResourceFormModal } from "./modals/ResourceFormModal";
 import { AdminConfigModal } from "./modals/AdminConfigModal";
+import { ChangePasswordModal } from "./modals/ChangePasswordModal";
 import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
 import { KeyVaultImportModal } from "./modals/KeyVaultImportModal";
@@ -56,6 +57,7 @@ import type {
   ResourceForm,
   ResourceSummary,
   RevealResult,
+  UserInvite,
   UserNotification,
   VisibleResourceSummary,
   UserSummary,
@@ -412,6 +414,10 @@ export default function App() {
   const [keyVaultSyncing, setKeyVaultSyncing] = useState(false);
   const [appRegistrationSyncing, setAppRegistrationSyncing] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [inviteToken, setInviteToken] = useState<string>(() =>
+    new URLSearchParams(window.location.search).get("invite") ?? ""
+  );
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const [formState, setFormState] = useState<FormState>(closedFormState);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
@@ -675,6 +681,48 @@ export default function App() {
       }
     } catch (error) {
       setMessage(authMessage(error, "Sign-in failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function acceptInvite(password: string) {
+    setBusy(true);
+    try {
+      const response = await api.acceptInvite(inviteToken, password);
+      localStorage.setItem(authTokenStorageKey, response.token);
+      setSession({
+        user: response.user,
+        authToken: response.token,
+        authMode: response.authMode,
+        capabilities: response.capabilities
+      });
+      setInviteToken("");
+      // Drop the one-time token from the address bar.
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      setMessage(undefined);
+      if (!window.location.hash) {
+        window.location.hash = "#connections";
+      }
+    } catch (error) {
+      setMessage(authMessage(error, "Account setup failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    if (!session) {
+      return false;
+    }
+    setBusy(true);
+    try {
+      await api.changePassword(currentPassword, newPassword, session.authToken);
+      setMessage("Password changed");
+      return true;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Changing password failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -1622,13 +1670,13 @@ export default function App() {
     }
   }
 
-  async function handleCreateAdminUser(input: CreateUserInput) {
+  async function handleCreateAdminUser(input: CreateUserInput): Promise<{ ok: boolean; invite: UserInvite | null }> {
     if (!session) {
-      return false;
+      return { ok: false, invite: null };
     }
     setBusy(true);
     try {
-      const created = await api.createAdminUser(input, session.authToken);
+      const { user: created, invite } = await api.createAdminUser(input, session.authToken);
       setSelectedAdminUserId(created.id);
       setSelectedAdminUser(created);
       await Promise.all([loadKnownUsers(session.authToken), loadLocalGroups(session.authToken)]);
@@ -1636,11 +1684,37 @@ export default function App() {
       if (session.capabilities.canViewAudit) {
         await loadAudit(session.authToken);
       }
-      setMessage(`User ${created.name} created`);
-      return true;
+      setMessage(invite ? `User ${created.name} created — share the invite link` : `User ${created.name} created`);
+      return { ok: true, invite };
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Creating user failed");
-      return false;
+      return { ok: false, invite: null };
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResetAdminUserPassword(target: UserAccessDetail): Promise<UserInvite | null> {
+    if (!session) {
+      return null;
+    }
+    setBusy(true);
+    try {
+      const invite = await api.resetUserPassword(target.id, session.authToken);
+      await loadKnownUsers(session.authToken);
+      await loadAdminUserDetail(target.id, session.authToken);
+      if (session.capabilities.canViewAudit) {
+        await loadAudit(session.authToken);
+      }
+      setMessage(
+        invite.personalResourcesDeleted && invite.personalResourcesDeleted > 0
+          ? `Password reset for ${target.name} — ${invite.personalResourcesDeleted} personal password(s) were destroyed`
+          : `Password reset for ${target.name} — share the reset link`
+      );
+      return invite;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Resetting password failed");
+      return null;
     } finally {
       setBusy(false);
     }
@@ -1878,8 +1952,10 @@ export default function App() {
         loading={busy}
         message={message}
         microsoftEnabled={loginOptions.microsoftLoginHint}
+        inviteToken={inviteToken || undefined}
         onSignIn={signIn}
         onMicrosoftSignIn={handleMicrosoftSignIn}
+        onAcceptInvite={acceptInvite}
       />
     );
   }
@@ -2023,6 +2099,15 @@ export default function App() {
                       Browser extensions
                     </button>
                   ) : null}
+                  <button
+                    className="button ghost"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      setChangePasswordOpen(true);
+                    }}
+                  >
+                    Change password
+                  </button>
                   <button className="button ghost" onClick={signOut}>
                     Sign out
                   </button>
@@ -2178,6 +2263,7 @@ export default function App() {
                 onCreate={(input) => handleCreateAdminUser(input)}
                 onSave={(input) => void handleSaveAdminUserAccess(input)}
                 onDelete={(target) => void handleDeleteAdminUser(target)}
+                onResetPassword={(target) => handleResetAdminUserPassword(target)}
               />
             ) : null}
 
@@ -2291,6 +2377,10 @@ export default function App() {
             }
             onClose={() => setFormState(closedFormState)}
           />
+        ) : null}
+
+        {changePasswordOpen ? (
+          <ChangePasswordModal busy={busy} onSave={changePassword} onClose={() => setChangePasswordOpen(false)} />
         ) : null}
 
         {adminModalOpen ? (

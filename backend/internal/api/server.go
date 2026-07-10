@@ -154,6 +154,8 @@ type LocalGroupAdminService interface {
 	DeleteUser(ctx context.Context, actor auth.User, id string) (auth.DeleteUserResult, error)
 	CreateLocalGroup(ctx context.Context, input auth.LocalGroupInput) error
 	UpdateLocalGroup(ctx context.Context, name string, input auth.LocalGroupInput) error
+	IssueUserInvite(ctx context.Context, actor auth.User, userID string, purpose string) (auth.UserInvite, error)
+	ResetUserPassword(ctx context.Context, actor auth.User, userID string) (auth.UserInvite, error)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -194,6 +196,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLogin(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/logout":
 		s.handleLogout(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/password":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleChangePassword(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/invite/accept":
+		s.handleAcceptInvite(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/browser-extension-session":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -870,7 +879,55 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, user a
 		writeError(w, err)
 		return
 	}
+	if input.Invite {
+		invite, err := s.localGroups.IssueUserInvite(r.Context(), user, item.ID, "invite")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"user": item, "invite": invite})
+		return
+	}
 	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.authenticator.ChangeOwnPassword(r.Context(), user, input.CurrentPassword, input.NewPassword); err != nil {
+		writeError(w, err)
+		return
+	}
+	_ = s.audit.Log(r.Context(), audit.LogParams{
+		EventType: audit.EventUserAccessUpdated,
+		UserID:    user.ID,
+		UserName:  user.Name,
+		Metadata:  map[string]any{"action": "password_changed"},
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	result, err := s.authenticator.AcceptInvite(r.Context(), input.Token, input.Password)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleAdminNotificationDeliveries(w http.ResponseWriter, r *http.Request, user auth.User) {
@@ -901,6 +958,39 @@ func (s *Server) handleAdminUserRoutes(w http.ResponseWriter, r *http.Request, u
 	id, err := url.PathUnescape(strings.TrimSpace(parts[0]))
 	if err != nil || id == "" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+
+	if len(parts) == 2 && r.Method == http.MethodPost && parts[1] == "reset-password" {
+		// Destroys the user's vault and personal secrets (unrecoverable by
+		// design), kills their sessions, and returns a one-time reset link.
+		invite, err := s.localGroups.ResetUserPassword(r.Context(), user, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		_ = s.audit.Log(r.Context(), audit.LogParams{
+			EventType: audit.EventUserAccessUpdated,
+			UserID:    user.ID,
+			UserName:  user.Name,
+			Metadata: map[string]any{
+				"action":                   "password_reset_forced",
+				"targetUserId":             id,
+				"personalResourcesDeleted": invite.PersonalResourcesDeleted,
+			},
+		})
+		writeJSON(w, http.StatusOK, invite)
+		return
+	}
+
+	if len(parts) == 2 && r.Method == http.MethodPost && parts[1] == "invite" {
+		// Re-issues the one-time invite link (invalidates any previous one).
+		invite, err := s.localGroups.IssueUserInvite(r.Context(), user, id, "invite")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, invite)
 		return
 	}
 
@@ -1572,6 +1662,15 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusBadGateway
 		message = keyVaultErr.Error()
 		log.Printf("key vault api error: %v", err)
+	}
+	if errors.Is(err, resources.ErrVaultLocked) {
+		// 423 Locked: the personal vault needs an unlock in this session;
+		// the frontend/extension react by starting the unlock flow.
+		writeJSON(w, http.StatusLocked, map[string]string{
+			"error": "personal vault is locked",
+			"code":  "vault_locked",
+		})
+		return
 	}
 	if errors.Is(err, resources.ErrForbidden) {
 		status = http.StatusForbidden

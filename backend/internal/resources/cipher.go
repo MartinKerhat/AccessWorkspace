@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"golang.org/x/crypto/curve25519"
+	"golang.org/x/crypto/nacl/box"
 )
 
 // Storage formats, oldest first:
@@ -37,7 +40,24 @@ type SecretClass string
 const (
 	SecretClassShared   SecretClass = "shared"
 	SecretClassAppScope SecretClass = "app"
+	// SecretClassPersonal wraps the DEK to the owner's vault PUBLIC key
+	// (X25519 sealed box) — anyone can write, only the owner's unlocked
+	// private key reads. kek-id is `owner`; never resolvable server-side.
+	SecretClassPersonal SecretClass = "personal"
 )
+
+const personalKekID = "owner"
+
+// ErrVaultLocked is returned when a personal secret is read without the
+// owner's vault private key in the session.
+var ErrVaultLocked = errors.New("personal vault is locked")
+
+// IsPersonalEnvelope reports whether the stored value is a personal-class v2
+// envelope (readable only with the owner's vault key). Startup migrations
+// must skip these — the server alone can never decrypt them, by design.
+func IsPersonalEnvelope(value string) bool {
+	return strings.HasPrefix(strings.TrimSpace(value), envelopePrefix+string(SecretClassPersonal)+":")
+}
 
 type SecretCipher struct {
 	legacy cipher.AEAD            // v1 reads only
@@ -188,6 +208,111 @@ func (c *SecretCipher) EncryptForStorage(ctx context.Context, value string, clas
 		base64.StdEncoding.EncodeToString(sealed), nil
 }
 
+// EncryptPersonalForStorage seals the value into a personal-class envelope:
+// fresh DEK for the value, DEK sealed to the owner's vault public key. Works
+// without any unlock — writing into a vault never requires opening it.
+// Already-encrypted values pass through (same idempotence as shared).
+func (c *SecretCipher) EncryptPersonalForStorage(ctx context.Context, value string, ownerPublicKey []byte) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	if IsEncryptedForStorage(trimmed) {
+		return trimmed, nil
+	}
+	if len(ownerPublicKey) != 32 {
+		return "", errors.New("owner vault public key is invalid")
+	}
+
+	dek := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, dek); err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nonce, nonce, []byte(trimmed), nil)
+
+	var pub [32]byte
+	copy(pub[:], ownerPublicKey)
+	wrapped, err := box.SealAnonymous(nil, dek, &pub, rand.Reader)
+	for i := range dek {
+		dek[i] = 0
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return envelopePrefix + string(SecretClassPersonal) + ":" + personalKekID + ":" +
+		base64.StdEncoding.EncodeToString(wrapped) + ":" +
+		base64.StdEncoding.EncodeToString(sealed), nil
+}
+
+// DecryptPersonalFromStorage opens a personal-class envelope with the
+// owner's vault private key (nil/empty key → ErrVaultLocked). Non-personal
+// values fall through to the regular decrypt path so callers can use this
+// as the single read entrypoint for resource secrets.
+func (c *SecretCipher) DecryptPersonalFromStorage(ctx context.Context, value string, ownerPrivateKey []byte) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if !IsPersonalEnvelope(trimmed) {
+		return c.DecryptFromStorage(ctx, trimmed)
+	}
+	if len(ownerPrivateKey) != 32 {
+		return "", ErrVaultLocked
+	}
+	parts := strings.SplitN(strings.TrimPrefix(trimmed, envelopePrefix), ":", 4)
+	if len(parts) != 4 {
+		return "", errors.New("encrypted secret envelope is invalid")
+	}
+	wrapped, err := base64.StdEncoding.DecodeString(parts[2])
+	if err != nil {
+		return "", err
+	}
+	sealed, err := base64.StdEncoding.DecodeString(parts[3])
+	if err != nil {
+		return "", err
+	}
+
+	var priv, pub [32]byte
+	copy(priv[:], ownerPrivateKey)
+	curve25519.ScalarBaseMult(&pub, &priv)
+	dek, ok := box.OpenAnonymous(nil, wrapped, &pub, &priv)
+	if !ok {
+		return "", errors.New("personal secret does not belong to this vault")
+	}
+	defer func() {
+		for i := range dek {
+			dek[i] = 0
+		}
+	}()
+
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(sealed) < gcm.NonceSize() {
+		return "", errors.New("encrypted secret payload is invalid")
+	}
+	plain, err := gcm.Open(nil, sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():], nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
 // DecryptFully unwraps every encryption layer until plaintext remains and
 // reports how many layers were removed. Healthy values have exactly one
 // layer; more mean the value was corrupted by the historical
@@ -237,6 +362,10 @@ func (c *SecretCipher) openEnvelope(ctx context.Context, payload string) (string
 	parts := strings.SplitN(payload, ":", 4)
 	if len(parts) != 4 {
 		return "", errors.New("encrypted secret envelope is invalid")
+	}
+	if parts[0] == string(SecretClassPersonal) {
+		// Personal envelopes never open through the server-side key chain.
+		return "", ErrVaultLocked
 	}
 	kekID := parts[1]
 	provider, ok := c.unwrap[kekID]
