@@ -84,6 +84,10 @@ func main() {
 
 	item, err := resolvePayload(rawURI, encodedPayload, flag.Args())
 	if err != nil {
+		// The launcher is a windowsgui binary, so stderr is invisible in
+		// protocol launches — a dialog is the only way the user sees failures.
+		launcher.Logf("decode launch payload failed: %v", err)
+		launcher.ShowLaunchFailure(err)
 		exitWithError(err)
 	}
 
@@ -93,6 +97,7 @@ func main() {
 	}
 
 	if err := launcher.Run(item); err != nil {
+		launcher.ShowLaunchFailure(err)
 		exitWithError(err)
 	}
 }

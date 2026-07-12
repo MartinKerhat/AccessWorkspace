@@ -25,26 +25,34 @@ func ShowLaunchFailure(err error) {
 	if err == nil {
 		return
 	}
-	showLauncherMessageBox("Access Workspace launch failed.\n\n"+err.Error(), "Access Workspace Launcher")
+	showLauncherMessageBox("Access Workspace launch failed.\n\n"+err.Error()+"\n\n"+LauncherLogHint(), "Access Workspace Launcher")
 }
 
 func Run(item payload.LaunchPayload) error {
+	Logf("launch requested: resource=%s type=%s target=%s method=%s", item.ResourceID, item.ResourceType, item.Target, item.Method)
 	resolved, err := resolveLaunchPayload(item)
 	if err != nil {
+		Logf("launch failed while resolving ticket: %v", err)
 		return err
 	}
 	item = resolved
 
 	switch item.ResourceType {
 	case "ssh":
-		return runSSH(item)
+		err = runSSH(item)
 	case "rdp":
-		return runRDP(item)
+		err = runRDP(item)
 	case "web_portal":
-		return openURL(item.URL)
+		err = openURL(item.URL)
 	default:
-		return fmt.Errorf("unsupported resource type %q", item.ResourceType)
+		err = fmt.Errorf("unsupported resource type %q", item.ResourceType)
 	}
+	if err != nil {
+		Logf("launch failed: resource=%s type=%s target=%s: %v", item.ResourceID, item.ResourceType, item.Target, err)
+	} else {
+		Logf("launch dispatched: resource=%s type=%s target=%s", item.ResourceID, item.ResourceType, item.Target)
+	}
+	return err
 }
 
 func resolveLaunchPayload(item payload.LaunchPayload) (payload.LaunchPayload, error) {
@@ -118,6 +126,9 @@ func runRDP(item payload.LaunchPayload) error {
 				return fmt.Errorf("store rdp credentials: %w (%s)", err, strings.TrimSpace(string(output)))
 			}
 		}
+		Logf("rdp: stored credentials for %v", cmdkeyTargets)
+	} else {
+		Logf("rdp: no stored credentials (login present=%t, secret present=%t)", login != "", secret != "")
 	}
 
 	tempFile := ""
@@ -128,6 +139,7 @@ func runRDP(item payload.LaunchPayload) error {
 		if err != nil {
 			return err
 		}
+		Logf("rdp: profile %s (signRequired=%t, signingEnabled=%t)", tempFile, signRequired, payload.MetadataBool(item.Metadata, "rdpSigningEnabled"))
 		if err := ensureRDPSigningTrust(item.Metadata); err != nil {
 			return err
 		}
@@ -138,25 +150,58 @@ func runRDP(item payload.LaunchPayload) error {
 			// only elevates the first time or when the cert rotates. If it fails
 			// (e.g. elevation declined) the launch still proceeds; mstsc just
 			// shows its untrusted-publisher warning.
-			_ = SyncAgentPrerequisites()
+			if err := SyncAgentPrerequisites(); err != nil {
+				Logf("rdp: publisher trust sync failed (continuing): %v", err)
+			}
 		}
 		if signRequired {
 			if err := signRDPProfile(item.Metadata, tempFile); err != nil {
 				return err
 			}
+			Logf("rdp: profile signed")
 		}
 		args = []string{tempFile}
 	}
 
 	command := exec.Command("mstsc.exe", args...)
 	if err := command.Start(); err != nil {
-		return err
+		return fmt.Errorf("start mstsc: %w", err)
 	}
+	Logf("rdp: mstsc started (pid=%d, args=%v)", command.Process.Pid, args)
 	go focusLaunchedWindow(command.Process.Pid)
 	if len(cmdkeyTargets) > 0 {
 		go clearRDPCredentialsLater(cmdkeyTargets)
 	}
+	// mstsc exiting within the watch window means no connection window ever
+	// appeared (rejected signature, corrupt profile, ...). Without this check
+	// the web app reports a successful hand-off while nothing happens.
+	if err := waitForEarlyRDPExit(command, 2500*time.Millisecond); err != nil {
+		return err
+	}
 	return nil
+}
+
+func waitForEarlyRDPExit(command *exec.Cmd, window time.Duration) error {
+	done := make(chan error, 1)
+	go func() { done <- command.Wait() }()
+	select {
+	case waitErr := <-done:
+		exitCode := 0
+		if command.ProcessState != nil {
+			exitCode = command.ProcessState.ExitCode()
+		}
+		return fmt.Errorf("the remote desktop client exited immediately (code %d, err=%v) — the connection profile was likely rejected", exitCode, waitErr)
+	case <-time.After(window):
+		go func() {
+			waitErr := <-done
+			exitCode := 0
+			if command.ProcessState != nil {
+				exitCode = command.ProcessState.ExitCode()
+			}
+			Logf("rdp: mstsc pid=%d exited (code=%d, err=%v)", command.Process.Pid, exitCode, waitErr)
+		}()
+		return nil
+	}
 }
 
 func openURL(target string) error {
