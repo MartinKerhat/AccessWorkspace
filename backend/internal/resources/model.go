@@ -251,6 +251,7 @@ type PortalCredentialMatch struct {
 	TargetURL    string `json:"targetUrl"`
 	Personal     bool   `json:"personal"`
 	Owner        string `json:"owner"`
+	OwnerUserID  string `json:"ownerUserId"`
 }
 
 type PortalCredentialFillResult struct {

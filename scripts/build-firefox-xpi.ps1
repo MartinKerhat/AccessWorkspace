@@ -1,5 +1,5 @@
 param(
-  [string]$OutputPath = "frontend/public/downloads/access-workspace-browser-extension-firefox-v0.2.5.xpi"
+  [string]$OutputPath = "artifacts/extensions/firefox/unsigned/access-workspace-browser-extension-firefox-v0.2.8.xpi"
 )
 
 $ErrorActionPreference = "Stop"

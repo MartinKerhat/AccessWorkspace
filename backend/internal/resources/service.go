@@ -397,12 +397,20 @@ func (s *Service) ListPasswordOptions(ctx context.Context, user auth.User) ([]Re
 	visible := explainVisibleResourcesForUser(user, items)
 	options := make([]ResourceSummary, 0, len(visible))
 	for _, item := range visible {
-		if !isPasswordOverrideCandidateSummary(item.ResourceSummary) {
+		if !isPersonalPasswordOverrideOption(item.ResourceSummary) {
 			continue
 		}
 		options = append(options, item.ResourceSummary)
 	}
 	return options, nil
+}
+
+// isPersonalPasswordOverrideOption gates what the override picker offers:
+// only the caller's personal saved passwords, never shared or web-portal
+// credentials. Existing overrides that predate this rule keep working via
+// the more lenient isPasswordOverrideCandidate.
+func isPersonalPasswordOverrideOption(resource ResourceSummary) bool {
+	return isPasswordOverrideCandidateSummary(resource) && resource.Personal && resource.Type == TypeSharedSecret
 }
 
 func (s *Service) ListPortalCredentialMatches(ctx context.Context, user auth.User, rawURL string) ([]PortalCredentialMatch, error) {
@@ -435,6 +443,7 @@ func (s *Service) ListPortalCredentialMatches(ctx context.Context, user auth.Use
 			TargetURL:    item.TargetURL,
 			Personal:     item.Personal,
 			Owner:        item.Owner,
+			OwnerUserID:  item.OwnerUserID,
 		})
 	}
 
@@ -556,8 +565,8 @@ func (s *Service) SetConnectionCredentialOverride(ctx context.Context, user auth
 	if !canViewResource(user, passwordResource.Summary()) {
 		return ConnectionCredentialOverride{}, ErrForbidden
 	}
-	if !isPasswordOverrideCandidate(passwordResource) {
-		return ConnectionCredentialOverride{}, fmt.Errorf("%w: selected password object cannot be used as a connection override", ErrInvalidInput)
+	if !isPersonalPasswordOverrideOption(passwordResource.Summary()) {
+		return ConnectionCredentialOverride{}, fmt.Errorf("%w: only your personal saved passwords can be used as a connection override", ErrInvalidInput)
 	}
 	if err := s.repo.UpsertConnectionUserPasswordOverride(ctx, connectionID, user.ID, passwordID); err != nil {
 		return ConnectionCredentialOverride{}, err

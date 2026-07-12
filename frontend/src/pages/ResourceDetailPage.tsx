@@ -107,6 +107,19 @@ export function ResourceDetailPage({
   const [revealedPassword, setRevealedPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [passwordCopyMessage, setPasswordCopyMessage] = useState("");
+  const [overrideExpanded, setOverrideExpanded] = useState(false);
+  const [overridePickerOpen, setOverridePickerOpen] = useState(false);
+  const [overrideSearch, setOverrideSearch] = useState("");
+
+  const overrideOptions = passwordOptions.filter((item) => item.personal && item.type === "shared_secret");
+  const filteredOverrideOptions = overrideOptions.filter((item) => {
+    const query = overrideSearch.trim().toLowerCase();
+    if (!query) {
+      return true;
+    }
+    return `${item.name} ${item.username ?? ""}`.toLowerCase().includes(query);
+  });
+  const selectedOverrideOption = overrideOptions.find((item) => item.id === selectedPasswordOptionId);
 
   useEffect(() => {
     setSelectedPasswordOptionId(connectionOverride?.passwordResourceId ?? "");
@@ -116,6 +129,9 @@ export function ResourceDetailPage({
     setRevealedPassword("");
     setPasswordVisible(false);
     setPasswordCopyMessage("");
+    setOverrideExpanded(false);
+    setOverridePickerOpen(false);
+    setOverrideSearch("");
   }, [resource?.id]);
 
   if (!resource) {
@@ -164,6 +180,11 @@ export function ResourceDetailPage({
         </div>
         <div className="detail-header-actions">
           <span className={`resource-type ${resource.type}`}>{resourceTypeLabel(resource.type)}</span>
+          {isConnection && showLaunchAction ? (
+            <button className="button primary" disabled={loading} onClick={() => void onLaunch()}>
+              {launchActionLabel(resource)}
+            </button>
+          ) : null}
           {isConnection && launcherRuntime?.downloadUrl ? (
             (launcherRuntime.downloads?.length ?? 0) > 1 && onOpenLauncherDownloads ? (
               <button className="button ghost" onClick={onOpenLauncherDownloads}>
@@ -292,55 +313,104 @@ export function ResourceDetailPage({
 
       {isConnection ? (
         <div className="detail-section">
-          <p className="eyebrow">My credential override</p>
-          <p className="detail-description">
-            Leave this empty to keep the shared connection username and password. Choose one saved Password object to use your own
-            username and password for this connection.
-          </p>
-          <div className="detail-grid">
+          <div className="override-summary-row">
             <div>
-              <dt>Current override</dt>
-              <dd>
+              <p className="eyebrow">My credential override</p>
+              <p className="detail-description">
                 {connectionOverride?.passwordResourceId
                   ? `${connectionOverride.passwordResourceName || "Saved password"}${connectionOverride.username ? ` (${connectionOverride.username})` : ""}`
                   : "Shared connection default"}
-              </dd>
+              </p>
             </div>
-            <div>
-              <dt>Visibility</dt>
-              <dd>{connectionOverride?.passwordResourceId ? (connectionOverride.personal ? "personal" : "shared") : "n/a"}</dd>
-            </div>
-          </div>
-          <div className="action-row compact-actions">
-            <select
-              value={selectedPasswordOptionId}
-              onChange={(event) => setSelectedPasswordOptionId(event.target.value)}
-              disabled={loading || passwordOptions.length === 0}
-            >
-              <option value="">Use shared connection default</option>
-              {passwordOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                  {item.username ? ` (${item.username})` : ""}
-                  {item.personal ? " [personal]" : ""}
-                </option>
-              ))}
-            </select>
-            <button
-              className="button secondary"
-              disabled={loading || !selectedPasswordOptionId || selectedPasswordOptionId === connectionOverride?.passwordResourceId}
-              onClick={() => void onSaveConnectionOverride?.(selectedPasswordOptionId)}
-            >
-              Save override
-            </button>
-            <button
-              className="button ghost"
-              disabled={loading || !connectionOverride?.passwordResourceId}
-              onClick={() => void onClearConnectionOverride?.()}
-            >
-              Clear override
+            <button className="button ghost" onClick={() => setOverrideExpanded((expanded) => !expanded)}>
+              {overrideExpanded ? "Hide" : "Change"}
             </button>
           </div>
+          {overrideExpanded ? (
+            <>
+              <p className="detail-description">
+                Keep the shared connection default, or pick one of your personal saved passwords to use your own username and
+                password for this connection.
+              </p>
+              <div className="picker-shell">
+                <button
+                  type="button"
+                  className="single-picker-trigger"
+                  disabled={loading}
+                  onClick={() => setOverridePickerOpen((open) => !open)}
+                >
+                  <span>
+                    {selectedOverrideOption
+                      ? `${selectedOverrideOption.name}${selectedOverrideOption.username ? ` (${selectedOverrideOption.username})` : ""}`
+                      : "Use shared connection default"}
+                  </span>
+                  <span>{overridePickerOpen ? "Close" : "Select"}</span>
+                </button>
+                {overridePickerOpen ? (
+                  <div className="group-picker-dropdown">
+                    <input
+                      className="picker-search-input"
+                      value={overrideSearch}
+                      onChange={(event) => setOverrideSearch(event.target.value)}
+                      placeholder="Search your personal passwords"
+                    />
+                    <div className="picker-option-list">
+                      <button
+                        type="button"
+                        className={`picker-option ${selectedPasswordOptionId === "" ? "active" : ""}`}
+                        onClick={() => {
+                          setSelectedPasswordOptionId("");
+                          setOverridePickerOpen(false);
+                          setOverrideSearch("");
+                        }}
+                      >
+                        <strong>Use shared connection default</strong>
+                        <span>No personal override for this connection</span>
+                      </button>
+                      {filteredOverrideOptions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`picker-option ${selectedPasswordOptionId === item.id ? "active" : ""}`}
+                          onClick={() => {
+                            setSelectedPasswordOptionId(item.id);
+                            setOverridePickerOpen(false);
+                            setOverrideSearch("");
+                          }}
+                        >
+                          <strong>{item.name}</strong>
+                          <span>{item.username || "no username"}</span>
+                        </button>
+                      ))}
+                      {filteredOverrideOptions.length === 0 ? (
+                        <span className="selection-hint">
+                          {overrideOptions.length === 0
+                            ? "You have no personal saved passwords yet. Create one under Passwords first."
+                            : "No personal passwords match the current search."}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="action-row compact-actions">
+                <button
+                  className="button secondary"
+                  disabled={loading || !selectedPasswordOptionId || selectedPasswordOptionId === connectionOverride?.passwordResourceId}
+                  onClick={() => void onSaveConnectionOverride?.(selectedPasswordOptionId)}
+                >
+                  Save override
+                </button>
+                <button
+                  className="button ghost"
+                  disabled={loading || !connectionOverride?.passwordResourceId}
+                  onClick={() => void onClearConnectionOverride?.()}
+                >
+                  Clear override
+                </button>
+              </div>
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -521,14 +591,14 @@ export function ResourceDetailPage({
         </>
       ) : null}
 
-      {resource.type !== "app_registration" && (showLaunchAction || (!isConnection && showRevealAction)) ? (
+      {resource.type !== "app_registration" && !isConnection && (showLaunchAction || showRevealAction) ? (
         <div className="action-row compact-actions">
           {showLaunchAction ? (
             <button className="button primary" disabled={loading} onClick={() => void onLaunch()}>
               {launchActionLabel(resource)}
             </button>
           ) : null}
-          {!isConnection && showRevealAction ? (
+          {showRevealAction ? (
             <button className="button secondary" disabled={loading} onClick={() => void onReveal()}>
               Reveal secret
             </button>

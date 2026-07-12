@@ -96,6 +96,46 @@ async function disconnectWorkspace() {
   return { disconnected: true };
 }
 
+const SUGGESTION_DISMISS_TTL_MS = 15 * 60 * 1000;
+
+function suggestionDismissKey(tabId, url) {
+  try {
+    return `suggestionDismissed:${tabId}:${new URL(String(url || "")).host}`;
+  } catch {
+    return "";
+  }
+}
+
+function suggestionDismissStore() {
+  return chrome.storage.session ?? chrome.storage.local;
+}
+
+async function dismissPortalSuggestions(tabId, url) {
+  const key = suggestionDismissKey(tabId, url);
+  if (typeof tabId !== "number" || !key) {
+    return { dismissed: false };
+  }
+  await suggestionDismissStore().set({ [key]: Date.now() });
+  return { dismissed: true };
+}
+
+async function isPortalSuggestionDismissed(tabId, url) {
+  const key = suggestionDismissKey(tabId, url);
+  if (typeof tabId !== "number" || !key) {
+    return false;
+  }
+  const stored = await suggestionDismissStore().get([key]);
+  const dismissedAt = Number(stored[key] || 0);
+  if (!dismissedAt) {
+    return false;
+  }
+  if (Date.now() - dismissedAt > SUGGESTION_DISMISS_TTL_MS) {
+    await suggestionDismissStore().remove(key);
+    return false;
+  }
+  return true;
+}
+
 function normalizePortalUrl(rawUrl) {
   try {
     const parsed = new URL(String(rawUrl || "").trim());
@@ -129,7 +169,12 @@ async function storePendingSaveCandidate(candidate) {
     return { stored: false };
   }
   const normalizedUrl = normalizePortalUrl(candidate.url);
-  const existingMatch = await findPortalCredentialMatch(normalizedUrl, candidate.username).catch(() => null);
+  let existingMatch = await findPortalCredentialMatch(normalizedUrl, candidate.username).catch(() => null);
+  if (existingMatch && !(await ownsPortalCredential(existingMatch))) {
+    // Only the owner of a stored credential gets the update prompt; other
+    // users signing in with their own credentials must not overwrite it.
+    existingMatch = null;
+  }
   if (!config.credentialSavePromptsEnabled && !existingMatch) {
     await chrome.storage.local.remove(PENDING_SAVE_KEY);
     return { stored: false, disabled: true };
@@ -206,6 +251,16 @@ async function findPortalCredentialMatch(url, username) {
   return matches.find((item) => String(item.username || "").trim().toLowerCase() === normalizedUsername) || null;
 }
 
+async function ownsPortalCredential(match) {
+  const ownerUserId = String(match?.ownerUserId || "");
+  if (!ownerUserId) {
+    return false;
+  }
+  const state = await authState().catch(() => null);
+  const userId = String(state?.user?.id || "");
+  return userId !== "" && userId === ownerUserId;
+}
+
 function buildPortalCredentialPayload(input, state) {
   return {
     name: String(input.name || "").trim() || derivePortalName(input),
@@ -259,7 +314,9 @@ async function savePortalCredential(input) {
   const state = await authState();
   const payload = buildPortalCredentialPayload(input, state);
   const existingMatch = await findPortalCredentialMatch(payload.targetUrl, payload.username);
-  if (existingMatch?.resourceId) {
+  const userId = String(state.user?.id || "");
+  const ownsExisting = Boolean(existingMatch?.resourceId) && userId !== "" && String(existingMatch.ownerUserId || "") === userId;
+  if (ownsExisting) {
     const existing = await requestJSON(`/resources/${existingMatch.resourceId}`);
     const updated = await requestJSON(`/resources/${existingMatch.resourceId}`, {
       method: "PUT",
@@ -319,7 +376,7 @@ async function requestJSON(path, options = {}) {
   return payload;
 }
 
-async function handleMessage(message) {
+async function handleMessage(message, sender) {
   switch (message?.type) {
     case "get-config":
       return getConfig();
@@ -348,8 +405,13 @@ async function handleMessage(message) {
     case "disconnect-workspace":
       return disconnectWorkspace();
     case "portal-matches": {
+      if (await isPortalSuggestionDismissed(sender?.tab?.id, message.url)) {
+        return [];
+      }
       return listPortalMatches(message.url);
     }
+    case "dismiss-portal-suggestions":
+      return dismissPortalSuggestions(sender?.tab?.id, message.url);
     case "portal-fill":
       return requestJSON("/browser-extension/portal-fill", {
         method: "POST",
@@ -371,8 +433,8 @@ async function handleMessage(message) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handleMessage(message)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleMessage(message, sender)
     .then((result) => sendResponse({ ok: true, result }))
     .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   return true;

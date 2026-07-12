@@ -658,7 +658,7 @@ export function ResourceFormCard({
                 <span>Open target allowed</span>
               </label>
             ) : null}
-            <label className="checkbox">
+            <label className={`checkbox${isWebPortalPassword ? "" : " wide"}`}>
               <input
                 type="checkbox"
                 checked={form.copyAllowed}
@@ -717,10 +717,6 @@ export function ResourceFormCard({
 
         {isPasswordResource ? (
           <>
-            <label>
-              <span>Username</span>
-              <input value={form.username} onChange={(event) => update("username", event.target.value)} />
-            </label>
             {isWebPortalPassword ? (
               <label className="wide">
                 <span>Portal URL</span>
@@ -728,11 +724,16 @@ export function ResourceFormCard({
               </label>
             ) : null}
             {isSharedPassword && form.targetSystem ? (
-              <label>
+              <label className="wide">
                 <span>Stored system</span>
                 <input value={form.targetSystem} onChange={(event) => update("targetSystem", event.target.value)} />
               </label>
             ) : null}
+            {/* Keep this label directly before the password field below so the two share one row. */}
+            <label>
+              <span>Username</span>
+              <input value={form.username} onChange={(event) => update("username", event.target.value)} />
+            </label>
           </>
         ) : null}
 

@@ -1,5 +1,5 @@
 param(
-  [string]$OutputPath = "frontend/public/downloads/access-workspace-browser-extension-chrome-v0.2.5.zip"
+  [string]$OutputPath = "artifacts/extensions/chrome/access-workspace-browser-extension-chrome-v0.2.8.zip"
 )
 
 $ErrorActionPreference = "Stop"

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Access Workspace Browser Fill",
   "description": "Suggest and fill approved portal credentials from Access Workspace.",
-  "version": "0.2.5",
+  "version": "0.2.8",
   "browser_specific_settings": {
     "gecko": {
       "id": "browser-fill@access-workspace.local",

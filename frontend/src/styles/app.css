@@ -237,6 +237,10 @@ dd {
   border-radius: 28px;
   background: rgba(6, 16, 27, 0.62);
   box-shadow: var(--shadow);
+  position: sticky;
+  top: 28px;
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
 }
 
 .brand-block {
@@ -1534,6 +1538,17 @@ textarea {
 }
 
 .detail-panel {
+  gap: 12px;
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.override-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 

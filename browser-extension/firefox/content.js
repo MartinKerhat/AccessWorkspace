@@ -8,17 +8,52 @@
   let fillPanelDraft = null;
   let recentAutofill = null;
   let dismissedURL = "";
-  let observedURL = window.location.href;
+  let observedURL = "";
 
   function matchLabel(match) {
     return `${match.resourceName}${match.username ? ` (${match.username})` : ""}${match.personal ? " [personal]" : " [shared]"}`;
   }
 
+  // Hash-less page key so SPA fragment navigation does not resurrect a dismissed panel.
+  function currentPageKey() {
+    return window.location.origin + window.location.pathname + window.location.search;
+  }
+
   function syncNavigationState() {
-    if (observedURL !== window.location.href) {
-      observedURL = window.location.href;
+    if (observedURL !== currentPageKey()) {
+      observedURL = currentPageKey();
       dismissedURL = "";
     }
+  }
+
+  function dismissSuggestions() {
+    dismissedURL = currentPageKey();
+    removePanel();
+    // Tell the background so panels in every frame of this tab close too.
+    void sendMessage({ type: "dismiss-portal-suggestions", url: window.location.href }).catch(() => null);
+  }
+
+  // Closes the credential pick list of the fill panel (not the panel itself).
+  // Returns true when an open list was closed.
+  function closeFillPickerMenu() {
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel || panel.dataset.mode !== PANEL_MODE_FILL) {
+      return false;
+    }
+    const menu = panel.querySelector(".aw-fill-picker-menu");
+    if (!(menu instanceof HTMLElement) || menu.hidden) {
+      return false;
+    }
+    menu.hidden = true;
+    const picker = panel.querySelector(".aw-fill-picker");
+    if (picker instanceof HTMLElement) {
+      picker.dataset.open = "false";
+    }
+    const toggle = panel.querySelector(".aw-fill-picker-toggle");
+    if (toggle instanceof HTMLElement) {
+      toggle.textContent = "Select";
+    }
+    return true;
   }
 
   function isSupportedPage() {
@@ -161,6 +196,12 @@
   }
 
   async function injectPanel(matches) {
+    // In small embedded frames the panel cannot be shown fully (its close
+    // button ends up clipped and it covers the page underneath), so skip them.
+    if (!isTopLevelFrame() && (window.innerWidth < 260 || window.innerHeight < 200)) {
+      removePanel();
+      return;
+    }
     const passwordField = firstVisiblePasswordField();
     const usernameField = firstVisibleUsernameField();
     if ((!passwordField && !usernameField) || matches.length === 0) {
@@ -260,16 +301,21 @@
     }
 
     close.onclick = () => {
-      dismissedURL = window.location.href;
       closePicker();
-      removePanel();
+      dismissSuggestions();
     };
-    pickerTrigger.onclick = () => {
-      const nextOpen = picker.dataset.open !== "true";
-      picker.dataset.open = nextOpen ? "true" : "false";
-      pickerMenu.hidden = !nextOpen;
-      pickerToggle.textContent = nextOpen ? "Close" : "Select";
-    };
+    if (matches.length < 2) {
+      // Only one credential matches — there is nothing to pick.
+      pickerTrigger.disabled = true;
+      pickerToggle.textContent = "";
+    } else {
+      pickerTrigger.onclick = () => {
+        const nextOpen = picker.dataset.open !== "true";
+        picker.dataset.open = nextOpen ? "true" : "false";
+        pickerMenu.hidden = !nextOpen;
+        pickerToggle.textContent = nextOpen ? "Close" : "Select";
+      };
+    }
     setSelectedResource(selectedMatch?.resourceId || "");
     action.textContent = passwordField ? "Use credential" : "Fill username";
     status.textContent = passwordField
@@ -416,6 +462,9 @@
         gap: 12px;
         cursor: pointer;
       }
+      #${PANEL_ID} .aw-fill-picker-trigger:disabled {
+        cursor: default;
+      }
       #${PANEL_ID} .aw-fill-picker-value {
         min-width: 0;
         overflow: hidden;
@@ -440,6 +489,14 @@
         border-radius: 14px;
         background: rgba(9, 21, 35, 0.98);
         box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+        max-height: 220px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      /* Our display:grid above would defeat the hidden attribute on pages
+         without a [hidden] reset of their own, leaving the list stuck open. */
+      #${PANEL_ID} .aw-fill-picker-menu[hidden] {
+        display: none !important;
       }
       #${PANEL_ID} .aw-fill-picker-option {
         display: grid;
@@ -722,7 +779,7 @@
       removePanel();
       return;
     }
-    if (dismissedURL === window.location.href) {
+    if (dismissedURL === currentPageKey()) {
       removePanel();
       return;
     }
@@ -822,6 +879,31 @@
       type: "report-save-candidate",
       candidate
     }).catch(() => null);
+  }, true);
+  document.addEventListener("pointerdown", (event) => {
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel || panel.dataset.mode !== PANEL_MODE_FILL) {
+      return;
+    }
+    const picker = panel.querySelector(".aw-fill-picker");
+    if (picker instanceof HTMLElement && event.target instanceof Node && picker.contains(event.target)) {
+      return;
+    }
+    closeFillPickerMenu();
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel || panel.dataset.mode !== PANEL_MODE_FILL) {
+      return;
+    }
+    // First Escape closes the open pick list, the next one dismisses the panel.
+    if (closeFillPickerMenu()) {
+      return;
+    }
+    dismissSuggestions();
   }, true);
   window.addEventListener("focus", scheduleRefresh);
   window.setInterval(scheduleRefresh, 4000);
