@@ -454,7 +454,7 @@ export function ResourceDetailPage({
               />
               <button
                 className="button ghost"
-                disabled={loading || !resource.copyAllowed}
+                disabled={loading || !resource.revealAllowed}
                 onClick={() => void handleCopyPassword()}
               >
                 Reveal

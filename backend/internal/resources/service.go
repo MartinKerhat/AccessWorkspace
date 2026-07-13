@@ -1471,9 +1471,24 @@ func canFillPasswordResource(user auth.User, resource Resource) bool {
 }
 
 func canRevealStoredPassword(user auth.User, resource Resource) bool {
-	return CategoryForType(resource.Type) == "passwords" &&
-		auth.CapabilitiesForUser(user).Categories[resource.Category].Reveal &&
-		CanAccess(devViewer(user), resource.Summary())
+	if CategoryForType(resource.Type) != "passwords" {
+		return false
+	}
+	if !auth.CapabilitiesForUser(user).Categories[resource.Category].Reveal ||
+		!CanAccess(devViewer(user), resource.Summary()) {
+		return false
+	}
+	// Owners and admins can always reveal — they control the policy flags anyway.
+	if resource.OwnerUserID == user.ID || (user.IsAdmin && !resource.Personal) {
+		return true
+	}
+	// Web portals separate seeing the password (revealAllowed) from letting the
+	// browser extension fill it (copyAllowed), so shared portal credentials can
+	// be usable without being readable. Saved passwords keep one copy flag.
+	if resource.Type == TypeWebPortal {
+		return resource.RevealAllowed
+	}
+	return resource.CopyAllowed
 }
 
 func explainVisibleResourcesForUser(user auth.User, items []ResourceSummary) []VisibleResourceSummary {

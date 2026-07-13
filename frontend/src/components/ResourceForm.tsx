@@ -673,8 +673,19 @@ export function ResourceFormCard({
                 checked={form.copyAllowed}
                 onChange={(event) => update("copyAllowed", event.target.checked)}
               />
-              <span>{isWebPortalPassword ? "Browser fill / copy allowed" : "Copy allowed"}</span>
+              <span>{isWebPortalPassword ? "Browser fill allowed" : "Copy allowed"}</span>
             </label>
+            {isWebPortalPassword ? (
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  disabled={coreLocked}
+                  checked={form.revealAllowed}
+                  onChange={(event) => update("revealAllowed", event.target.checked)}
+                />
+                <span>Reveal / copy allowed</span>
+              </label>
+            ) : null}
           </>
         ) : null}
 
@@ -918,7 +929,7 @@ export function ResourceFormCard({
                 sourceKind: "manual" as const,
                 sourceObjectId: "",
                 launchAllowed: isWebPortalPassword ? form.launchAllowed : false,
-                revealAllowed: false,
+                revealAllowed: isWebPortalPassword ? form.revealAllowed : false,
                 secretMode: "inline" as const,
                 secretReference: ""
               }
