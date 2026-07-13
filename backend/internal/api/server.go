@@ -127,6 +127,8 @@ type Server struct {
 	launcherVersionMu      sync.Mutex
 	launcherVersionCached  string
 	launcherVersionExpires time.Time
+
+	authLimiter *ipRateLimiter
 }
 
 // ArtifactService lists downloadable launcher and browser-extension artifacts.
@@ -148,7 +150,21 @@ func NewServer(deps Dependencies) *Server {
 		localGroups:      deps.LocalGroups,
 		notifications:    deps.Notifications,
 		artifacts:        deps.Artifacts,
+		// 20 auth attempts per minute per source IP: generous for humans,
+		// a hard brake on scripted guessing. Cross-replica protection is the
+		// persistent account lockout in the auth layer.
+		authLimiter: newIPRateLimiter(20, time.Minute),
 	}
+}
+
+// sensitiveAuthPaths are throttled per source IP — the endpoints where an
+// attacker submits guessable credentials/tokens.
+var sensitiveAuthPaths = map[string]bool{
+	"/api/auth/login":                true,
+	"/api/auth/invite/accept":        true,
+	"/api/auth/vault/unlock":         true,
+	"/api/auth/vault/setup":          true,
+	"/api/auth/vault/passkey/unlock": true,
 }
 
 type LocalGroupAdminService interface {
@@ -183,6 +199,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && sensitiveAuthPaths[r.URL.Path] {
+		if !s.authLimiter.allow(clientIP(r), time.Now()) {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many attempts; try again shortly"})
+			return
+		}
+	}
+
 	user, authErr := s.authenticator.CurrentUser(r.Context(), r)
 
 	switch {
@@ -201,7 +224,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/login":
 		s.handleLogin(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/logout":
-		s.handleLogout(w, r)
+		s.handleLogout(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/password":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -252,6 +275,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err)
 			return
 		}
+		s.auditVault(r, user, audit.EventVaultLocked, "")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/browser-extension-session":
 		if !requireAuth(w, user, authErr) {
@@ -1041,6 +1065,7 @@ func (s *Server) handleVaultSetup(w http.ResponseWriter, r *http.Request, user a
 		writeError(w, err)
 		return
 	}
+	s.auditVault(r, user, audit.EventVaultSetup, "passphrase")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -1056,7 +1081,18 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request, user 
 		writeError(w, err)
 		return
 	}
+	s.auditVault(r, user, audit.EventVaultUnlocked, "passphrase")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// auditVault records a personal-vault operation with the unlock method used.
+func (s *Server) auditVault(r *http.Request, user auth.User, event audit.EventType, method string) {
+	_ = s.audit.Log(r.Context(), audit.LogParams{
+		EventType: event,
+		UserID:    user.ID,
+		UserName:  user.Name,
+		Metadata:  map[string]any{"method": method},
+	})
 }
 
 func (s *Server) handleVaultAddPassphrase(w http.ResponseWriter, r *http.Request, user auth.User) {
@@ -1090,6 +1126,7 @@ func (s *Server) handleVaultPasskeySetup(w http.ResponseWriter, r *http.Request,
 		writeError(w, err)
 		return
 	}
+	s.auditVault(r, user, audit.EventVaultSetup, "passkey")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -1103,6 +1140,7 @@ func (s *Server) handleVaultPasskeyUnlock(w http.ResponseWriter, r *http.Request
 		writeError(w, err)
 		return
 	}
+	s.auditVault(r, user, audit.EventVaultUnlocked, "passkey")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -1636,10 +1674,36 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.authenticator.Login(r.Context(), input.Username, input.Password)
 	if err != nil {
+		// Record the attempt (no user id — the account may not exist / the
+		// password was wrong). The username is stored for spray detection.
+		_ = s.audit.Log(r.Context(), audit.LogParams{
+			EventType: audit.EventLoginFailed,
+			UserName:  strings.TrimSpace(input.Username),
+			Metadata:  map[string]any{"ip": clientIP(r), "reason": loginFailureReason(err)},
+		})
 		writeError(w, err)
 		return
 	}
+	_ = s.audit.Log(r.Context(), audit.LogParams{
+		EventType: audit.EventLoginSucceeded,
+		UserID:    result.User.ID,
+		UserName:  result.User.Name,
+		Metadata:  map[string]any{"ip": clientIP(r)},
+	})
 	writeJSON(w, http.StatusOK, result)
+}
+
+// loginFailureReason maps an auth error to a coarse, non-sensitive tag for the
+// audit trail (never reveals whether the account exists).
+func loginFailureReason(err error) string {
+	switch {
+	case errors.Is(err, auth.ErrLockedOut):
+		return "locked_out"
+	case errors.Is(err, auth.ErrBlocked):
+		return "blocked"
+	default:
+		return "invalid_credentials"
+	}
 }
 
 func (s *Server) handleMicrosoftStart(w http.ResponseWriter, r *http.Request) {
@@ -1772,11 +1836,18 @@ func (s *Server) handleMicrosoftCallback(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, s.frontendURL+"?authToken="+url.QueryEscape(result.Token), http.StatusFound)
 }
 
-func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, user auth.User) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if err := s.authenticator.Logout(r.Context(), token); err != nil {
 		writeError(w, err)
 		return
+	}
+	if user.ID != "" {
+		_ = s.audit.Log(r.Context(), audit.LogParams{
+			EventType: audit.EventLogout,
+			UserID:    user.ID,
+			UserName:  user.Name,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
 }
@@ -1840,6 +1911,12 @@ func (s *Server) writeCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", s.frontendURL)
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	// Defensive headers on the API itself. Responses are JSON, never a
+	// document, so the CSP is fully locked down; nosniff stops content-type
+	// confusion; HSTS reinforces TLS. The SPA's own CSP lives in nginx.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+	w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 }
 
 func queryLimit(r *http.Request, fallback int) int {
@@ -1913,6 +1990,10 @@ func writeError(w http.ResponseWriter, err error) {
 	if errors.Is(err, auth.ErrBlocked) {
 		status = http.StatusForbidden
 		message = "user is blocked"
+	}
+	if errors.Is(err, auth.ErrLockedOut) {
+		status = http.StatusTooManyRequests
+		message = "too many failed attempts; try again later"
 	}
 	if status == http.StatusInternalServerError {
 		log.Printf("api internal error: %v", err)

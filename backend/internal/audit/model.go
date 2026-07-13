@@ -15,6 +15,12 @@ const (
 	EventResourceRestored  EventType = "resource_restored"
 	EventUserAccessUpdated EventType = "user_access_updated"
 	EventUserDeleted       EventType = "user_deleted"
+	EventLoginSucceeded    EventType = "login_succeeded"
+	EventLoginFailed       EventType = "login_failed"
+	EventLogout            EventType = "logout"
+	EventVaultUnlocked     EventType = "vault_unlocked"
+	EventVaultSetup        EventType = "vault_setup"
+	EventVaultLocked       EventType = "vault_locked"
 )
 
 type Event struct {

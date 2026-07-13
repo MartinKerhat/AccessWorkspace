@@ -26,29 +26,69 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+// Login lockout: after maxFailedLogins consecutive bad passwords for an
+// account, further attempts are refused for lockoutDuration regardless of
+// source IP (the counter is persisted, so the lock holds across replicas).
+const (
+	maxFailedLogins = 8
+	lockoutDuration = 15 * time.Minute
+)
+
+// ErrLockedOut is returned while an account is in its brute-force cooldown.
+var ErrLockedOut = errors.New("account temporarily locked")
+
 func (r *Repository) Authenticate(ctx context.Context, username, password string) (User, error) {
 	var user User
 	var passwordHash string
 	var blocked bool
+	var failedAttempts int
+	var lockedUntil *time.Time
 	err := r.db.QueryRow(ctx, `
-		select id, display_name, email, groups, is_admin, workspace_blocked, direct_rights, password_hash
+		select id, display_name, email, groups, is_admin, workspace_blocked, direct_rights, password_hash,
+		       failed_login_attempts, locked_until
 		from app_users
 		where lower(username) = lower($1)
-	`, strings.TrimSpace(username)).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &passwordHash)
+	`, strings.TrimSpace(username)).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &passwordHash,
+		&failedAttempts, &lockedUntil)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrUnauthenticated
 		}
 		return User{}, err
 	}
+	if lockedUntil != nil && lockedUntil.After(time.Now()) {
+		return User{}, ErrLockedOut
+	}
 	if blocked {
 		return User{}, ErrBlocked
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
+		r.recordFailedLogin(ctx, user.ID, failedAttempts+1)
 		return User{}, ErrUnauthenticated
 	}
+	// Successful password: clear any accumulated failure state.
+	if failedAttempts != 0 || lockedUntil != nil {
+		_, _ = r.db.Exec(ctx, `
+			update app_users set failed_login_attempts = 0, locked_until = null where id = $1
+		`, user.ID)
+	}
 	return user, nil
+}
+
+// recordFailedLogin increments the failure counter and locks the account once
+// it crosses the threshold. Best-effort: a logging/DB hiccup must not turn a
+// bad password into a different error for the caller.
+func (r *Repository) recordFailedLogin(ctx context.Context, userID string, attempts int) {
+	if attempts >= maxFailedLogins {
+		_, _ = r.db.Exec(ctx, `
+			update app_users
+			set failed_login_attempts = $2, locked_until = now() + ($3 * interval '1 second')
+			where id = $1
+		`, userID, attempts, int(lockoutDuration.Seconds()))
+		return
+	}
+	_, _ = r.db.Exec(ctx, `update app_users set failed_login_attempts = $2 where id = $1`, userID, attempts)
 }
 
 func (r *Repository) CreateSession(ctx context.Context, userID string, ttl time.Duration) (string, error) {
