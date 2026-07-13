@@ -1539,9 +1539,9 @@ export default function App() {
       return await afterVaultUnlocked();
     } catch (error) {
       if (isPrfUnavailable(error)) {
-        setMessage("This device can't use Windows Hello for the vault. Use a passphrase instead.");
+        setMessage("This device can't use a passkey for personal passwords. Use a passphrase instead.");
       } else {
-        setMessage(error instanceof Error ? error.message : "Windows Hello failed");
+        setMessage(error instanceof Error ? error.message : "Passkey unlock failed");
       }
       return false;
     } finally {

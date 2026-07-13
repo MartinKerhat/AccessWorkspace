@@ -43,7 +43,7 @@ export function VaultUnlockModal({ hasVault, passkeyCapable, hasPasskey, busy, o
         {setup ? (
           <p className="section-copy">
             {offerPasskey
-              ? "Use Windows Hello (or your device's fingerprint / PIN) so only you can open your personal saved passwords — nothing to remember."
+              ? "Use a passkey — your device's fingerprint, face, or PIN (Windows Hello, Touch ID, or a security key) — so only you can open your personal saved passwords. Nothing to remember."
               : "Choose a passphrase to encrypt your personal saved passwords. Only you know it, and it cannot be recovered if forgotten."}
           </p>
         ) : (
@@ -53,7 +53,7 @@ export function VaultUnlockModal({ hasVault, passkeyCapable, hasPasskey, busy, o
         {offerPasskey ? (
           <div className="action-row">
             <button className="button primary" disabled={busy} onClick={() => void onPasskey()}>
-              {busy ? "Waiting for Windows Hello..." : setup ? "Set up with Windows Hello" : "Unlock with Windows Hello"}
+              {busy ? "Waiting for your passkey..." : setup ? "Set up a passkey" : "Unlock with a passkey"}
             </button>
           </div>
         ) : null}

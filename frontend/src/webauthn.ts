@@ -68,7 +68,7 @@ export type PasskeyRegistration = {
 
 class PrfUnavailableError extends Error {
   constructor() {
-    super("This device did not return a passkey secret (PRF unsupported). Use a passphrase instead.");
+    super("This device's passkey did not return an encryption secret. Use a passphrase instead.");
     this.name = "PrfUnavailableError";
   }
 }
