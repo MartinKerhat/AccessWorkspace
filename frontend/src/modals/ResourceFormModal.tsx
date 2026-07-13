@@ -9,6 +9,7 @@ type Props = {
   availableGroups: string[];
   availableOwners: UserSummary[];
   restrictPasswordToPersonal: boolean;
+  sharedMetadataOnly?: boolean;
   loading: boolean;
   onSubmit: (input: ResourceForm) => Promise<void>;
   onRevealStoredPassword?: () => Promise<string | undefined>;
@@ -24,6 +25,7 @@ export function ResourceFormModal({
   availableGroups,
   availableOwners,
   restrictPasswordToPersonal,
+  sharedMetadataOnly = false,
   loading,
   onSubmit,
   onRevealStoredPassword,
@@ -48,6 +50,7 @@ export function ResourceFormModal({
           availableGroups={availableGroups}
           availableOwners={availableOwners}
           restrictPasswordToPersonal={restrictPasswordToPersonal}
+          sharedMetadataOnly={sharedMetadataOnly}
           loading={loading}
           onSubmit={onSubmit}
           onRevealStoredPassword={onRevealStoredPassword}

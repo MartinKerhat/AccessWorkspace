@@ -111,6 +111,7 @@ const closedAppRegistrationModalState: AppRegistrationModalState = { mode: "clos
 const availableRights = [
   "connections.read",
   "connections.edit",
+  "connections.create",
   "keyvault.read",
   "keyvault.edit",
   "appregistrations.read",
@@ -2123,7 +2124,9 @@ export default function App() {
     if (!capabilities) {
       return false;
     }
-    if (category === "passwords") {
+    // Passwords and connections are self-service: the create capability alone
+    // is enough (connections.create makes the creator the owner, shared by default).
+    if (category === "passwords" || category === "connections") {
       return Boolean(capabilities.create);
     }
     return Boolean(session?.user.isAdmin && (capabilities.create || capabilities.import));
@@ -2397,7 +2400,10 @@ export default function App() {
                   canEdit={Boolean(
                     selectedResource &&
                       session.capabilities.categories[selectedResource.category]?.edit &&
-                      ((!selectedResource.personal && session.user.isAdmin) ||
+                      // Shared objects: any visible holder of the edit right may open
+                      // the form (non-owners get metadata-only fields). Personal
+                      // objects stay owner-only.
+                      (!selectedResource.personal ||
                         selectedResource.ownerUserId === session.user.id)
                   )}
                   canRemove={Boolean(
@@ -2581,6 +2587,15 @@ export default function App() {
               formState.mode === "create" &&
               formState.draftType !== undefined &&
               categoryView === "passwords"
+            }
+            sharedMetadataOnly={
+              formState.mode === "edit" &&
+              !session.user.isAdmin &&
+              Boolean(
+                selectedResource &&
+                  !selectedResource.personal &&
+                  selectedResource.ownerUserId !== session.user.id
+              )
             }
             loading={busy}
             onSubmit={formState.mode === "create" ? handleCreate : handleUpdate}

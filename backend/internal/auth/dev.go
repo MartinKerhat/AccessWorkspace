@@ -135,10 +135,10 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 
 	categories := map[string]CategoryCapabilities{
 		"connections": {
-			View:   has("connections.read") || has("connections.edit"),
-			Create: has("connections.edit"),
+			View:   has("connections.read") || has("connections.edit") || has("connections.create"),
+			Create: has("connections.create"),
 			Edit:   has("connections.edit"),
-			Launch: has("connections.read") || has("connections.edit"),
+			Launch: has("connections.read") || has("connections.edit") || has("connections.create"),
 		},
 		"keyvault": {
 			View:   has("keyvault.read") || has("keyvault.edit"),

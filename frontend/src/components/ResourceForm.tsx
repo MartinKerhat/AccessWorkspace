@@ -81,6 +81,7 @@ type Props = {
   availableGroups?: string[];
   availableOwners?: UserSummary[];
   restrictPasswordToPersonal?: boolean;
+  sharedMetadataOnly?: boolean;
   loading?: boolean;
   onSubmit: (input: ResourceForm) => Promise<void>;
   onArchive?: () => Promise<void>;
@@ -114,11 +115,16 @@ export function ResourceFormCard({
   availableGroups = [],
   availableOwners = [],
   restrictPasswordToPersonal = false,
+  sharedMetadataOnly = false,
   loading,
   onSubmit,
   onArchive,
   onRevealStoredPassword
 }: Props) {
+  // Non-owners editing a shared object may change only descriptive metadata
+  // (description, notes, folder path, environment); everything else is locked.
+  // The backend enforces the same rule, this is just honest UI.
+  const coreLocked = sharedMetadataOnly;
   const [form, setForm] = useState<ResourceForm>(defaultForm);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [passwordRevealLoading, setPasswordRevealLoading] = useState(false);
@@ -384,7 +390,7 @@ export function ResourceFormCard({
             <input
               type="checkbox"
               checked={form.personal}
-              disabled={restrictPasswordToPersonal}
+              disabled={restrictPasswordToPersonal || coreLocked}
               onChange={(event) => update("personal", event.target.checked)}
             />
             <span>{restrictPasswordToPersonal ? "Personal saved password (required for your role)" : "Personal saved password"}</span>
@@ -392,7 +398,7 @@ export function ResourceFormCard({
         ) : null}
         <label>
           <span>Name</span>
-          <input disabled={isImportedAppRegistration} value={form.name} onChange={(event) => update("name", event.target.value)} />
+          <input disabled={isImportedAppRegistration || coreLocked} value={form.name} onChange={(event) => update("name", event.target.value)} />
         </label>
         <label>
           <span>Type</span>
@@ -401,7 +407,7 @@ export function ResourceFormCard({
             value: form.type,
             placeholder: "Select type",
             options: typeOptions,
-            disabled: isManagedExternalSource,
+            disabled: isManagedExternalSource || coreLocked,
             onToggle: () => {
               closeOtherPickers("type");
               setTypePickerOpen((open) => !open);
@@ -426,7 +432,7 @@ export function ResourceFormCard({
             <button
               type="button"
               className="single-picker-trigger"
-              disabled={form.personal}
+              disabled={form.personal || coreLocked}
               onClick={() => {
                 closeOtherPickers("owner");
                 setOwnerPickerOpen((open) => !open);
@@ -472,7 +478,7 @@ export function ResourceFormCard({
               <button
                 type="button"
                 className="single-picker-trigger"
-                disabled={form.personal}
+                disabled={form.personal || coreLocked}
                 onClick={() => {
                   closeOtherPickers("ownerTeam");
                   setOwnerTeamPickerOpen((open) => !open);
@@ -528,7 +534,7 @@ export function ResourceFormCard({
                 value: form.status,
                 placeholder: "Select status",
                 options: statusOptions,
-                disabled: isImportedAppRegistration,
+                disabled: isImportedAppRegistration || coreLocked,
                 onToggle: () => {
                   closeOtherPickers("status");
                   setStatusPickerOpen((open) => !open);
@@ -557,6 +563,7 @@ export function ResourceFormCard({
               <button
                 type="button"
                 className="group-picker-trigger"
+                disabled={coreLocked}
                 onClick={() => {
                   closeOtherPickers("group");
                   setGroupPickerOpen((open) => !open);
@@ -605,7 +612,7 @@ export function ResourceFormCard({
                 value: form.sourceKind,
                 placeholder: "Select source kind",
                 options: sourceKindOptions,
-                disabled: isManagedExternalSource,
+                disabled: isManagedExternalSource || coreLocked,
                 onToggle: () => {
                   closeOtherPickers("sourceKind");
                   setSourceKindPickerOpen((open) => !open);
@@ -615,12 +622,12 @@ export function ResourceFormCard({
             </label>
             <label>
               <span>Source object ID</span>
-              <input disabled={isManagedExternalSource} value={form.sourceObjectId} onChange={(event) => update("sourceObjectId", event.target.value)} />
+              <input disabled={isManagedExternalSource || coreLocked} value={form.sourceObjectId} onChange={(event) => update("sourceObjectId", event.target.value)} />
             </label>
             <label className="checkbox">
               <input
                 type="checkbox"
-                disabled={isImportedAppRegistration}
+                disabled={isImportedAppRegistration || coreLocked}
                 checked={form.launchAllowed}
                 onChange={(event) => update("launchAllowed", event.target.checked)}
               />
@@ -629,7 +636,7 @@ export function ResourceFormCard({
             <label className="checkbox">
               <input
                 type="checkbox"
-                disabled={isImportedAppRegistration}
+                disabled={isImportedAppRegistration || coreLocked}
                 checked={form.revealAllowed}
                 onChange={(event) => update("revealAllowed", event.target.checked)}
               />
@@ -638,7 +645,7 @@ export function ResourceFormCard({
             <label className="checkbox">
               <input
                 type="checkbox"
-                disabled={isImportedAppRegistration}
+                disabled={isImportedAppRegistration || coreLocked}
                 checked={form.copyAllowed}
                 onChange={(event) => update("copyAllowed", event.target.checked)}
               />
@@ -652,6 +659,7 @@ export function ResourceFormCard({
               <label className="checkbox">
                 <input
                   type="checkbox"
+                  disabled={coreLocked}
                   checked={form.launchAllowed}
                   onChange={(event) => update("launchAllowed", event.target.checked)}
                 />
@@ -661,6 +669,7 @@ export function ResourceFormCard({
             <label className={`checkbox${isWebPortalPassword ? "" : " wide"}`}>
               <input
                 type="checkbox"
+                disabled={coreLocked}
                 checked={form.copyAllowed}
                 onChange={(event) => update("copyAllowed", event.target.checked)}
               />
@@ -673,27 +682,28 @@ export function ResourceFormCard({
           <>
             <label>
               <span>Target host</span>
-              <input value={form.targetHost} onChange={(event) => update("targetHost", event.target.value)} />
+              <input disabled={coreLocked} value={form.targetHost} onChange={(event) => update("targetHost", event.target.value)} />
             </label>
             <label>
               <span>Target port</span>
               <input
                 type="number"
+                disabled={coreLocked}
                 value={form.targetPort ?? ""}
                 onChange={(event) => update("targetPort", event.target.value ? Number(event.target.value) : undefined)}
               />
             </label>
             <label>
               <span>Username</span>
-              <input value={form.username} onChange={(event) => update("username", event.target.value)} />
+              <input disabled={coreLocked} value={form.username} onChange={(event) => update("username", event.target.value)} />
             </label>
             <label>
               <span>Launch mode</span>
-              <input value={form.launchMode} onChange={(event) => update("launchMode", event.target.value)} />
+              <input disabled={coreLocked} value={form.launchMode} onChange={(event) => update("launchMode", event.target.value)} />
             </label>
             <label>
               <span>Domain</span>
-              <input value={form.connectionDomain} onChange={(event) => update("connectionDomain", event.target.value)} />
+              <input disabled={coreLocked} value={form.connectionDomain} onChange={(event) => update("connectionDomain", event.target.value)} />
             </label>
           </>
         ) : null}
@@ -702,11 +712,12 @@ export function ResourceFormCard({
           <>
             <label>
               <span>MAC address</span>
-              <input value={form.connectionMacAddress} onChange={(event) => update("connectionMacAddress", event.target.value)} />
+              <input disabled={coreLocked} value={form.connectionMacAddress} onChange={(event) => update("connectionMacAddress", event.target.value)} />
             </label>
             <label className="checkbox">
               <input
                 type="checkbox"
+                disabled={coreLocked}
                 checked={form.connectionAdminSession}
                 onChange={(event) => update("connectionAdminSession", event.target.checked)}
               />
@@ -720,19 +731,19 @@ export function ResourceFormCard({
             {isWebPortalPassword ? (
               <label className="wide">
                 <span>Portal URL</span>
-                <input value={form.targetUrl} onChange={(event) => update("targetUrl", event.target.value)} placeholder="https://portal.example.com" />
+                <input disabled={coreLocked} value={form.targetUrl} onChange={(event) => update("targetUrl", event.target.value)} placeholder="https://portal.example.com" />
               </label>
             ) : null}
             {isSharedPassword && form.targetSystem ? (
               <label className="wide">
                 <span>Stored system</span>
-                <input value={form.targetSystem} onChange={(event) => update("targetSystem", event.target.value)} />
+                <input disabled={coreLocked} value={form.targetSystem} onChange={(event) => update("targetSystem", event.target.value)} />
               </label>
             ) : null}
             {/* Keep this label directly before the password field below so the two share one row. */}
             <label>
               <span>Username</span>
-              <input value={form.username} onChange={(event) => update("username", event.target.value)} />
+              <input disabled={coreLocked} value={form.username} onChange={(event) => update("username", event.target.value)} />
             </label>
           </>
         ) : null}
@@ -741,29 +752,29 @@ export function ResourceFormCard({
           <>
             <label>
               <span>Vault name</span>
-              <input disabled={isImportedKeyVault} value={form.vaultName} onChange={(event) => update("vaultName", event.target.value)} />
+              <input disabled={isImportedKeyVault || coreLocked} value={form.vaultName} onChange={(event) => update("vaultName", event.target.value)} />
             </label>
             <label>
               <span>Object name</span>
-              <input disabled={isImportedKeyVault} value={form.objectName} onChange={(event) => update("objectName", event.target.value)} />
+              <input disabled={isImportedKeyVault || coreLocked} value={form.objectName} onChange={(event) => update("objectName", event.target.value)} />
             </label>
             <label>
               <span>Object type</span>
-              <input disabled={isImportedKeyVault} value={form.objectType} onChange={(event) => update("objectType", event.target.value)} />
+              <input disabled={isImportedKeyVault || coreLocked} value={form.objectType} onChange={(event) => update("objectType", event.target.value)} />
             </label>
             <label>
               <span>Version</span>
-              <input disabled={isImportedKeyVault} value={form.objectVersion} onChange={(event) => update("objectVersion", event.target.value)} />
+              <input disabled={isImportedKeyVault || coreLocked} value={form.objectVersion} onChange={(event) => update("objectVersion", event.target.value)} />
             </label>
             <label>
               <span>Content type</span>
-              <input disabled={isImportedKeyVault} value={form.contentType} onChange={(event) => update("contentType", event.target.value)} />
+              <input disabled={isImportedKeyVault || coreLocked} value={form.contentType} onChange={(event) => update("contentType", event.target.value)} />
             </label>
             <label>
               <span>Expires at</span>
               <input
                 type="datetime-local"
-                disabled={isImportedKeyVault}
+                disabled={isImportedKeyVault || coreLocked}
                 value={toDateTimeInputValue(form.expiresAt)}
                 onChange={(event) => update("expiresAt", fromDateTimeInputValue(event.target.value))}
               />
@@ -775,40 +786,40 @@ export function ResourceFormCard({
           <>
             <label>
               <span>Provider</span>
-              <input disabled={isImportedAppRegistration} value={form.provider} onChange={(event) => update("provider", event.target.value)} />
+              <input disabled={isImportedAppRegistration || coreLocked} value={form.provider} onChange={(event) => update("provider", event.target.value)} />
             </label>
             <label>
               <span>Application ID</span>
-              <input disabled={isImportedAppRegistration} value={form.applicationId} onChange={(event) => update("applicationId", event.target.value)} />
+              <input disabled={isImportedAppRegistration || coreLocked} value={form.applicationId} onChange={(event) => update("applicationId", event.target.value)} />
             </label>
             <label>
               <span>Tenant ID</span>
-              <input disabled={isImportedAppRegistration} value={form.tenantId} onChange={(event) => update("tenantId", event.target.value)} />
+              <input disabled={isImportedAppRegistration || coreLocked} value={form.tenantId} onChange={(event) => update("tenantId", event.target.value)} />
             </label>
             <label>
               <span>Client ID</span>
-              <input disabled={isImportedAppRegistration} value={form.clientId} onChange={(event) => update("clientId", event.target.value)} />
+              <input disabled={isImportedAppRegistration || coreLocked} value={form.clientId} onChange={(event) => update("clientId", event.target.value)} />
             </label>
             <label>
               <span>Credential type</span>
-              <input disabled={isImportedAppRegistration} value={form.credentialType} onChange={(event) => update("credentialType", event.target.value)} />
+              <input disabled={isImportedAppRegistration || coreLocked} value={form.credentialType} onChange={(event) => update("credentialType", event.target.value)} />
             </label>
             <label>
               <span>Credential expires at</span>
               <input
                 type="datetime-local"
-                disabled={isImportedAppRegistration}
+                disabled={isImportedAppRegistration || coreLocked}
                 value={toDateTimeInputValue(form.credentialExpiresAt)}
                 onChange={(event) => update("credentialExpiresAt", fromDateTimeInputValue(event.target.value))}
               />
             </label>
             <label>
               <span>External display name</span>
-              <input disabled={isImportedAppRegistration} value={form.displayNameExternal} onChange={(event) => update("displayNameExternal", event.target.value)} />
+              <input disabled={isImportedAppRegistration || coreLocked} value={form.displayNameExternal} onChange={(event) => update("displayNameExternal", event.target.value)} />
             </label>
             <label className="wide">
               <span>Linked secret ref</span>
-              <input value={form.linkedSecretRef} onChange={(event) => update("linkedSecretRef", event.target.value)} />
+              <input disabled={coreLocked} value={form.linkedSecretRef} onChange={(event) => update("linkedSecretRef", event.target.value)} />
             </label>
           </>
         ) : null}
@@ -817,7 +828,7 @@ export function ResourceFormCard({
           <span>{isConnectionResource ? "Password / passphrase" : isPasswordResource ? "Password" : "Secret value"}</span>
           <div className={isPasswordResource && resource && onRevealStoredPassword ? "password-field-row" : undefined}>
             <input
-              disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch"}
+              disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
               value={form.secretValue}
               onChange={(event) => update("secretValue", event.target.value)}
               type={isPasswordResource && passwordVisible ? "text" : "password"}
@@ -857,7 +868,7 @@ export function ResourceFormCard({
                 value: form.secretMode,
                 placeholder: "Select secret mode",
                 options: secretModeOptions,
-                disabled: isManagedExternalSource,
+                disabled: isManagedExternalSource || coreLocked,
                 onToggle: () => {
                   closeOtherPickers("secretMode");
                   setSecretModePickerOpen((open) => !open);
@@ -868,7 +879,7 @@ export function ResourceFormCard({
             <label className="wide">
               <span>Secret reference</span>
               <input
-                disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch"}
+                disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
                 value={form.secretReference}
                 onChange={(event) => update("secretReference", event.target.value)}
               />
@@ -876,6 +887,12 @@ export function ResourceFormCard({
           </>
         ) : null}
       </div>
+
+      {coreLocked ? (
+        <div className="banner compact">
+          You are not the owner of this shared object, so only description, notes, folder path and environment can be changed.
+        </div>
+      ) : null}
 
       {isImportedKeyVault ? (
         <div className="banner compact">

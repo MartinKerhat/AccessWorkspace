@@ -174,10 +174,11 @@ func (s *Service) ListArchived(ctx context.Context, user auth.User) ([]ArchivedR
 }
 
 func (s *Service) Create(ctx context.Context, user auth.User, input CreateResourceInput) (Resource, error) {
-	if !user.IsAdmin && !canCreatePersonalPassword(user, input) {
+	if !user.IsAdmin && !canCreatePersonalPassword(user, input) && !canCreateConnection(user, input) {
 		return Resource{}, ErrForbidden
 	}
 	input = enforcePersonalPasswordOwnership(user, input)
+	input = enforceConnectionCreatorOwnership(user, input)
 	input = normalizeInput(input)
 	if err := s.prepareSecretForStorage(ctx, user, &input); err != nil {
 		return Resource{}, err
@@ -218,6 +219,9 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 	// which would let them pull an org secret straight into their own vault.
 	if input.Personal && !existing.Personal && existing.OwnerUserID != user.ID {
 		return Resource{}, ErrForbidden
+	}
+	if isSharedMetadataEditor(user, existing) {
+		input = restrictToSharedMetadata(existing, input)
 	}
 	input = enforcePersonalPasswordOwnership(user, input)
 	input = normalizeInput(input)
@@ -1952,8 +1956,8 @@ func canCreatePersonalPassword(user auth.User, input CreateResourceInput) bool {
 }
 
 func canUpdateResource(user auth.User, existing Resource) bool {
-	isOwner := existing.OwnerUserID == user.ID &&
-		auth.CapabilitiesForUser(user).Categories[existing.Category].Edit
+	capabilities := auth.CapabilitiesForUser(user).Categories[existing.Category]
+	isOwner := existing.OwnerUserID == user.ID && capabilities.Edit
 	// Personal resources can only be managed by their owner. Admins are excluded
 	// so they cannot flip a personal secret to shared and then reveal it.
 	if existing.Personal {
@@ -1962,7 +1966,50 @@ func canUpdateResource(user auth.User, existing Resource) bool {
 	if user.IsAdmin {
 		return true
 	}
-	return isOwner
+	if isOwner {
+		return true
+	}
+	// Non-owners holding the category edit right may update shared objects they
+	// can see — but only descriptive metadata (see restrictToSharedMetadata).
+	return capabilities.Edit && CanAccess(devViewer(user), existing.Summary())
+}
+
+// isSharedMetadataEditor identifies an editor of a shared object who is
+// neither its owner nor an admin — allowed to touch descriptive metadata only.
+func isSharedMetadataEditor(user auth.User, existing Resource) bool {
+	return !user.IsAdmin && !existing.Personal && existing.OwnerUserID != user.ID
+}
+
+// restrictToSharedMetadata keeps everything crucial (identity, ownership,
+// visibility, secret, targets, connection and policy settings) from the stored
+// object, letting a non-owner change only description, notes, folder path and
+// environment.
+func restrictToSharedMetadata(existing Resource, input UpdateResourceInput) UpdateResourceInput {
+	restricted := resourceToUpdateInput(existing)
+	restricted.Description = input.Description
+	restricted.Notes = input.Notes
+	restricted.FolderPath = input.FolderPath
+	restricted.Environment = input.Environment
+	// Blank secret value means "keep the stored secret" downstream.
+	restricted.SecretValue = ""
+	return restricted
+}
+
+func canCreateConnection(user auth.User, input CreateResourceInput) bool {
+	return CategoryForType(input.Type) == "connections" &&
+		auth.CapabilitiesForUser(user).Categories["connections"].Create
+}
+
+// enforceConnectionCreatorOwnership makes non-admin-created connections shared
+// objects owned by their creator.
+func enforceConnectionCreatorOwnership(user auth.User, input CreateResourceInput) CreateResourceInput {
+	if user.IsAdmin || CategoryForType(input.Type) != "connections" {
+		return input
+	}
+	input.Owner = user.Name
+	input.OwnerUserID = user.ID
+	input.Personal = false
+	return input
 }
 
 func canArchiveResource(user auth.User, resource Resource) bool {

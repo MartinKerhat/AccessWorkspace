@@ -32,7 +32,7 @@ func resolveAuthorizationFromInputs(user User, localGroups []LocalGroup, directR
 
 	if user.IsAdmin {
 		resolvedRights = append(resolvedRights,
-			"connections.read", "connections.edit",
+			"connections.read", "connections.edit", "connections.create",
 			"keyvault.read", "keyvault.edit",
 			"appregistrations.read", "appregistrations.edit",
 			"passwords.read", "passwords.edit",
