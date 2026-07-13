@@ -449,6 +449,39 @@ export default function App() {
     new URLSearchParams(window.location.search).get("invite") ?? ""
   );
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+  const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the notification and account popovers on any click outside them (or Escape).
+  useEffect(() => {
+    if (!notificationCenterOpen && !accountMenuOpen) {
+      return;
+    }
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (notificationCenterOpen && notificationMenuRef.current && !notificationMenuRef.current.contains(target)) {
+        setNotificationCenterOpen(false);
+      }
+      if (accountMenuOpen && accountMenuRef.current && !accountMenuRef.current.contains(target)) {
+        setAccountMenuOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setNotificationCenterOpen(false);
+        setAccountMenuOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [notificationCenterOpen, accountMenuOpen]);
   const [formState, setFormState] = useState<FormState>(closedFormState);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [keyVaultModalState, setKeyVaultModalState] = useState<KeyVaultModalState>(closedKeyVaultModalState);
@@ -2241,7 +2274,7 @@ export default function App() {
                 </button>
               </div>
             ) : null}
-            <div className="account-menu">
+            <div className="account-menu" ref={notificationMenuRef}>
               <button
                 className={`session-chip button ghost notification-chip ${notificationUnreadCount(notifications) > 0 ? "has-unread" : ""}`}
                 onClick={() => setNotificationCenterOpen((open) => !open)}
@@ -2289,7 +2322,7 @@ export default function App() {
                 </div>
               ) : null}
             </div>
-            <div className="account-menu">
+            <div className="account-menu" ref={accountMenuRef}>
               <button className="session-chip button ghost" onClick={() => setAccountMenuOpen((open) => !open)}>
                 <span>{currentUser.name}</span>
                 <small>{currentUser.isAdmin ? "Admin session" : "Member session"}</small>
