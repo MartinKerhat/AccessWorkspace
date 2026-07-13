@@ -370,6 +370,9 @@ function connectInstalledBrowserExtension(connectToken: BrowserExtensionConnectT
   });
 }
 
+// Events are stored forever; the UI pages through them AUDIT_PAGE_SIZE at a time.
+const AUDIT_PAGE_SIZE = 100;
+
 // Dotted numeric version compare ("0.5.8" style); missing segments count as 0.
 // A launcher newer than the published requirement is fine — only older fails.
 function isVersionOlder(current: string, required: string) {
@@ -409,6 +412,10 @@ export default function App() {
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [notificationDeliveries, setNotificationDeliveries] = useState<NotificationDeliveryRecord[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [auditHasMore, setAuditHasMore] = useState(false);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditEventTypes, setAuditEventTypes] = useState<string[]>([]);
+  const [auditFilters, setAuditFilters] = useState({ query: "", eventType: "" });
   const [adminConfig, setAdminConfig] = useState<AdminConfig | null>(null);
   const [archivedResources, setArchivedResources] = useState<ArchivedResourceSummary[]>([]);
   const [localGroups, setLocalGroups] = useState<LocalGroup[]>([]);
@@ -800,6 +807,10 @@ export default function App() {
     setLaunch(null);
     setActivity([]);
     setAudit([]);
+    setAuditHasMore(false);
+    setAuditTotal(0);
+    setAuditEventTypes([]);
+    setAuditFilters({ query: "", eventType: "" });
     setAdminConfig(null);
     setArchivedResources([]);
     setLocalGroups([]);
@@ -888,9 +899,43 @@ export default function App() {
     setNotificationDeliveries(response.items);
   }
 
-  async function loadAudit(authToken: string) {
-    const response = await api.listAudit(authToken);
+  async function loadAudit(authToken: string, filters = auditFilters) {
+    const response = await api.listAudit(authToken, {
+      limit: AUDIT_PAGE_SIZE,
+      offset: 0,
+      query: filters.query,
+      eventType: filters.eventType
+    });
     setAudit(response.items);
+    setAuditTotal(response.total);
+    setAuditEventTypes(response.eventTypes);
+    setAuditHasMore(response.items.length < response.total);
+  }
+
+  async function loadOlderAudit() {
+    if (!session) {
+      return;
+    }
+    const response = await api.listAudit(session.authToken, {
+      limit: AUDIT_PAGE_SIZE,
+      offset: audit.length,
+      query: auditFilters.query,
+      eventType: auditFilters.eventType
+    });
+    setAudit((current) => {
+      const seen = new Set(current.map((item) => item.id));
+      const merged = [...current, ...response.items.filter((item) => !seen.has(item.id))];
+      setAuditHasMore(merged.length < response.total);
+      return merged;
+    });
+    setAuditTotal(response.total);
+  }
+
+  function handleAuditFiltersChange(filters: { query: string; eventType: string }) {
+    setAuditFilters(filters);
+    if (session?.capabilities.canViewAudit) {
+      void loadAudit(session.authToken, filters);
+    }
   }
 
   async function loadAdminConfig(authToken: string) {
@@ -2405,7 +2450,16 @@ export default function App() {
           />
         ) : null}
 
-        {view === "audit" && session.capabilities.canViewAudit ? <AuditPage items={audit} /> : null}
+        {view === "audit" && session.capabilities.canViewAudit ? (
+          <AuditPage
+            items={audit}
+            total={auditTotal}
+            eventTypes={auditEventTypes}
+            hasMore={auditHasMore}
+            onLoadOlder={() => void loadOlderAudit()}
+            onFiltersChange={handleAuditFiltersChange}
+          />
+        ) : null}
 
         {view === "admin" && session.capabilities.canViewAdmin ? (
           <div className="admin-layout">

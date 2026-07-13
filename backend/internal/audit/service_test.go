@@ -14,8 +14,12 @@ func (s *stubRepo) Create(_ context.Context, event Event) error {
 	return nil
 }
 
-func (s *stubRepo) List(_ context.Context, _ *string, _ int) ([]Event, error) {
-	return s.events, nil
+func (s *stubRepo) List(_ context.Context, _ ListFilter) ([]Event, int, error) {
+	return s.events, len(s.events), nil
+}
+
+func (s *stubRepo) ListEventTypes(_ context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func TestServiceLogStoresMetadata(t *testing.T) {

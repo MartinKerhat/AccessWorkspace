@@ -325,8 +325,17 @@ export const api = {
     }
     return response.json() as Promise<{ status: string }>;
   },
-  listAudit(authToken: string) {
-    return request<{ items: AuditEvent[] }>("/audit", {}, authToken);
+  listAudit(authToken: string, options: { limit?: number; offset?: number; query?: string; eventType?: string } = {}) {
+    const params = new URLSearchParams();
+    params.set("limit", String(options.limit ?? 100));
+    params.set("offset", String(options.offset ?? 0));
+    if (options.query?.trim()) {
+      params.set("q", options.query.trim());
+    }
+    if (options.eventType) {
+      params.set("eventType", options.eventType);
+    }
+    return request<{ items: AuditEvent[]; total: number; eventTypes: string[] }>(`/audit?${params.toString()}`, {}, authToken);
   },
   adminConfig(authToken: string) {
     return request<AdminConfig>("/admin/config", {}, authToken);

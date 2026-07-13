@@ -52,7 +52,8 @@ type ResourceService interface {
 
 type AuditService interface {
 	Log(ctx context.Context, params audit.LogParams) error
-	List(ctx context.Context, limit int) ([]audit.Event, error)
+	List(ctx context.Context, filter audit.ListFilter) ([]audit.Event, int, error)
+	ListEventTypes(ctx context.Context) ([]string, error)
 	RecentForUser(ctx context.Context, userID string, limit int) ([]audit.Event, error)
 }
 
@@ -837,13 +838,27 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request, user au
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
-	limit := queryLimit(r, 100)
-	items, err := s.audit.List(r.Context(), limit)
+	filter := audit.ListFilter{
+		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
+		EventType: strings.TrimSpace(r.URL.Query().Get("eventType")),
+		Limit:     queryLimit(r, 100),
+		Offset:    queryOffset(r),
+	}
+	items, total, err := s.audit.List(r.Context(), filter)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	eventTypes, err := s.audit.ListEventTypes(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":      items,
+		"total":      total,
+		"eventTypes": eventTypes,
+	})
 }
 
 func (s *Server) handleRecentActivity(w http.ResponseWriter, r *http.Request, user auth.User) {
@@ -1837,6 +1852,14 @@ func queryLimit(r *http.Request, fallback int) int {
 		return fallback
 	}
 	return limit
+}
+
+func queryOffset(r *http.Request) int {
+	offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
+	if err != nil || offset < 0 {
+		return 0
+	}
+	return offset
 }
 
 func writeError(w http.ResponseWriter, err error) {

@@ -1,31 +1,33 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AuditEvent } from "../types";
 
 type Props = {
   items: AuditEvent[];
+  total: number;
+  eventTypes: string[];
+  hasMore?: boolean;
+  onLoadOlder?: () => void;
+  onFiltersChange?: (filters: { query: string; eventType: string }) => void;
 };
 
-export function AuditPage({ items }: Props) {
+// Filtering happens server-side over the FULL audit history; this page only
+// debounces the inputs and renders whatever pages the app has loaded so far.
+export function AuditPage({ items, total, eventTypes, hasMore = false, onLoadOlder, onFiltersChange }: Props) {
   const [query, setQuery] = useState("");
   const [eventType, setEventType] = useState("");
+  const skipInitialFilterEffect = useRef(true);
 
-  const eventTypes = useMemo(
-    () => Array.from(new Set(items.map((item) => item.eventType))).sort(),
-    [items]
-  );
-
-  const filteredItems = items.filter((item) => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const matchesQuery =
-      normalizedQuery === "" ||
-      item.userName.toLowerCase().includes(normalizedQuery) ||
-      (item.resourceName ?? "").toLowerCase().includes(normalizedQuery) ||
-      (item.resourceId ?? "").toLowerCase().includes(normalizedQuery) ||
-      item.eventType.toLowerCase().includes(normalizedQuery);
-
-    const matchesEventType = eventType === "" || item.eventType === eventType;
-    return matchesQuery && matchesEventType;
-  });
+  useEffect(() => {
+    if (skipInitialFilterEffect.current) {
+      skipInitialFilterEffect.current = false;
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      onFiltersChange?.({ query, eventType });
+    }, 300);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, eventType]);
 
   return (
     <section className="panel">
@@ -34,11 +36,13 @@ export function AuditPage({ items }: Props) {
           <p className="eyebrow">Audit</p>
           <h2>Audit trail</h2>
         </div>
-        <span className="muted">{filteredItems.length} events</span>
+        <span className="muted">
+          {items.length < total ? `Showing ${items.length} of ${total} events` : `${total} events`}
+        </span>
       </div>
 
       <p className="section-copy">
-        Review who changed, revealed, launched, or viewed objects across the workspace.
+        Review who changed, revealed, launched, or viewed objects across the workspace. Search covers the entire history.
       </p>
 
       <div className="filter-grid audit-filter-grid">
@@ -58,7 +62,7 @@ export function AuditPage({ items }: Props) {
       </div>
 
       <div className="activity-list">
-        {filteredItems.map((item) => (
+        {items.map((item) => (
           <article key={item.id} className="activity-item">
             <div>
               <strong>{item.eventType}</strong>
@@ -69,7 +73,16 @@ export function AuditPage({ items }: Props) {
             <time>{new Date(item.createdAt).toLocaleString()}</time>
           </article>
         ))}
+        {items.length === 0 ? <p className="detail-description">No events match the current filter.</p> : null}
       </div>
+
+      {hasMore && onLoadOlder ? (
+        <div className="action-row compact-actions">
+          <button className="button ghost" onClick={onLoadOlder}>
+            Load older events
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

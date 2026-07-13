@@ -8,7 +8,8 @@ import (
 
 type EventWriter interface {
 	Create(ctx context.Context, event Event) error
-	List(ctx context.Context, userID *string, limit int) ([]Event, error)
+	List(ctx context.Context, filter ListFilter) ([]Event, int, error)
+	ListEventTypes(ctx context.Context) ([]string, error)
 }
 
 type Service struct {
@@ -35,12 +36,17 @@ func (s *Service) Log(ctx context.Context, params LogParams) error {
 	return s.repo.Create(ctx, event)
 }
 
-func (s *Service) List(ctx context.Context, limit int) ([]Event, error) {
-	return s.repo.List(ctx, nil, limit)
+func (s *Service) List(ctx context.Context, filter ListFilter) ([]Event, int, error) {
+	return s.repo.List(ctx, filter)
+}
+
+func (s *Service) ListEventTypes(ctx context.Context) ([]string, error) {
+	return s.repo.ListEventTypes(ctx)
 }
 
 func (s *Service) RecentForUser(ctx context.Context, userID string, limit int) ([]Event, error) {
-	return s.repo.List(ctx, &userID, limit)
+	events, _, err := s.repo.List(ctx, ListFilter{UserID: &userID, Limit: limit})
+	return events, err
 }
 
 type LogParams struct {
