@@ -370,6 +370,22 @@ function connectInstalledBrowserExtension(connectToken: BrowserExtensionConnectT
   });
 }
 
+// Dotted numeric version compare ("0.5.8" style); missing segments count as 0.
+// A launcher newer than the published requirement is fine — only older fails.
+function isVersionOlder(current: string, required: string) {
+  const currentParts = current.trim().replace(/^v/, "").split(".");
+  const requiredParts = required.trim().replace(/^v/, "").split(".");
+  const length = Math.max(currentParts.length, requiredParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const left = Number.parseInt(currentParts[index] ?? "0", 10) || 0;
+    const right = Number.parseInt(requiredParts[index] ?? "0", 10) || 0;
+    if (left !== right) {
+      return left < right;
+    }
+  }
+  return false;
+}
+
 export default function App() {
   const currentBrowserClient = detectBrowserExtensionClient();
   const [loginOptions, setLoginOptions] = useState<LoginOptions>({
@@ -1538,7 +1554,7 @@ export default function App() {
           setMessage("Launcher not detected. Download and install the desktop launcher first.");
           return;
         }
-        if (status.version !== runtime.requiredVersion) {
+        if (isVersionOlder(status.version, runtime.requiredVersion)) {
           setMessage(`Launcher ${status.version} is outdated. Install version ${runtime.requiredVersion}.`);
           return;
         }

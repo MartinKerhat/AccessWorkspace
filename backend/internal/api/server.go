@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"access-workspace/backend/internal/appregistrations"
@@ -121,6 +122,10 @@ type Server struct {
 	localGroups      LocalGroupAdminService
 	notifications    NotificationService
 	artifacts        ArtifactService
+
+	launcherVersionMu      sync.Mutex
+	launcherVersionCached  string
+	launcherVersionExpires time.Time
 }
 
 // ArtifactService lists downloadable launcher and browser-extension artifacts.
@@ -410,11 +415,37 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// requiredLauncherVersion is the version the app demands from installed
+// launchers. It is derived from the newest published launcher artifact, so
+// dropping a new build into the artifact store rolls the requirement forward
+// without rebuilding the backend; the compiled constant is only the fallback
+// when no artifact is available. Cached briefly so per-launch ticket
+// resolution does not re-list a blob-backed store.
+func (s *Server) requiredLauncherVersion(ctx context.Context) string {
+	s.launcherVersionMu.Lock()
+	defer s.launcherVersionMu.Unlock()
+	if time.Now().Before(s.launcherVersionExpires) {
+		return s.launcherVersionCached
+	}
+	version := launcherinfo.RequiredVersion
+	if downloads, err := s.artifacts.LauncherDownloads(ctx); err == nil {
+		if newest := artifacts.NewestVersion(downloads); newest != "" {
+			version = newest
+		}
+	}
+	s.launcherVersionCached = version
+	s.launcherVersionExpires = time.Now().Add(time.Minute)
+	return version
+}
+
 func (s *Server) handleLaunchTicketResolve(w http.ResponseWriter, r *http.Request) {
-	if version := strings.TrimSpace(r.Header.Get("X-Access-Workspace-Launcher-Version")); version != "" && version != launcherinfo.RequiredVersion {
+	required := s.requiredLauncherVersion(r.Context())
+	// Older launchers must upgrade; a launcher newer than the published
+	// artifacts (e.g. a dev build) is fine.
+	if version := strings.TrimSpace(r.Header.Get("X-Access-Workspace-Launcher-Version")); version != "" && artifacts.CompareVersions(version, required) < 0 {
 		writeJSON(w, http.StatusPreconditionFailed, map[string]string{
 			"error":           "launcher upgrade required",
-			"requiredVersion": launcherinfo.RequiredVersion,
+			"requiredVersion": required,
 		})
 		return
 	}
@@ -442,8 +473,12 @@ func (s *Server) handleLauncherRuntime(w http.ResponseWriter, r *http.Request) {
 	if len(downloads) > 0 {
 		recommended = downloads[0].DownloadURL
 	}
+	requiredVersion := artifacts.NewestVersion(downloads)
+	if requiredVersion == "" {
+		requiredVersion = launcherinfo.RequiredVersion
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"requiredVersion": launcherinfo.RequiredVersion,
+		"requiredVersion": requiredVersion,
 		"statusUrl":       launcherinfo.StatusURL,
 		"launchUrl":       launcherinfo.LaunchURL,
 		"downloadUrl":     recommended,
@@ -458,14 +493,19 @@ func (s *Server) handleBrowserExtensionRuntime(w http.ResponseWriter, r *http.Re
 		return
 	}
 	defaultDownloadURL := ""
+	var allFiles []artifacts.Artifact
 	for _, pkg := range packages {
-		if pkg.Status == "available" && pkg.DownloadURL != "" {
+		allFiles = append(allFiles, pkg.Files...)
+		if defaultDownloadURL == "" && pkg.Status == "available" && pkg.DownloadURL != "" {
 			defaultDownloadURL = pkg.DownloadURL
-			break
 		}
 	}
+	requiredVersion := artifacts.NewestVersion(allFiles)
+	if requiredVersion == "" {
+		requiredVersion = browserextinfo.RequiredVersion
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"requiredVersion": browserextinfo.RequiredVersion,
+		"requiredVersion": requiredVersion,
 		"browser":         "chromium",
 		"downloadUrl":     defaultDownloadURL,
 		"packages":        packages,

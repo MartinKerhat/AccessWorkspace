@@ -1,6 +1,6 @@
 package browserextinfo
 
-// RequiredVersion is the browser-extension protocol version the backend expects.
-// Downloadable packages themselves are enumerated dynamically by the artifacts
-// package; this constant only gates the extension connect/handshake flow.
+// RequiredVersion is only the FALLBACK browser-extension version, used when no
+// extension artifact is published. Normally the version the app reports is
+// derived at runtime from the newest published extension package.
 const RequiredVersion = "0.2.8"
