@@ -8,7 +8,8 @@ type Props = {
   initialType?: ResourceForm["type"];
   availableGroups: string[];
   availableOwners: UserSummary[];
-  restrictPasswordToPersonal: boolean;
+  defaultPersonalPassword: boolean;
+  canAssignOwner: boolean;
   sharedMetadataOnly?: boolean;
   loading: boolean;
   onSubmit: (input: ResourceForm) => Promise<void>;
@@ -24,7 +25,8 @@ export function ResourceFormModal({
   initialType,
   availableGroups,
   availableOwners,
-  restrictPasswordToPersonal,
+  defaultPersonalPassword,
+  canAssignOwner,
   sharedMetadataOnly = false,
   loading,
   onSubmit,
@@ -49,7 +51,8 @@ export function ResourceFormModal({
           initialType={initialType}
           availableGroups={availableGroups}
           availableOwners={availableOwners}
-          restrictPasswordToPersonal={restrictPasswordToPersonal}
+          defaultPersonalPassword={defaultPersonalPassword}
+          canAssignOwner={canAssignOwner}
           sharedMetadataOnly={sharedMetadataOnly}
           loading={loading}
           onSubmit={onSubmit}

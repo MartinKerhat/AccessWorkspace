@@ -311,6 +311,7 @@ func (r *Repository) ListArchived(ctx context.Context) ([]ArchivedResourceSummar
 			limit 1
 		) a on true
 		where r.archived_at is not null
+			and r.personal = false
 		order by r.archived_at desc, r.name asc
 	`)
 	if err != nil {
@@ -469,6 +470,13 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 
 func (r *Repository) Archive(ctx context.Context, id string) error {
 	_, err := r.db.Exec(ctx, `update resources set archived_at = now(), updated_at = now() where id = $1`, id)
+	return err
+}
+
+// Delete permanently removes a resource; dependent rows (overrides, app
+// registration snapshots, notification policies) go with it via FK cascades.
+func (r *Repository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.Exec(ctx, `delete from resources where id = $1`, id)
 	return err
 }
 

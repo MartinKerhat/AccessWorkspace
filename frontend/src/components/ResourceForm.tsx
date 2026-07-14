@@ -7,6 +7,7 @@ const defaultForm: ResourceForm = {
   personal: false,
   description: "",
   owner: "",
+  ownerUserId: "",
   ownerTeam: "",
   environment: "",
   status: "active",
@@ -80,7 +81,11 @@ type Props = {
   initialType?: ResourceForm["type"];
   availableGroups?: string[];
   availableOwners?: UserSummary[];
-  restrictPasswordToPersonal?: boolean;
+  // New password objects start as personal so nobody shares a secret by
+  // accident; saving as shared asks for confirmation instead of being blocked.
+  defaultPersonalPassword?: boolean;
+  // Only admins may assign a real owner; everyone else owns what they create.
+  canAssignOwner?: boolean;
   sharedMetadataOnly?: boolean;
   loading?: boolean;
   onSubmit: (input: ResourceForm) => Promise<void>;
@@ -114,7 +119,8 @@ export function ResourceFormCard({
   initialType,
   availableGroups = [],
   availableOwners = [],
-  restrictPasswordToPersonal = false,
+  defaultPersonalPassword = false,
+  canAssignOwner = false,
   sharedMetadataOnly = false,
   loading,
   onSubmit,
@@ -144,7 +150,7 @@ export function ResourceFormCard({
       setForm({
         ...defaultForm,
         type: nextType,
-        personal: restrictPasswordToPersonal && categoryForType(nextType) === "passwords"
+        personal: defaultPersonalPassword && categoryForType(nextType) === "passwords"
       });
       setPasswordVisible(false);
       return;
@@ -153,9 +159,10 @@ export function ResourceFormCard({
     setForm({
       name: resource.name,
       type: resource.type,
-      personal: restrictPasswordToPersonal && categoryForType(resource.type) === "passwords" ? true : resource.personal,
+      personal: resource.personal,
       description: resource.description,
       owner: resource.owner,
+      ownerUserId: resource.ownerUserId,
       ownerTeam: resource.ownerTeam,
       environment: resource.environment,
       status: resource.status,
@@ -390,10 +397,10 @@ export function ResourceFormCard({
             <input
               type="checkbox"
               checked={form.personal}
-              disabled={restrictPasswordToPersonal || coreLocked}
+              disabled={coreLocked}
               onChange={(event) => update("personal", event.target.checked)}
             />
-            <span>{restrictPasswordToPersonal ? "Personal saved password (required for your role)" : "Personal saved password"}</span>
+            <span>Personal saved password</span>
           </label>
         ) : null}
         <label>
@@ -416,9 +423,7 @@ export function ResourceFormCard({
               setForm((current) => ({
                 ...current,
                 type: value,
-                personal: (value === "web_portal" || value === "shared_secret")
-                  ? (restrictPasswordToPersonal ? true : current.personal)
-                  : false,
+                personal: (value === "web_portal" || value === "shared_secret") ? current.personal : false,
                 sourceKind: (value === "web_portal" || value === "shared_secret") ? "manual" : current.sourceKind,
                 sourceObjectId: (value === "web_portal" || value === "shared_secret") ? "" : current.sourceObjectId,
                 secretMode: (value === "web_portal" || value === "shared_secret") ? "inline" : current.secretMode,
@@ -432,13 +437,20 @@ export function ResourceFormCard({
             <button
               type="button"
               className="single-picker-trigger"
-              disabled={form.personal || coreLocked}
+              disabled={form.personal || coreLocked || !canAssignOwner}
               onClick={() => {
                 closeOtherPickers("owner");
                 setOwnerPickerOpen((open) => !open);
               }}
             >
-              <span>{form.owner || (form.personal ? "Saved under current user" : "Select owner")}</span>
+              <span>
+                {form.owner ||
+                  (form.personal
+                    ? "Saved under current user"
+                    : canAssignOwner
+                      ? "Select owner"
+                      : "You (creator)")}
+              </span>
               <span>{ownerPickerOpen ? "Close" : "Select"}</span>
             </button>
             {ownerPickerOpen ? (
@@ -454,9 +466,9 @@ export function ResourceFormCard({
                     <button
                       key={owner.id}
                       type="button"
-                      className={`picker-option ${form.owner === owner.name ? "active" : ""}`}
+                      className={`picker-option ${form.ownerUserId === owner.id ? "active" : ""}`}
                       onClick={() => {
-                        update("owner", owner.name);
+                        setForm((current) => ({ ...current, owner: owner.name, ownerUserId: owner.id }));
                         setOwnerPickerOpen(false);
                         setOwnerSearch("");
                       }}
@@ -633,24 +645,30 @@ export function ResourceFormCard({
               />
               <span>Launch allowed</span>
             </label>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                disabled={isImportedAppRegistration || coreLocked}
-                checked={form.revealAllowed}
-                onChange={(event) => update("revealAllowed", event.target.checked)}
-              />
-              <span>Reveal allowed</span>
-            </label>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                disabled={isImportedAppRegistration || coreLocked}
-                checked={form.copyAllowed}
-                onChange={(event) => update("copyAllowed", event.target.checked)}
-              />
-              <span>Copy allowed</span>
-            </label>
+            {/* Connections have no reveal/copy path — their secret is only ever
+                used by the launcher — so those flags are hidden for them. */}
+            {!isConnectionResource ? (
+              <>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    disabled={isImportedAppRegistration || coreLocked}
+                    checked={form.revealAllowed}
+                    onChange={(event) => update("revealAllowed", event.target.checked)}
+                  />
+                  <span>Reveal allowed</span>
+                </label>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    disabled={isImportedAppRegistration || coreLocked}
+                    checked={form.copyAllowed}
+                    onChange={(event) => update("copyAllowed", event.target.checked)}
+                  />
+                  <span>Copy allowed</span>
+                </label>
+              </>
+            ) : null}
           </>
         ) : null}
         {isPasswordResource ? (
@@ -921,10 +939,25 @@ export function ResourceFormCard({
         className="button primary"
         disabled={loading}
         onClick={() => {
+          // Creating a shared password is easy to do by accident (an empty
+          // group list means everyone with password access can see it), so ask
+          // once on first save instead of forcing personal-then-edit.
+          if (!resource && isPasswordResource && !form.personal) {
+            const audience =
+              form.allowedGroups.length > 0
+                ? `members of: ${form.allowedGroups.join(", ")}`
+                : "everyone with access to the Passwords module";
+            const confirmedShared = window.confirm(
+              `This password will be created as SHARED and visible to ${audience}.\n\n` +
+                "If it is your own login, cancel and keep \"Personal saved password\" checked instead."
+            );
+            if (!confirmedShared) {
+              return;
+            }
+          }
           const prepared = isPasswordResource
             ? {
                 ...form,
-                personal: restrictPasswordToPersonal ? true : form.personal,
                 ownerTeam: "",
                 sourceKind: "manual" as const,
                 sourceObjectId: "",
@@ -933,7 +966,13 @@ export function ResourceFormCard({
                 secretMode: "inline" as const,
                 secretReference: ""
               }
-            : form;
+            : isConnectionResource
+              ? {
+                  ...form,
+                  revealAllowed: false,
+                  copyAllowed: false
+                }
+              : form;
           void onSubmit(prepared);
         }}
       >

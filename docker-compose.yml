@@ -67,8 +67,11 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080/api}
     # The frontend nginx serves /downloads/ from the same mounted artifacts.
+    # nginx.dev.conf relaxes CSP connect-src for the split-origin dev API
+    # (localhost:8080); the CSP baked into the image stays production-strict.
     volumes:
       - ./artifacts:/srv/downloads:ro
+      - ./deploy/docker/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
     ports:

@@ -53,6 +53,8 @@ func (s *browserExtensionStore) Update(context.Context, string, UpdateResourceIn
 }
 
 func (s *browserExtensionStore) Archive(context.Context, string) error { return nil }
+
+func (s *browserExtensionStore) Delete(context.Context, string) error { return nil }
 func (s *browserExtensionStore) Restore(context.Context, string) error { return nil }
 func (s *browserExtensionStore) GetConnectionUserPasswordOverride(context.Context, string, string) (ConnectionCredentialOverride, error) {
 	return ConnectionCredentialOverride{}, ErrNotFound

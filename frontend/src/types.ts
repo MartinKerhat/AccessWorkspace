@@ -491,6 +491,8 @@ export type ResourceForm = {
   personal: boolean;
   description: string;
   owner: string;
+  // Honored by the backend only for admins; forced to the creator otherwise.
+  ownerUserId: string;
   ownerTeam: string;
   environment: string;
   status: string;

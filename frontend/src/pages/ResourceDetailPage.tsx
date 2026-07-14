@@ -41,6 +41,9 @@ type Props = {
   loading?: boolean;
   canEdit?: boolean;
   canRemove?: boolean;
+  // Owners (and admins on shared objects) may reveal password objects even
+  // when the per-object reveal/copy policy is off — they control that policy.
+  canOverrideRevealPolicy?: boolean;
   launcherRuntime?: LauncherRuntime | null;
   browserExtensionRuntime?: BrowserExtensionRuntime | null;
   passwordOptions?: ResourceSummary[];
@@ -83,6 +86,7 @@ export function ResourceDetailPage({
   loading,
   canEdit,
   canRemove,
+  canOverrideRevealPolicy = false,
   launcherRuntime,
   browserExtensionRuntime,
   passwordOptions = [],
@@ -454,7 +458,7 @@ export function ResourceDetailPage({
               />
               <button
                 className="button ghost"
-                disabled={loading || !resource.revealAllowed}
+                disabled={loading || (!resource.revealAllowed && !canOverrideRevealPolicy)}
                 onClick={() => void handleCopyPassword()}
               >
                 Reveal
@@ -497,7 +501,7 @@ export function ResourceDetailPage({
               />
               <button
                 className="button ghost"
-                disabled={loading || !resource.copyAllowed}
+                disabled={loading || (!resource.copyAllowed && !canOverrideRevealPolicy)}
                 onClick={() => void handleCopyPassword()}
               >
                 Reveal

@@ -31,6 +31,7 @@ type ResourceStore interface {
 	Create(ctx context.Context, input CreateResourceInput) (Resource, error)
 	Update(ctx context.Context, id string, input UpdateResourceInput) (Resource, error)
 	Archive(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
 	GetConnectionUserPasswordOverride(ctx context.Context, connectionID string, userID string) (ConnectionCredentialOverride, error)
 	UpsertConnectionUserPasswordOverride(ctx context.Context, connectionID string, userID string, passwordResourceID string) error
@@ -174,11 +175,11 @@ func (s *Service) ListArchived(ctx context.Context, user auth.User) ([]ArchivedR
 }
 
 func (s *Service) Create(ctx context.Context, user auth.User, input CreateResourceInput) (Resource, error) {
-	if !user.IsAdmin && !canCreatePersonalPassword(user, input) && !canCreateConnection(user, input) {
+	if !user.IsAdmin && !canCreatePassword(user, input) && !canCreateConnection(user, input) {
 		return Resource{}, ErrForbidden
 	}
+	input = enforceCreatorOwnership(user, input)
 	input = enforcePersonalPasswordOwnership(user, input)
-	input = enforceConnectionCreatorOwnership(user, input)
 	input = normalizeInput(input)
 	if err := s.prepareSecretForStorage(ctx, user, &input); err != nil {
 		return Resource{}, err
@@ -212,11 +213,17 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 	if !canUpdateResource(user, existing) {
 		return Resource{}, accessDenied(user, existing.Summary())
 	}
+	// Only admins may reassign ownership; for everyone else the stored owner
+	// always wins over whatever the request body claims.
+	if !user.IsAdmin {
+		input.OwnerUserID = existing.OwnerUserID
+	}
 	// Converting shared → personal seals the secret to the editor's vault, so
 	// only the current owner may do it. A non-owner (e.g. an admin editing
 	// someone else's shared resource) must first reassign ownership to
-	// themselves, then personalize as the new owner — never in one step,
-	// which would let them pull an org secret straight into their own vault.
+	// themselves via ownerUserId, then personalize as the new owner in a
+	// second edit — never in one step, which would let them pull an org
+	// secret straight into their own vault unnoticed.
 	if input.Personal && !existing.Personal && existing.OwnerUserID != user.ID {
 		return Resource{}, ErrForbidden
 	}
@@ -295,6 +302,26 @@ func (s *Service) Archive(ctx context.Context, user auth.User, id string) error 
 	if !canArchiveResource(user, resource) {
 		return accessDenied(user, resource.Summary())
 	}
+	// Personal objects are never archived: they must stay invisible to everyone
+	// but their owner, and the archive view is an admin surface. "Remove" on a
+	// personal object therefore deletes it for real (FKs cascade).
+	if resource.Personal {
+		if err := s.repo.Delete(ctx, id); err != nil {
+			return err
+		}
+		_ = s.audit.Log(ctx, audit.LogParams{
+			EventType:    audit.EventResourceDeleted,
+			UserID:       user.ID,
+			UserName:     user.Name,
+			ResourceID:   &resource.ID,
+			ResourceName: &resource.Name,
+			Metadata: map[string]any{
+				"type":   resource.Type,
+				"reason": "personal_removed_permanently",
+			},
+		})
+		return nil
+	}
 	if err := s.repo.Archive(ctx, id); err != nil {
 		return err
 	}
@@ -320,6 +347,12 @@ func (s *Service) Restore(ctx context.Context, user auth.User, id string) error 
 	if err != nil {
 		return err
 	}
+	// Personal objects are hard-deleted rather than archived; any legacy
+	// archived personal row stays invisible — even its id must not confirm
+	// that it exists.
+	if resource.Personal {
+		return ErrNotFound
+	}
 	if resource.ArchivedAt == nil {
 		return ErrNotFound
 	}
@@ -342,7 +375,14 @@ func (s *Service) Reveal(ctx context.Context, user auth.User, id string) (Reveal
 	if err != nil {
 		return RevealResult{}, err
 	}
-	if !(canRevealResource(user, resource) && resource.RevealAllowed) && !canRevealStoredPassword(user, resource) {
+	// Password objects are governed exclusively by canRevealStoredPassword
+	// (owner/admin override plus the per-type flag); the generic
+	// RevealAllowed clause applies to the other categories only. Without the
+	// category split, a stray revealAllowed=true on a saved password would
+	// grant readers a reveal the UI can neither show nor manage.
+	generalRevealAllowed := CategoryForType(resource.Type) != "passwords" &&
+		canRevealResource(user, resource) && resource.RevealAllowed
+	if !generalRevealAllowed && !canRevealStoredPassword(user, resource) {
 		return RevealResult{}, accessDenied(user, resource.Summary())
 	}
 	_ = s.audit.Log(ctx, audit.LogParams{
@@ -1693,6 +1733,13 @@ func normalizeInput(input CreateResourceInput) CreateResourceInput {
 	if input.Personal {
 		input.AllowedGroups = []string{}
 	}
+	// Saved passwords have a single usage flag (copyAllowed); reveal and
+	// launch are meaningless for them and must not linger in storage where a
+	// future check could pick them up.
+	if input.Type == TypeSharedSecret {
+		input.RevealAllowed = false
+		input.LaunchAllowed = false
+	}
 	return input
 }
 
@@ -1975,16 +2022,18 @@ func resourceToUpdateInput(resource Resource) UpdateResourceInput {
 	}
 }
 
-func canCreatePersonalPassword(user auth.User, input CreateResourceInput) bool {
-	if !input.Personal {
-		return false
-	}
-	return auth.CapabilitiesForUser(user).Categories["passwords"].Create && CategoryForType(input.Type) == "passwords"
+// canCreatePassword allows holders of the passwords Create capability to
+// create both personal and shared password objects. Shared creations are
+// forced to be owned by their creator (see enforceCreatorOwnership).
+func canCreatePassword(user auth.User, input CreateResourceInput) bool {
+	return CategoryForType(input.Type) == "passwords" &&
+		auth.CapabilitiesForUser(user).Categories["passwords"].Create
 }
 
 func canUpdateResource(user auth.User, existing Resource) bool {
-	capabilities := auth.CapabilitiesForUser(user).Categories[existing.Category]
-	isOwner := existing.OwnerUserID == user.ID && capabilities.Edit
+	// Ownership alone grants full edit on the object — the creator keeps control
+	// even without the category edit right (e.g. a connections.create-only user).
+	isOwner := existing.OwnerUserID == user.ID
 	// Personal resources can only be managed by their owner. Admins are excluded
 	// so they cannot flip a personal secret to shared and then reveal it.
 	if existing.Personal {
@@ -1998,6 +2047,7 @@ func canUpdateResource(user auth.User, existing Resource) bool {
 	}
 	// Non-owners holding the category edit right may update shared objects they
 	// can see — but only descriptive metadata (see restrictToSharedMetadata).
+	capabilities := auth.CapabilitiesForUser(user).Categories[existing.Category]
 	return capabilities.Edit && CanAccess(devViewer(user), existing.Summary())
 }
 
@@ -2027,21 +2077,31 @@ func canCreateConnection(user auth.User, input CreateResourceInput) bool {
 		auth.CapabilitiesForUser(user).Categories["connections"].Create
 }
 
-// enforceConnectionCreatorOwnership makes non-admin-created connections shared
-// objects owned by their creator.
-func enforceConnectionCreatorOwnership(user auth.User, input CreateResourceInput) CreateResourceInput {
-	if user.IsAdmin || CategoryForType(input.Type) != "connections" {
+// enforceCreatorOwnership decides who owns a newly created object. Non-admins
+// always own what they create — the request body cannot pick someone else.
+// Admins may assign a real owner via ownerUserId; when they don't, the admin
+// becomes the owner so every user-created object has an accountable owner.
+func enforceCreatorOwnership(user auth.User, input CreateResourceInput) CreateResourceInput {
+	if user.IsAdmin {
+		if strings.TrimSpace(input.OwnerUserID) == "" {
+			input.OwnerUserID = user.ID
+			if strings.TrimSpace(input.Owner) == "" {
+				input.Owner = user.Name
+			}
+		}
 		return input
 	}
 	input.Owner = user.Name
 	input.OwnerUserID = user.ID
-	input.Personal = false
+	if CategoryForType(input.Type) == "connections" {
+		input.Personal = false
+	}
 	return input
 }
 
 func canArchiveResource(user auth.User, resource Resource) bool {
-	isOwner := resource.OwnerUserID == user.ID &&
-		auth.CapabilitiesForUser(user).Categories[resource.Category].Edit
+	// Ownership alone is enough — see canUpdateResource.
+	isOwner := resource.OwnerUserID == user.ID
 	// Personal resources can only be managed by their owner — admins included.
 	if resource.Personal {
 		return isOwner

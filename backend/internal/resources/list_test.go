@@ -60,6 +60,8 @@ func (s *listTestStore) Update(context.Context, string, UpdateResourceInput) (Re
 	return Resource{}, nil
 }
 func (s *listTestStore) Archive(context.Context, string) error { return nil }
+
+func (s *listTestStore) Delete(context.Context, string) error { return nil }
 func (s *listTestStore) Restore(context.Context, string) error { return nil }
 func (s *listTestStore) GetConnectionUserPasswordOverride(context.Context, string, string) (ConnectionCredentialOverride, error) {
 	return ConnectionCredentialOverride{}, ErrNotFound

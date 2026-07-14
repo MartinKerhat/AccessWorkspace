@@ -12,6 +12,7 @@ const (
 	EventResourceCreated   EventType = "resource_created"
 	EventResourceUpdated   EventType = "resource_updated"
 	EventResourceArchived  EventType = "resource_archived"
+	EventResourceDeleted   EventType = "resource_deleted"
 	EventResourceRestored  EventType = "resource_restored"
 	EventUserAccessUpdated EventType = "user_access_updated"
 	EventUserDeleted       EventType = "user_deleted"

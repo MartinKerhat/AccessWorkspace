@@ -118,6 +118,7 @@ const availableRights = [
   "appregistrations.edit",
   "passwords.read",
   "passwords.edit",
+  "passwords.create",
   "audit.read",
   "admin.access"
 ] as const;
@@ -1789,19 +1790,21 @@ export default function App() {
     if (!selectedResourceId || !selectedResource || !session) {
       return;
     }
-    const canManageOwnedResource =
-      selectedResource.ownerUserId === session.user.id &&
-      session.capabilities.categories[selectedResource.category]?.edit;
-    if (!session.user.isAdmin && !canManageOwnedResource) {
+    // Ownership alone allows removal (mirrors the backend rule); admins may
+    // remove shared objects they do not own.
+    const isOwner = selectedResource.ownerUserId === session.user.id;
+    if (!isOwner && !(session.user.isAdmin && !selectedResource.personal)) {
       setMessage("You can only remove objects you own.");
       return;
     }
     const confirmed = window.confirm(
-      selectedResource.type === "key_vault_secret"
-        ? "Remove this Key Vault object from the app? The Azure secret will not be deleted."
-        : selectedResource.type === "app_registration"
-          ? "Remove this app registration from the workspace? The Entra app registration will not be deleted."
-        : "Remove this object from the app?"
+      selectedResource.personal
+        ? "Permanently delete this personal object? It is not archived — this cannot be undone."
+        : selectedResource.type === "key_vault_secret"
+          ? "Remove this Key Vault object from the app? The Azure secret will not be deleted."
+          : selectedResource.type === "app_registration"
+            ? "Remove this app registration from the workspace? The Entra app registration will not be deleted."
+            : "Remove this object from the app?"
     );
     if (!confirmed) {
       return;
@@ -1809,7 +1812,7 @@ export default function App() {
     setBusy(true);
     try {
       await api.archiveResource(selectedResourceId, session.authToken);
-      setMessage("Object removed from app");
+      setMessage(selectedResource.personal ? "Personal object permanently deleted" : "Object removed from app");
       await loadAllResources(session.authToken);
       if (session.capabilities.canViewAdmin) {
         await loadArchivedResources(session.authToken);
@@ -2432,18 +2435,24 @@ export default function App() {
                   loading={busy}
                   canEdit={Boolean(
                     selectedResource &&
-                      session.capabilities.categories[selectedResource.category]?.edit &&
-                      // Shared objects: any visible holder of the edit right may open
-                      // the form (non-owners get metadata-only fields). Personal
-                      // objects stay owner-only.
-                      (!selectedResource.personal ||
-                        selectedResource.ownerUserId === session.user.id)
+                      // Owners always manage their own objects (even without the
+                      // category edit right). Shared objects: any visible holder
+                      // of the edit right may open the form (non-owners get
+                      // metadata-only fields). Personal objects stay owner-only.
+                      (selectedResource.ownerUserId === session.user.id ||
+                        (!selectedResource.personal &&
+                          session.capabilities.categories[selectedResource.category]?.edit))
                   )}
                   canRemove={Boolean(
                     selectedResource &&
-                    session.capabilities.categories[selectedResource.category]?.edit &&
-                    ((!selectedResource.personal && session.user.isAdmin) ||
-                      selectedResource.ownerUserId === session.user.id)
+                    (selectedResource.ownerUserId === session.user.id ||
+                      (!selectedResource.personal && session.user.isAdmin))
+                  )}
+                  canOverrideRevealPolicy={Boolean(
+                    selectedResource &&
+                      selectedResource.category === "passwords" &&
+                      (selectedResource.ownerUserId === session.user.id ||
+                        (!selectedResource.personal && session.user.isAdmin))
                   )}
                   launcherRuntime={launcherRuntime}
                   browserExtensionRuntime={browserExtensionRuntime}
@@ -2615,12 +2624,8 @@ export default function App() {
             initialType={formState.mode === "create" ? formState.draftType : undefined}
             availableGroups={localGroups.map((group) => group.name)}
             availableOwners={knownUsers}
-            restrictPasswordToPersonal={
-              !session.user.isAdmin &&
-              formState.mode === "create" &&
-              formState.draftType !== undefined &&
-              categoryView === "passwords"
-            }
+            defaultPersonalPassword={!session.user.isAdmin}
+            canAssignOwner={session.user.isAdmin}
             sharedMetadataOnly={
               formState.mode === "edit" &&
               !session.user.isAdmin &&
@@ -2645,8 +2650,7 @@ export default function App() {
               formState.mode === "edit" &&
               selectedResource &&
               ((!selectedResource.personal && session.user.isAdmin) ||
-                (selectedResource.ownerUserId === session.user.id &&
-                  session.capabilities.categories[selectedResource.category]?.edit))
+                selectedResource.ownerUserId === session.user.id)
                 ? handleArchive
                 : undefined
             }

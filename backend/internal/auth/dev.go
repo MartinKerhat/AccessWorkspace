@@ -141,22 +141,26 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 			Launch: has("connections.read") || has("connections.edit") || has("connections.create"),
 		},
 		"keyvault": {
-			View:   has("keyvault.read") || has("keyvault.edit"),
-			Import: has("keyvault.edit"),
+			View: has("keyvault.read") || has("keyvault.edit"),
+			// Import/sync endpoints are admin-only; advertising Import here
+			// would promise non-admin editors something the API denies.
+			Import: false,
 			Edit:   has("keyvault.edit"),
 			Reveal: has("keyvault.read") || has("keyvault.edit"),
 		},
 		"appregistrations": {
 			View:   has("appregistrations.read") || has("appregistrations.edit"),
-			Import: has("appregistrations.edit"),
+			Import: false,
 			Edit:   has("appregistrations.edit"),
 		},
+		// passwords.create implies read-level access (like connections.create):
+		// a creator must be able to see, reveal and use their own objects.
 		"passwords": {
-			View:   has("passwords.read") || has("passwords.edit"),
-			Create: has("passwords.edit"),
+			View:   has("passwords.read") || has("passwords.edit") || has("passwords.create"),
+			Create: has("passwords.create") || has("passwords.edit"),
 			Edit:   has("passwords.edit"),
-			Reveal: has("passwords.read") || has("passwords.edit"),
-			Launch: has("passwords.read") || has("passwords.edit"),
+			Reveal: has("passwords.read") || has("passwords.edit") || has("passwords.create"),
+			Launch: has("passwords.read") || has("passwords.edit") || has("passwords.create"),
 		},
 	}
 

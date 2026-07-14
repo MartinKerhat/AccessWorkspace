@@ -42,6 +42,37 @@ func TestCapabilitiesForAdminEnableAdminAreas(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesForPasswordsCreateRight(t *testing.T) {
+	capabilities := CapabilitiesForUser(User{
+		ID:     "carl",
+		Name:   "Carl Creator",
+		Rights: []string{"passwords.create"},
+	})
+
+	passwords := capabilities.Categories["passwords"]
+	if !passwords.View || !passwords.Create || !passwords.Reveal || !passwords.Launch {
+		t.Fatalf("expected passwords.create to imply read-level access plus create, got %#v", passwords)
+	}
+	if passwords.Edit {
+		t.Fatalf("expected passwords.create not to grant edit")
+	}
+}
+
+func TestCapabilitiesImportIsAdminOnly(t *testing.T) {
+	capabilities := CapabilitiesForUser(User{
+		ID:     "kim",
+		Name:   "Kim Keyvault",
+		Rights: []string{"keyvault.edit", "appregistrations.edit"},
+	})
+
+	if capabilities.Categories["keyvault"].Import {
+		t.Fatalf("expected keyvault import to stay admin-only")
+	}
+	if capabilities.Categories["appregistrations"].Import {
+		t.Fatalf("expected app registration import to stay admin-only")
+	}
+}
+
 func TestCreateUserValidation(t *testing.T) {
 	service := &Service{}
 

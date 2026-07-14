@@ -183,7 +183,9 @@ type CreateResourceInput struct {
 	Personal                      bool         `json:"personal"`
 	Description                   string       `json:"description"`
 	Owner                         string       `json:"owner"`
-	OwnerUserID                   string       `json:"-"`
+	// OwnerUserID is honored only for admins; the service forces it to the
+	// caller (create) or the stored owner (update) for everyone else.
+	OwnerUserID                   string       `json:"ownerUserId"`
 	OwnerTeam                     string       `json:"ownerTeam"`
 	Environment                   string       `json:"environment"`
 	Status                        string       `json:"status"`

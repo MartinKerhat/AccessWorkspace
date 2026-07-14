@@ -81,6 +81,8 @@ func (s *personalPasswordStore) Update(_ context.Context, _ string, input Update
 }
 
 func (s *personalPasswordStore) Archive(context.Context, string) error { return nil }
+
+func (s *personalPasswordStore) Delete(context.Context, string) error { return nil }
 func (s *personalPasswordStore) Restore(context.Context, string) error { return nil }
 func (s *personalPasswordStore) GetConnectionUserPasswordOverride(context.Context, string, string) (ConnectionCredentialOverride, error) {
 	return ConnectionCredentialOverride{}, ErrNotFound

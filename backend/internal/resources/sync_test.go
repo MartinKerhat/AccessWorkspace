@@ -77,6 +77,8 @@ func (s *fakeResourceStore) Archive(_ context.Context, id string) error {
 	return nil
 }
 
+func (s *fakeResourceStore) Delete(context.Context, string) error { return nil }
+
 func (s *fakeResourceStore) Restore(context.Context, string) error {
 	return nil
 }

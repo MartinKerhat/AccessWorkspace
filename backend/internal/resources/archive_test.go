@@ -14,6 +14,7 @@ type archiveTestStore struct {
 	archived      Resource
 	archivedItems []ArchivedResourceSummary
 	archivedIDs   []string
+	deletedIDs    []string
 	restoredIDs   []string
 }
 
@@ -61,6 +62,11 @@ func (s *archiveTestStore) Update(context.Context, string, UpdateResourceInput) 
 
 func (s *archiveTestStore) Archive(_ context.Context, id string) error {
 	s.archivedIDs = append(s.archivedIDs, id)
+	return nil
+}
+
+func (s *archiveTestStore) Delete(_ context.Context, id string) error {
+	s.deletedIDs = append(s.deletedIDs, id)
 	return nil
 }
 
