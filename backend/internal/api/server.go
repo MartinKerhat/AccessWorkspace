@@ -1479,6 +1479,12 @@ func keyVaultImportStatus(enabled *bool) string {
 }
 
 func (s *Server) handleKeyVaultSync(w http.ResponseWriter, r *http.Request, user auth.User) {
+	// SyncKeyVault also enforces this, but keep the handler-level gate in step
+	// with its sibling key-vault endpoints (discover/import) as defense in depth.
+	if !user.IsAdmin {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
 	if s.keyVault == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "key vault integration is not available"})
 		return

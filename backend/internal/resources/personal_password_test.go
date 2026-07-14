@@ -156,6 +156,8 @@ func TestAdminCannotManageAnotherUsersPersonalPassword(t *testing.T) {
 
 	// An admin who does not own the personal password must not be able to update
 	// it — otherwise they could flip it to shared and then reveal the secret.
+	// It returns ErrNotFound rather than ErrForbidden: personal resources are
+	// hidden from non-owners entirely, so their existence is not even confirmed.
 	if _, err := service.Update(context.Background(), admin, "pwd-1", UpdateResourceInput{
 		Name:        "Grafana",
 		Type:        TypeWebPortal,
@@ -168,18 +170,18 @@ func TestAdminCannotManageAnotherUsersPersonalPassword(t *testing.T) {
 		Username:    "admin",
 		CopyAllowed: true,
 		SecretMode:  SecretModeInline,
-	}); err != ErrForbidden {
-		t.Fatalf("expected admin update of another user's personal password to be forbidden, got %v", err)
+	}); err != ErrNotFound {
+		t.Fatalf("expected admin update of another user's personal password to be hidden (not found), got %v", err)
 	}
 
 	// An admin must not be able to reveal another user's personal password.
-	if _, err := service.Reveal(context.Background(), admin, "pwd-1"); err != ErrForbidden {
-		t.Fatalf("expected admin reveal of another user's personal password to be forbidden, got %v", err)
+	if _, err := service.Reveal(context.Background(), admin, "pwd-1"); err != ErrNotFound {
+		t.Fatalf("expected admin reveal of another user's personal password to be hidden (not found), got %v", err)
 	}
 
 	// An admin must not be able to view another user's personal password.
-	if _, err := service.Get(context.Background(), admin, "pwd-1"); err != ErrForbidden {
-		t.Fatalf("expected admin view of another user's personal password to be forbidden, got %v", err)
+	if _, err := service.Get(context.Background(), admin, "pwd-1"); err != ErrNotFound {
+		t.Fatalf("expected admin view of another user's personal password to be hidden (not found), got %v", err)
 	}
 }
 

@@ -153,7 +153,7 @@ func (s *Service) Get(ctx context.Context, user auth.User, id string) (Resource,
 		return Resource{}, err
 	}
 	if !canViewResource(user, resource.Summary()) {
-		return Resource{}, ErrForbidden
+		return Resource{}, accessDenied(user, resource.Summary())
 	}
 	_ = s.audit.Log(ctx, audit.LogParams{
 		EventType:    audit.EventResourceViewed,
@@ -210,7 +210,7 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 		return Resource{}, err
 	}
 	if !canUpdateResource(user, existing) {
-		return Resource{}, ErrForbidden
+		return Resource{}, accessDenied(user, existing.Summary())
 	}
 	// Converting shared → personal seals the secret to the editor's vault, so
 	// only the current owner may do it. A non-owner (e.g. an admin editing
@@ -293,7 +293,7 @@ func (s *Service) Archive(ctx context.Context, user auth.User, id string) error 
 		return err
 	}
 	if !canArchiveResource(user, resource) {
-		return ErrForbidden
+		return accessDenied(user, resource.Summary())
 	}
 	if err := s.repo.Archive(ctx, id); err != nil {
 		return err
@@ -343,7 +343,7 @@ func (s *Service) Reveal(ctx context.Context, user auth.User, id string) (Reveal
 		return RevealResult{}, err
 	}
 	if !(canRevealResource(user, resource) && resource.RevealAllowed) && !canRevealStoredPassword(user, resource) {
-		return RevealResult{}, ErrForbidden
+		return RevealResult{}, accessDenied(user, resource.Summary())
 	}
 	_ = s.audit.Log(ctx, audit.LogParams{
 		EventType:    audit.EventResourceRevealed,
@@ -371,7 +371,7 @@ func (s *Service) Launch(ctx context.Context, user auth.User, id string) (Launch
 		return LaunchPayload{}, err
 	}
 	if !canLaunchResource(user, resource) || !resource.LaunchAllowed {
-		return LaunchPayload{}, ErrForbidden
+		return LaunchPayload{}, accessDenied(user, resource.Summary())
 	}
 	resource = s.applyConnectionCredentialOverride(ctx, user, resource)
 	payload := buildLaunchPayload(resource)
@@ -1454,6 +1454,18 @@ func (u devViewer) GetIsAdmin() bool         { return u.IsAdmin }
 
 func canViewResource(user auth.User, resource ResourceSummary) bool {
 	return auth.CapabilitiesForUser(user).Categories[resource.Category].View && CanAccess(devViewer(user), resource)
+}
+
+// accessDenied is the error for a resource the user may not act on. Personal
+// resources are hidden from non-owners entirely (404, not 403), so holding a
+// resource id cannot be used to confirm that someone owns a personal secret —
+// consistent with "personal is invisible to everyone but its owner". Shared
+// resources keep 403: their existence is not sensitive.
+func accessDenied(user auth.User, resource ResourceSummary) error {
+	if resource.Personal && resource.OwnerUserID != user.ID {
+		return ErrNotFound
+	}
+	return ErrForbidden
 }
 
 func canRevealResource(user auth.User, resource Resource) bool {
