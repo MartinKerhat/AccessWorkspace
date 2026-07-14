@@ -505,6 +505,12 @@ export function ResourceDetailPage({
             </div>
             {passwordCopyMessage ? <p className="detail-description">{passwordCopyMessage}</p> : null}
           </div>
+          <div className="detail-section">
+            <p className="eyebrow">Notes</p>
+            <div className="connection-notes-card">
+              <p className="connection-notes-copy">{resource.notes || "n/a"}</p>
+            </div>
+          </div>
         </>
       ) : null}
 
