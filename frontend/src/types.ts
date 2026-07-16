@@ -140,6 +140,13 @@ export type WorkspaceCapabilities = {
   canViewAdmin: boolean;
 };
 
+export type Session = {
+  user: User;
+  authToken: string;
+  authMode: AuthMode;
+  capabilities: WorkspaceCapabilities;
+};
+
 export type AdminConfig = {
   authMode: string;
   entraTenantId: string;
