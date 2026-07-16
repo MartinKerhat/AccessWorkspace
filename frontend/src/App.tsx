@@ -1651,7 +1651,13 @@ export default function App() {
         await api.launcherLocalLaunch(runtime.launchUrl, preparedPayload);
         setMessage("Connection handed off to the desktop launcher.");
       } else if (selectedResource?.type === "web_portal") {
-        setMessage("Launch target prepared.");
+        if (response.url) {
+          setLaunch(null);
+          window.open(response.url, "_blank", "noopener,noreferrer");
+          setMessage("Target opened in a new browser tab.");
+        } else {
+          setMessage("Launch target prepared.");
+        }
       }
       await refreshAfterSensitiveAction();
     } catch (error) {
@@ -2014,9 +2020,11 @@ export default function App() {
   const currentItems = categoryItems.filter((item) => {
     const query = filters.q.trim().toLowerCase();
     const target = filters.target.trim().toLowerCase();
+    const ownershipScope = item.personal ? "personal" : "shared";
 
     const matchesQuery =
       query === "" ||
+      ownershipScope.startsWith(query) ||
       item.name.toLowerCase().includes(query) ||
       item.description.toLowerCase().includes(query) ||
       item.owner.toLowerCase().includes(query) ||

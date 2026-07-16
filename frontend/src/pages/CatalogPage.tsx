@@ -147,6 +147,7 @@ function renderResourceCard(
       <div className="resource-card-top">
         <span className={`resource-type ${item.type}`}>{resourceTypeLabel(item.type)}</span>
         <div className="resource-actions-mini">
+          {category === "passwords" ? <span>{item.personal ? "Personal" : "Shared"}</span> : null}
           {item.status && item.status !== "active" ? <span>{item.status}</span> : null}
           {item.launchAllowed ? <span>{connectionCard ? "Connect" : "Launch"}</span> : null}
         </div>
@@ -305,7 +306,13 @@ export function CatalogPage({
         <div className="filter-grid">
           <input
             className={connectionCategory ? "wide-filter-input" : undefined}
-            placeholder={connectionCategory ? "Search name, host, folder, owner" : "Search name, target, owner, provider"}
+            placeholder={
+              connectionCategory
+                ? "Search name, host, folder, owner"
+                : category === "passwords"
+                  ? "Search name, target, owner, personal/shared"
+                  : "Search name, target, owner, provider"
+            }
             value={filters.q}
             onChange={(event) =>
               onFilterChange(connectionCategory ? { q: event.target.value, target: "" } : { ...filters, q: event.target.value })
