@@ -178,57 +178,57 @@ type VisibleResourceSummary struct {
 }
 
 type CreateResourceInput struct {
-	Name                          string       `json:"name"`
-	Type                          ResourceType `json:"type"`
-	Personal                      bool         `json:"personal"`
-	Description                   string       `json:"description"`
-	Owner                         string       `json:"owner"`
+	Name        string       `json:"name"`
+	Type        ResourceType `json:"type"`
+	Personal    bool         `json:"personal"`
+	Description string       `json:"description"`
+	Owner       string       `json:"owner"`
 	// OwnerUserID is honored only for admins; the service forces it to the
 	// caller (create) or the stored owner (update) for everyone else.
-	OwnerUserID                   string       `json:"ownerUserId"`
-	OwnerTeam                     string       `json:"ownerTeam"`
-	Environment                   string       `json:"environment"`
-	Status                        string       `json:"status"`
-	FolderPath                    string       `json:"folderPath"`
-	LaunchMode                    string       `json:"launchMode"`
-	SourceKind                    SourceKind   `json:"sourceKind"`
-	SourceObjectID                string       `json:"sourceObjectId"`
-	LastSyncedAt                  *time.Time   `json:"lastSyncedAt"`
-	Notes                         string       `json:"notes"`
-	TargetHost                    string       `json:"targetHost"`
-	TargetPort                    *int         `json:"targetPort"`
-	TargetURL                     string       `json:"targetUrl"`
-	TargetSystem                  string       `json:"targetSystem"`
-	Username                      string       `json:"username"`
-	ConnectionDomain              string       `json:"connectionDomain"`
-	ConnectionAdminSession        bool         `json:"connectionAdminSession"`
-	ConnectionAutomaticLogon      bool         `json:"connectionAutomaticLogon"`
-	ConnectionWindowMode          string       `json:"connectionWindowMode"`
-	ConnectionUseMultipleMonitors bool         `json:"connectionUseMultipleMonitors"`
-	ConnectionShowConnectionBar   bool         `json:"connectionShowConnectionBar"`
-	ConnectionScreenMode          string       `json:"connectionScreenMode"`
-	ConnectionMacAddress          string       `json:"connectionMacAddress"`
-	VaultName                     string       `json:"vaultName"`
-	ObjectName                    string       `json:"objectName"`
-	ObjectType                    string       `json:"objectType"`
-	ObjectVersion                 string       `json:"objectVersion"`
-	ContentType                   string       `json:"contentType"`
-	ExpiresAt                     *time.Time   `json:"expiresAt"`
-	Provider                      string       `json:"provider"`
-	ApplicationID                 string       `json:"applicationId"`
-	TenantID                      string       `json:"tenantId"`
-	ClientID                      string       `json:"clientId"`
-	CredentialType                string       `json:"credentialType"`
-	CredentialExpiresAt           *time.Time   `json:"credentialExpiresAt"`
-	DisplayNameExternal           string       `json:"displayNameExternal"`
-	LinkedSecretRef               string       `json:"linkedSecretRef"`
-	LaunchAllowed                 bool         `json:"launchAllowed"`
-	RevealAllowed                 bool         `json:"revealAllowed"`
-	CopyAllowed                   bool         `json:"copyAllowed"`
-	AllowedGroups                 []string     `json:"allowedGroups"`
-	SecretMode                    SecretMode   `json:"secretMode"`
-	SecretValue                   string       `json:"secretValue"`
-	SecretReference               string       `json:"secretReference"`
+	OwnerUserID                   string     `json:"ownerUserId"`
+	OwnerTeam                     string     `json:"ownerTeam"`
+	Environment                   string     `json:"environment"`
+	Status                        string     `json:"status"`
+	FolderPath                    string     `json:"folderPath"`
+	LaunchMode                    string     `json:"launchMode"`
+	SourceKind                    SourceKind `json:"sourceKind"`
+	SourceObjectID                string     `json:"sourceObjectId"`
+	LastSyncedAt                  *time.Time `json:"lastSyncedAt"`
+	Notes                         string     `json:"notes"`
+	TargetHost                    string     `json:"targetHost"`
+	TargetPort                    *int       `json:"targetPort"`
+	TargetURL                     string     `json:"targetUrl"`
+	TargetSystem                  string     `json:"targetSystem"`
+	Username                      string     `json:"username"`
+	ConnectionDomain              string     `json:"connectionDomain"`
+	ConnectionAdminSession        bool       `json:"connectionAdminSession"`
+	ConnectionAutomaticLogon      bool       `json:"connectionAutomaticLogon"`
+	ConnectionWindowMode          string     `json:"connectionWindowMode"`
+	ConnectionUseMultipleMonitors bool       `json:"connectionUseMultipleMonitors"`
+	ConnectionShowConnectionBar   bool       `json:"connectionShowConnectionBar"`
+	ConnectionScreenMode          string     `json:"connectionScreenMode"`
+	ConnectionMacAddress          string     `json:"connectionMacAddress"`
+	VaultName                     string     `json:"vaultName"`
+	ObjectName                    string     `json:"objectName"`
+	ObjectType                    string     `json:"objectType"`
+	ObjectVersion                 string     `json:"objectVersion"`
+	ContentType                   string     `json:"contentType"`
+	ExpiresAt                     *time.Time `json:"expiresAt"`
+	Provider                      string     `json:"provider"`
+	ApplicationID                 string     `json:"applicationId"`
+	TenantID                      string     `json:"tenantId"`
+	ClientID                      string     `json:"clientId"`
+	CredentialType                string     `json:"credentialType"`
+	CredentialExpiresAt           *time.Time `json:"credentialExpiresAt"`
+	DisplayNameExternal           string     `json:"displayNameExternal"`
+	LinkedSecretRef               string     `json:"linkedSecretRef"`
+	LaunchAllowed                 bool       `json:"launchAllowed"`
+	RevealAllowed                 bool       `json:"revealAllowed"`
+	CopyAllowed                   bool       `json:"copyAllowed"`
+	AllowedGroups                 []string   `json:"allowedGroups"`
+	SecretMode                    SecretMode `json:"secretMode"`
+	SecretValue                   string     `json:"secretValue"`
+	SecretReference               string     `json:"secretReference"`
 }
 
 type UpdateResourceInput = CreateResourceInput
@@ -411,5 +411,43 @@ func CategoryForType(resourceType ResourceType) string {
 		return "appregistrations"
 	default:
 		return "passwords"
+	}
+}
+
+func (r Resource) Summary() ResourceSummary {
+	return ResourceSummary{
+		ID:                  r.ID,
+		Name:                r.Name,
+		Type:                r.Type,
+		Category:            r.Category,
+		Personal:            r.Personal,
+		Description:         r.Description,
+		Owner:               r.Owner,
+		OwnerUserID:         r.OwnerUserID,
+		OwnerTeam:           r.OwnerTeam,
+		Environment:         r.Environment,
+		Status:              r.Status,
+		FolderPath:          r.FolderPath,
+		LaunchMode:          r.LaunchMode,
+		SourceKind:          r.SourceKind,
+		TargetHost:          r.TargetHost,
+		TargetPort:          r.TargetPort,
+		TargetURL:           r.TargetURL,
+		TargetSystem:        r.TargetSystem,
+		Username:            r.Username,
+		ConnectionDomain:    r.ConnectionDomain,
+		VaultName:           r.VaultName,
+		ObjectName:          r.ObjectName,
+		Provider:            r.Provider,
+		ApplicationID:       r.ApplicationID,
+		CredentialExpiresAt: r.CredentialExpiresAt,
+		ExpiresAt:           r.ExpiresAt,
+		LaunchAllowed:       r.LaunchAllowed,
+		RevealAllowed:       r.RevealAllowed,
+		CopyAllowed:         r.CopyAllowed,
+		AllowedGroups:       r.AllowedGroups,
+		CreatedAt:           r.CreatedAt,
+		UpdatedAt:           r.UpdatedAt,
+		ArchivedAt:          r.ArchivedAt,
 	}
 }

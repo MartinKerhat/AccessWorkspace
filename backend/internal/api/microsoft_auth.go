@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"access-workspace/backend/internal/auth"
+	"github.com/google/uuid"
 )
 
 type microsoftTokenResponse struct {
@@ -234,4 +237,134 @@ func slicesContains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) handleMicrosoftStart(w http.ResponseWriter, r *http.Request) {
+	configAny, err := s.adminConfig.GetRuntime(r.Context())
+	if err != nil {
+		log.Printf("microsoft auth start: load config failed: %v", err)
+		http.Redirect(w, r, s.frontendURL+"?authError=config_load_failed", http.StatusFound)
+		return
+	}
+
+	enabled := adminBool(configAny, "Enabled", "entraEnabled")
+	configured := adminBool(configAny, "Configured", "entraConfigured")
+	if !enabled || !configured {
+		log.Printf("microsoft auth start: unavailable enabled=%t configured=%t", enabled, configured)
+		http.Redirect(w, r, s.frontendURL+"?authError=microsoft_login_not_available", http.StatusFound)
+		return
+	}
+
+	authority := strings.TrimRight(adminString(configAny, "Authority", "entraAuthority"), "/")
+	tenantID := adminString(configAny, "TenantID", "entraTenantId")
+	clientID := adminString(configAny, "ClientID", "entraClientId")
+	redirectURI := adminString(configAny, "RedirectURI", "entraRedirectUri")
+
+	if authority == "" || tenantID == "" || clientID == "" || redirectURI == "" {
+		log.Printf("microsoft auth start: incomplete config authority=%t tenant=%t client=%t redirect=%t",
+			authority != "", tenantID != "", clientID != "", redirectURI != "")
+		http.Redirect(w, r, s.frontendURL+"?authError=microsoft_login_not_configured", http.StatusFound)
+		return
+	}
+
+	state := uuid.NewString()
+	authURL, err := url.Parse(fmt.Sprintf("%s/%s/oauth2/v2.0/authorize", authority, tenantID))
+	if err != nil {
+		log.Printf("microsoft auth start: invalid authority %q: %v", authority, err)
+		http.Redirect(w, r, s.frontendURL+"?authError=invalid_microsoft_authority", http.StatusFound)
+		return
+	}
+
+	query := authURL.Query()
+	query.Set("client_id", clientID)
+	query.Set("response_type", "code")
+	query.Set("redirect_uri", redirectURI)
+	query.Set("response_mode", "query")
+	query.Set("scope", microsoftScopes(configAny))
+	query.Set("state", state)
+	authURL.RawQuery = query.Encode()
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "aw_ms_state",
+		Value:    state,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   600,
+	})
+
+	log.Printf("microsoft auth start: redirecting to authorize endpoint tenant=%s redirect_uri=%s group_source=%s",
+		tenantID, redirectURI, adminString(configAny, "GroupSource", "entraGroupSource"))
+	http.Redirect(w, r, authURL.String(), http.StatusFound)
+}
+
+func (s *Server) handleMicrosoftCallback(w http.ResponseWriter, r *http.Request) {
+	if errorCode := r.URL.Query().Get("error"); errorCode != "" {
+		log.Printf("microsoft auth callback: provider returned error=%s description=%s",
+			errorCode, r.URL.Query().Get("error_description"))
+		http.Redirect(w, r, s.frontendURL+"?authError="+url.QueryEscape(errorCode), http.StatusFound)
+		return
+	}
+
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+	stateCookie, err := r.Cookie("aw_ms_state")
+	if err != nil || stateCookie.Value == "" || stateCookie.Value != state {
+		log.Printf("microsoft auth callback: invalid state cookie_present=%t state_match=%t err=%v",
+			err == nil && stateCookie != nil,
+			err == nil && stateCookie != nil && stateCookie.Value == state,
+			err)
+		http.Redirect(w, r, s.frontendURL+"?authError=invalid_microsoft_state", http.StatusFound)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "aw_ms_state",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+
+	if code == "" {
+		log.Printf("microsoft auth callback: missing authorization code")
+		http.Redirect(w, r, s.frontendURL+"?authError=missing_microsoft_code", http.StatusFound)
+		return
+	}
+
+	configAny, err := s.adminConfig.GetRuntime(r.Context())
+	if err != nil {
+		log.Printf("microsoft auth callback: load config failed: %v", err)
+		http.Redirect(w, r, s.frontendURL+"?authError=config_load_failed", http.StatusFound)
+		return
+	}
+
+	tokens, err := exchangeMicrosoftCode(r.Context(), configAny, code)
+	if err != nil {
+		log.Printf("microsoft auth callback: token exchange failed: %v", err)
+		http.Redirect(w, r, s.frontendURL+"?authError=microsoft_token_exchange_failed", http.StatusFound)
+		return
+	}
+
+	user, err := resolveMicrosoftUser(r.Context(), configAny, tokens)
+	if err != nil {
+		log.Printf("microsoft auth callback: user resolution failed: %v", err)
+		http.Redirect(w, r, s.frontendURL+"?authError=microsoft_user_resolution_failed", http.StatusFound)
+		return
+	}
+
+	result, err := s.authenticator.IssueSession(r.Context(), user, auth.ModeEntra)
+	if err != nil {
+		log.Printf("microsoft auth callback: session creation failed for user=%s: %v", user.ID, err)
+		if errors.Is(err, auth.ErrBlocked) {
+			http.Redirect(w, r, s.frontendURL+"?authError=user_blocked", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, s.frontendURL+"?authError=microsoft_session_failed", http.StatusFound)
+		return
+	}
+
+	log.Printf("microsoft auth callback: signed in user=%s email=%s groups=%d", user.ID, user.Email, len(user.Groups))
+	http.Redirect(w, r, s.frontendURL+"?authToken="+url.QueryEscape(result.Token), http.StatusFound)
 }
