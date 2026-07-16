@@ -8,6 +8,11 @@ import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
 import { KeyVaultImportModal } from "./modals/KeyVaultImportModal";
 import { AppRegistrationImportModal } from "./modals/AppRegistrationImportModal";
+import { currentView, type View } from "./navigation";
+import { useAuth, authTokenStorageKey } from "./hooks/useAuth";
+import { filterCatalogItems, filterArchivedKeyVaultItems, defaultFilters, type Filters } from "./catalogFilter";
+import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { WorkspaceTopbar } from "./components/WorkspaceTopbar";
 import { useLauncher } from "./hooks/useLauncher";
 import { useBrowserExtension } from "./hooks/useBrowserExtension";
 import { useVault } from "./hooks/useVault";
@@ -39,32 +44,18 @@ import type {
   AuditEvent,
   Resource,
   ResourceForm,
-  ResourceSummary,
-  Session,
-  UserNotification
+  ResourceSummary
 } from "./types";
 import {
-  categoryLabel,
   filterCategoryItems,
   type WorkspaceCategory
 } from "./workspaceCategories";
 
-type View = WorkspaceCategory | "activity" | "audit" | "admin";
 type AdminSection = "users" | "groups" | "azure" | "connections" | "notifications" | "model" | "diagnostics";
-type Filters = { q: string; target: string };
 type FormState =
   | { mode: "closed" }
   | { mode: "create"; draftType: ResourceForm["type"] }
   | { mode: "edit" };
-type LoginOptions = {
-  localLoginEnabled: boolean;
-  microsoftLoginHint: boolean;
-};
-
-
-
-const defaultFilters: Filters = { q: "", target: "" };
-const authTokenStorageKey = "authToken";
 const closedFormState: FormState = { mode: "closed" };
 const availableRights = [
   "connections.read",
@@ -81,109 +72,25 @@ const availableRights = [
   "admin.access"
 ] as const;
 
-function notificationUnreadCount(items: UserNotification[]) {
-  return items.filter((item) => !item.readAt).length;
-}
-
-function currentView(): View {
-  const hash = window.location.hash.replace("#", "");
-  if (
-    hash === "connections" ||
-    hash === "keyvault" ||
-    hash === "appregistrations" ||
-    hash === "passwords" ||
-    hash === "activity" ||
-    hash === "audit" ||
-    hash === "admin"
-  ) {
-    return hash;
-  }
-  return "connections";
-}
-
-function pageTitle(view: View): string {
-  switch (view) {
-    case "connections":
-    case "keyvault":
-    case "appregistrations":
-    case "passwords":
-      return categoryLabel(view);
-    case "activity":
-      return "Recent activity";
-    case "audit":
-      return "Audit trail";
-    case "admin":
-      return "Administration";
-    default:
-      return "Operational access workspace";
-  }
-}
-
-function loginMessageFromQuery(): string | undefined {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("authToken")) {
-    return undefined;
-  }
-  const authError = params.get("authError");
-
-  if (authError) {
-    switch (authError) {
-      case "microsoft_login_not_available":
-        return "Microsoft sign-in is not available yet. Enable and configure it in Administration first.";
-      case "microsoft_login_not_configured":
-        return "Microsoft sign-in is missing required Entra settings.";
-      case "invalid_microsoft_authority":
-        return "The configured Microsoft authority URL is invalid.";
-      case "invalid_microsoft_state":
-        return "Microsoft sign-in could not be completed because the callback state was invalid.";
-      case "missing_microsoft_code":
-        return "Microsoft sign-in returned without an authorization code.";
-      case "microsoft_token_exchange_failed":
-        return "Microsoft sign-in reached the callback, but exchanging the authorization code for tokens failed.";
-      case "microsoft_user_resolution_failed":
-        return "Microsoft sign-in completed token exchange, but the user profile or groups could not be loaded.";
-      case "microsoft_session_failed":
-        return "Microsoft sign-in completed, but creating the local workspace session failed.";
-      case "user_blocked":
-        return "This account is blocked from signing in to the workspace.";
-      default:
-        return "Microsoft sign-in could not be completed.";
-    }
-  }
-
-  return undefined;
-}
-
-function authMessage(error: unknown, fallback: string): string {
-  if (!(error instanceof Error)) {
-    return fallback;
-  }
-  if (error.message === "user is blocked") {
-    return "This account is blocked from signing in to the workspace.";
-  }
-  return error.message;
-}
-
-function clearLoginQuery() {
-  if (!window.location.search) {
-    return;
-  }
-  const next = `${window.location.pathname}${window.location.hash}`;
-  window.history.replaceState({}, "", next);
-}
-
 // Events are stored forever; the UI pages through them AUDIT_PAGE_SIZE at a time.
 const AUDIT_PAGE_SIZE = 100;
 
 export default function App() {
-  const [loginOptions, setLoginOptions] = useState<LoginOptions>({
-    localLoginEnabled: true,
-    microsoftLoginHint: true
-  });
-  const [session, setSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
-  const [booting, setBooting] = useState(true);
   const [message, setMessage] = useState<string>();
+  const {
+    loginOptions,
+    setLoginOptions,
+    session,
+    setSession,
+    booting,
+    inviteToken,
+    signIn,
+    acceptInvite,
+    changePassword,
+    refreshCurrentSession,
+    handleMicrosoftSignIn
+  } = useAuth({ setBusy, setMessage });
   const [allResources, setAllResources] = useState<ResourceSummary[]>([]);
   const [selectedResourceId, setSelectedResourceId] = useState<string>();
   const [selectedResource, setSelectedResource] = useState<Resource>();
@@ -387,45 +294,7 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [view, setView] = useState<View>(currentView());
   const [adminSection, setAdminSection] = useState<AdminSection>("users");
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [inviteToken, setInviteToken] = useState<string>(() =>
-    new URLSearchParams(window.location.search).get("invite") ?? ""
-  );
-  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
-  const notificationMenuRef = useRef<HTMLDivElement | null>(null);
-  const accountMenuRef = useRef<HTMLDivElement | null>(null);
-
-  // Close the notification and account popovers on any click outside them (or Escape).
-  useEffect(() => {
-    if (!notificationCenterOpen && !accountMenuOpen) {
-      return;
-    }
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target as Node | null;
-      if (!target) {
-        return;
-      }
-      if (notificationCenterOpen && notificationMenuRef.current && !notificationMenuRef.current.contains(target)) {
-        setNotificationCenterOpen(false);
-      }
-      if (accountMenuOpen && accountMenuRef.current && !accountMenuRef.current.contains(target)) {
-        setAccountMenuOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setNotificationCenterOpen(false);
-        setAccountMenuOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [notificationCenterOpen, accountMenuOpen]);
   const previousViewRef = useRef<View | null>(null);
   const previousAdminSectionRef = useRef<AdminSection | null>(null);
 
@@ -462,128 +331,11 @@ export default function App() {
   }, [view, adminSection]);
 
   useEffect(() => {
-    void bootstrapAuth();
-  }, []);
-
-  useEffect(() => {
-    const loginMessage = loginMessageFromQuery();
-    if (loginMessage) {
-      setMessage(loginMessage);
-      clearLoginQuery();
-    }
-  }, []);
-
-  useEffect(() => {
     if (!user) {
       return;
     }
     void loadWorkspaceData();
   }, [user]);
-
-  async function bootstrapAuth() {
-    setBooting(true);
-    try {
-      const bootstrap = await api.authBootstrap();
-      setLoginOptions({
-        localLoginEnabled: bootstrap.localLoginEnabled,
-        microsoftLoginHint: bootstrap.microsoftLoginHint
-      });
-      const params = new URLSearchParams(window.location.search);
-      const tokenFromQuery = params.get("authToken") ?? undefined;
-      const rememberedToken = tokenFromQuery ?? localStorage.getItem(authTokenStorageKey) ?? undefined;
-      if (!rememberedToken) {
-        return;
-      }
-      if (tokenFromQuery) {
-        localStorage.setItem(authTokenStorageKey, tokenFromQuery);
-        clearLoginQuery();
-      }
-      const response = await api.authMe(rememberedToken);
-      setSession({
-        user: response.user,
-        authToken: rememberedToken,
-        authMode: response.authMode,
-        capabilities: response.capabilities
-      });
-      if (!window.location.hash) {
-        window.location.hash = "#connections";
-      }
-    } catch (error) {
-      localStorage.removeItem(authTokenStorageKey);
-      const nextMessage = authMessage(error, "Failed to load auth bootstrap");
-      if (nextMessage !== "unauthenticated") {
-        setMessage(nextMessage);
-      } else {
-        setMessage(undefined);
-      }
-    } finally {
-      setBooting(false);
-    }
-  }
-
-  async function signIn(username: string, password: string) {
-    setBusy(true);
-    try {
-      const response = await api.authLogin(username, password);
-      localStorage.setItem(authTokenStorageKey, response.token);
-      setSession({
-        user: response.user,
-        authToken: response.token,
-        authMode: response.authMode,
-        capabilities: response.capabilities
-      });
-      setMessage(undefined);
-      if (!window.location.hash) {
-        window.location.hash = "#connections";
-      }
-    } catch (error) {
-      setMessage(authMessage(error, "Sign-in failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function acceptInvite(password: string) {
-    setBusy(true);
-    try {
-      const response = await api.acceptInvite(inviteToken, password);
-      localStorage.setItem(authTokenStorageKey, response.token);
-      setSession({
-        user: response.user,
-        authToken: response.token,
-        authMode: response.authMode,
-        capabilities: response.capabilities
-      });
-      setInviteToken("");
-      // Drop the one-time token from the address bar.
-      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
-      setMessage(undefined);
-      if (!window.location.hash) {
-        window.location.hash = "#connections";
-      }
-    } catch (error) {
-      setMessage(authMessage(error, "Account setup failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function changePassword(currentPassword: string, newPassword: string) {
-    if (!session) {
-      return false;
-    }
-    setBusy(true);
-    try {
-      await api.changePassword(currentPassword, newPassword, session.authToken);
-      setMessage("Password changed");
-      return true;
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Changing password failed");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function signOut() {
     if (session) {
@@ -613,7 +365,6 @@ export default function App() {
     setFilters(defaultFilters);
     setView("connections");
     setMessage(undefined);
-    setAccountMenuOpen(false);
     setFormState(closedFormState);
     window.location.hash = "";
   }
@@ -713,17 +464,6 @@ export default function App() {
     setArchivedResources(response.items);
   }
 
-  async function refreshCurrentSession(authToken: string) {
-    const response = await api.authMe(authToken);
-    setSession({
-      user: response.user,
-      authToken,
-      authMode: response.authMode,
-      capabilities: response.capabilities
-    });
-    return response;
-  }
-
   // Invoked by useAdminUsers when refreshing the current user's own session
   // fails after an access change: clear everything App still owns (the hook
   // clears its own state before calling this).
@@ -742,7 +482,6 @@ export default function App() {
     resetAppRegistrationAdmin();
     setFilters(defaultFilters);
     setView("connections");
-    setAccountMenuOpen(false);
     setFormState(closedFormState);
     window.location.hash = "";
     setMessage(failureMessage);
@@ -753,61 +492,9 @@ export default function App() {
   );
   const categoryView: WorkspaceCategory | null = view === "activity" || view === "audit" || view === "admin" ? null : view;
   const categoryItems = categoryView ? filterCategoryItems(allResources, categoryView) : [];
-  const currentItems = categoryItems.filter((item) => {
-    const query = filters.q.trim().toLowerCase();
-    const target = filters.target.trim().toLowerCase();
-    const ownershipScope = item.personal ? "personal" : "shared";
-
-    const matchesQuery =
-      query === "" ||
-      ownershipScope.startsWith(query) ||
-      item.name.toLowerCase().includes(query) ||
-      item.description.toLowerCase().includes(query) ||
-      item.owner.toLowerCase().includes(query) ||
-      item.ownerTeam.toLowerCase().includes(query) ||
-      item.folderPath.toLowerCase().includes(query) ||
-      item.targetHost.toLowerCase().includes(query) ||
-      item.targetUrl.toLowerCase().includes(query) ||
-      item.targetSystem.toLowerCase().includes(query) ||
-      item.username.toLowerCase().includes(query) ||
-      item.vaultName.toLowerCase().includes(query) ||
-      item.objectName.toLowerCase().includes(query) ||
-      item.provider.toLowerCase().includes(query) ||
-      item.applicationId.toLowerCase().includes(query);
-
-    const matchesTarget =
-      target === "" ||
-      item.folderPath.toLowerCase().includes(target) ||
-      item.targetHost.toLowerCase().includes(target) ||
-      item.targetUrl.toLowerCase().includes(target) ||
-      item.targetSystem.toLowerCase().includes(target) ||
-      item.vaultName.toLowerCase().includes(target);
-
-    return matchesQuery && matchesTarget;
-  });
+  const currentItems = filterCatalogItems(categoryItems, filters);
   const archivedKeyVaultItems = archivedResources.filter((item) => item.type === "key_vault_secret");
-  const currentArchivedKeyVaultItems = archivedKeyVaultItems.filter((item) => {
-    const query = filters.q.trim().toLowerCase();
-    const target = filters.target.trim().toLowerCase();
-
-    const matchesQuery =
-      query === "" ||
-      item.name.toLowerCase().includes(query) ||
-      item.description.toLowerCase().includes(query) ||
-      item.owner.toLowerCase().includes(query) ||
-      item.ownerTeam.toLowerCase().includes(query) ||
-      item.vaultName.toLowerCase().includes(query) ||
-      item.objectName.toLowerCase().includes(query) ||
-      item.archivedReason.toLowerCase().includes(query) ||
-      item.archivedBy.toLowerCase().includes(query);
-
-    const matchesTarget =
-      target === "" ||
-      item.vaultName.toLowerCase().includes(target) ||
-      item.objectName.toLowerCase().includes(target);
-
-    return matchesQuery && matchesTarget;
-  });
+  const currentArchivedKeyVaultItems = filterArchivedKeyVaultItems(archivedKeyVaultItems, filters);
   useEffect(() => {
     if (view === "admin" && session && !session.capabilities.canViewAdmin) {
       const fallback = visibleCategories[0] ?? "activity";
@@ -859,10 +546,6 @@ export default function App() {
   }, [view, visibleCategories, currentItems, selectedResourceId]);
 
   useEffect(() => {
-    setAccountMenuOpen(false);
-  }, [view]);
-
-  useEffect(() => {
     setFormState(closedFormState);
   }, [view]);
 
@@ -905,10 +588,6 @@ export default function App() {
     return Boolean(session?.user.isAdmin && (capabilities.create || capabilities.import));
   }
 
-  function handleMicrosoftSignIn() {
-    window.location.assign(api.microsoftStartUrl());
-  }
-
   const adminSections: Array<{ id: AdminSection; label: string }> = [
     { id: "users", label: "Users" },
     { id: "groups", label: "Groups" },
@@ -949,161 +628,28 @@ export default function App() {
 
   return (
     <div className="workspace-shell">
-      <aside className="workspace-sidebar">
-        <div className="brand-block">
-          <p className="eyebrow">Internal access</p>
-          <h1>Access Workspace</h1>
-          <p className="section-copy">
-            Discover shared operational access, use approved actions, and build toward one governed launcher and secret workspace.
-          </p>
-        </div>
-
-        <nav className="nav-list">
-          {visibleCategories.map((category) => (
-            <a key={category} className={view === category ? "active" : ""} href={`#${category}`}>
-              {categoryLabel(category)}
-            </a>
-          ))}
-          {session.capabilities.canViewActivity ? (
-            <a className={view === "activity" ? "active" : ""} href="#activity">
-              Activity
-            </a>
-          ) : null}
-          {session.capabilities.canViewAudit ? (
-            <a className={view === "audit" ? "active" : ""} href="#audit">
-              Audit
-            </a>
-          ) : null}
-          {session.capabilities.canViewAdmin ? (
-            <a className={view === "admin" ? "active" : ""} href="#admin">
-              Admin
-            </a>
-          ) : null}
-        </nav>
-
-      </aside>
+      <WorkspaceSidebar view={view} visibleCategories={visibleCategories} capabilities={session.capabilities} />
 
       <main className="workspace-main">
-        <header className="workspace-topbar">
-          <div>
-            <p className="eyebrow">Workspace</p>
-            <h2>{pageTitle(view)}</h2>
-          </div>
-          <div className="topbar-actions">
-            {categoryView === "keyvault" && session.user.isAdmin ? (
-              <div className="segmented-control topbar-segmented-control" role="tablist" aria-label="Key Vault view mode">
-                <button
-                  type="button"
-                  className={`segmented-button ${keyVaultViewMode === "active" ? "active" : ""}`}
-                  onClick={() => setKeyVaultViewMode("active")}
-                >
-                  Active
-                </button>
-                <button
-                  type="button"
-                  className={`segmented-button ${keyVaultViewMode === "archived" ? "active" : ""}`}
-                  onClick={() => setKeyVaultViewMode("archived")}
-                >
-                  Archived
-                </button>
-              </div>
-            ) : null}
-            <div className="account-menu" ref={notificationMenuRef}>
-              <button
-                className={`session-chip button ghost notification-chip ${notificationUnreadCount(notifications) > 0 ? "has-unread" : ""}`}
-                onClick={() => setNotificationCenterOpen((open) => !open)}
-              >
-                <span className="notification-chip-copy">
-                  <span className="notification-chip-title">Notifications</span>
-                  <small className="notification-chip-count">{notificationUnreadCount(notifications)} unread</small>
-                </span>
-              </button>
-              {notificationCenterOpen ? (
-                <div className="account-popover notification-popover">
-                  <p className="eyebrow">Notification center</p>
-                  {notifications.length === 0 ? (
-                    <p className="section-copy">No app registration reminders yet.</p>
-                  ) : (
-                    <div className="notification-list">
-                      {notifications.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          className={`notification-item ${item.readAt ? "read" : "unread"}`}
-                          onClick={() => {
-                            window.location.hash = "#appregistrations";
-                            setSelectedResourceId(item.resourceId);
-                            setNotificationCenterOpen(false);
-                            void handleMarkNotificationRead(item.id);
-                          }}
-                        >
-                          <div>
-                            <strong>{item.title}</strong>
-                            <p>{item.body}</p>
-                            <p>{new Date(item.createdAt).toLocaleString()}</p>
-                            {item.channels.includes("email") ? (
-                              <p>
-                                email {item.emailStatus || "pending"}
-                                {item.emailError ? `: ${item.emailError}` : ""}
-                              </p>
-                            ) : null}
-                          </div>
-                          {!item.readAt ? <span className="tag">new</span> : null}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </div>
-            <div className="account-menu" ref={accountMenuRef}>
-              <button className="session-chip button ghost" onClick={() => setAccountMenuOpen((open) => !open)}>
-                <span>{currentUser.name}</span>
-                <small>{currentUser.isAdmin ? "Admin session" : "Member session"}</small>
-              </button>
-              {accountMenuOpen ? (
-                <div className="account-popover">
-                  <p className="eyebrow">Signed in</p>
-                  <strong>{currentUser.name}</strong>
-                  <span>{currentUser.email}</span>
-                  <span>{currentUser.isAdmin ? "Administrator" : "Standard user"}</span>
-                  {session.capabilities.categories.passwords.view ? (
-                    <button
-                      className="button ghost"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        setBrowserExtensionManagerOpen(true);
-                      }}
-                    >
-                      Browser extensions
-                    </button>
-                  ) : null}
-                  <button
-                    className="button ghost"
-                    onClick={() => {
-                      setAccountMenuOpen(false);
-                      void toggleVaultLock();
-                    }}
-                  >
-                    {vaultUnlocked ? "Lock personal passwords" : "Unlock personal passwords"}
-                  </button>
-                  <button
-                    className="button ghost"
-                    onClick={() => {
-                      setAccountMenuOpen(false);
-                      setChangePasswordOpen(true);
-                    }}
-                  >
-                    Change password
-                  </button>
-                  <button className="button ghost" onClick={signOut}>
-                    Sign out
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </header>
+        <WorkspaceTopbar
+          view={view}
+          currentUser={currentUser}
+          canViewPasswords={session.capabilities.categories.passwords.view}
+          showKeyVaultViewToggle={categoryView === "keyvault" && session.user.isAdmin}
+          keyVaultViewMode={keyVaultViewMode}
+          onKeyVaultViewModeChange={setKeyVaultViewMode}
+          notifications={notifications}
+          onMarkNotificationRead={handleMarkNotificationRead}
+          onOpenNotificationResource={(resourceId) => {
+            window.location.hash = "#appregistrations";
+            setSelectedResourceId(resourceId);
+          }}
+          vaultUnlocked={vaultUnlocked}
+          onToggleVaultLock={toggleVaultLock}
+          onOpenBrowserExtensions={() => setBrowserExtensionManagerOpen(true)}
+          onOpenChangePassword={() => setChangePasswordOpen(true)}
+          onSignOut={signOut}
+        />
 
         {message ? <div className="banner">{message}</div> : null}
 
