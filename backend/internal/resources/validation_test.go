@@ -91,6 +91,63 @@ func TestValidateInputAcceptsSharedPasswordWithoutTargetSystem(t *testing.T) {
 	}
 }
 
+func TestValidateInputAcceptsPasswordlessWebPortal(t *testing.T) {
+	input := CreateResourceInput{
+		Name:          "Claude shared account",
+		Type:          TypeWebPortal,
+		Owner:         "Operations",
+		TargetURL:     "https://claude.ai",
+		Username:      "info@insio.cz",
+		RevealAllowed: true,
+		SecretMode:    SecretModeNone,
+	}
+
+	normalized := normalizeInput(input)
+	if err := validateInput(normalized); err != nil {
+		t.Fatalf("expected passwordless portal to be valid, got %v", err)
+	}
+	if normalized.RevealAllowed {
+		t.Fatalf("expected reveal flag to be cleared for passwordless portals")
+	}
+}
+
+func TestValidateInputRejectsPasswordlessForSavedPassword(t *testing.T) {
+	input := CreateResourceInput{
+		Name:       "Shared SQL Login",
+		Type:       TypeSharedSecret,
+		Owner:      "Operations",
+		Username:   "svc-sql",
+		SecretMode: SecretModeNone,
+	}
+
+	err := validateInput(normalizeInput(input))
+	if err == nil {
+		t.Fatalf("expected passwordless saved password to fail validation")
+	}
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+}
+
+func TestValidateInputRejectsPasswordlessWithSecretValue(t *testing.T) {
+	input := CreateResourceInput{
+		Name:        "Claude shared account",
+		Type:        TypeWebPortal,
+		Owner:       "Operations",
+		TargetURL:   "https://claude.ai",
+		SecretMode:  SecretModeNone,
+		SecretValue: "topsecret",
+	}
+
+	err := validateInput(normalizeInput(input))
+	if err == nil {
+		t.Fatalf("expected passwordless entry with secret value to fail validation")
+	}
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+}
+
 func TestNormalizeInputDefaultsSourceKindByType(t *testing.T) {
 	input := normalizeInput(CreateResourceInput{
 		Name:          "Grafana app",

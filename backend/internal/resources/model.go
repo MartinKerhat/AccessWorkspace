@@ -27,6 +27,10 @@ const (
 	SecretModeInline   SecretMode = "inline"
 	SecretModeExternal SecretMode = "external_reference"
 	SecretModePrompt   SecretMode = "prompt_on_launch"
+	// SecretModeNone marks web portal logins whose sign-in has no stored
+	// password at all (SSO, emailed code, passkey). The entry keeps the URL,
+	// username and policies, but there is never a secret to reveal or fill.
+	SecretModeNone SecretMode = "none"
 )
 
 type NotificationChannel string

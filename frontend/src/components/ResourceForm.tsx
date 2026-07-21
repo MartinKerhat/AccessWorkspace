@@ -287,6 +287,9 @@ export function ResourceFormCard({
   const isPasswordResource = form.type === "web_portal" || form.type === "shared_secret";
   const isSharedPassword = form.type === "shared_secret";
   const isWebPortalPassword = form.type === "web_portal";
+  // Portals that sign in without a stored password (SSO, emailed code,
+  // passkey) keep URL + username but have no secret to store or reveal.
+  const isPasswordlessPortal = isWebPortalPassword && form.secretMode === "none";
   const isImportedKeyVault =
     Boolean(resource) &&
     form.type === "key_vault_secret" &&
@@ -700,7 +703,7 @@ export function ResourceFormCard({
               />
               <span>{isWebPortalPassword ? "Browser fill allowed" : "Copy allowed"}</span>
             </label>
-            {isWebPortalPassword ? (
+            {isWebPortalPassword && !isPasswordlessPortal ? (
               <label className="checkbox">
                 <input
                   type="checkbox"
@@ -791,10 +794,28 @@ export function ResourceFormCard({
         {isPasswordResource ? (
           <>
             {isWebPortalPassword ? (
-              <label className="wide">
-                <span>Portal URL</span>
-                <input disabled={coreLocked} value={form.targetUrl} onChange={(event) => update("targetUrl", event.target.value)} placeholder="https://portal.example.com" />
-              </label>
+              <>
+                <label className="wide">
+                  <span>Portal URL</span>
+                  <input disabled={coreLocked} value={form.targetUrl} onChange={(event) => update("targetUrl", event.target.value)} placeholder="https://portal.example.com" />
+                </label>
+                <label className="checkbox wide">
+                  <input
+                    type="checkbox"
+                    disabled={coreLocked}
+                    checked={isPasswordlessPortal}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        secretMode: event.target.checked ? "none" : "inline",
+                        secretValue: event.target.checked ? "" : current.secretValue,
+                        revealAllowed: event.target.checked ? false : current.revealAllowed
+                      }))
+                    }
+                  />
+                  <span>Passwordless sign-in (SSO / emailed code — no password is stored)</span>
+                </label>
+              </>
             ) : null}
             {isSharedPassword && form.targetSystem ? (
               <label className="wide">
@@ -886,7 +907,7 @@ export function ResourceFormCard({
           </>
         ) : null}
 
-        {!isConnectionResource ? (
+        {!isConnectionResource && !isPasswordlessPortal ? (
         <label>
           <span>{isPasswordResource ? "Password" : "Secret value"}</span>
           <div className={isPasswordResource && resource && onRevealStoredPassword ? "password-field-row" : undefined}>
@@ -997,8 +1018,9 @@ export function ResourceFormCard({
                 sourceKind: "manual" as const,
                 sourceObjectId: "",
                 launchAllowed: isWebPortalPassword ? form.launchAllowed : false,
-                revealAllowed: isWebPortalPassword ? form.revealAllowed : false,
-                secretMode: "inline" as const,
+                revealAllowed: isWebPortalPassword && !isPasswordlessPortal ? form.revealAllowed : false,
+                secretMode: isPasswordlessPortal ? ("none" as const) : ("inline" as const),
+                secretValue: isPasswordlessPortal ? "" : form.secretValue,
                 secretReference: ""
               }
             : isConnectionResource

@@ -364,7 +364,7 @@ export type ResourceType =
   | "app_registration";
 
 export type SourceKind = "manual" | "azure_key_vault" | "entra_app_registration";
-export type SecretMode = "inline" | "external_reference" | "prompt_on_launch";
+export type SecretMode = "inline" | "external_reference" | "prompt_on_launch" | "none";
 
 export type ResourceSummary = {
   id: string;

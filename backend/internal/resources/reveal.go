@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"access-workspace/backend/internal/audit"
@@ -12,6 +13,9 @@ func (s *Service) Reveal(ctx context.Context, user auth.User, id string) (Reveal
 	resource, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return RevealResult{}, err
+	}
+	if resource.Secret.Mode == SecretModeNone {
+		return RevealResult{}, fmt.Errorf("%w: passwordless entries have no secret to reveal", ErrInvalidInput)
 	}
 	// Password objects are governed exclusively by canRevealStoredPassword
 	// (owner/admin override plus the per-type flag); the generic

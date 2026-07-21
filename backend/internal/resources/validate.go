@@ -81,6 +81,11 @@ func normalizeInput(input CreateResourceInput) CreateResourceInput {
 		input.RevealAllowed = false
 		input.LaunchAllowed = false
 	}
+	// Passwordless portals (SSO / emailed code) have no secret, so a reveal
+	// right would be meaningless and must not linger in storage.
+	if input.Type == TypeWebPortal && input.SecretMode == SecretModeNone {
+		input.RevealAllowed = false
+	}
 	return input
 }
 
@@ -179,6 +184,14 @@ func validateInput(input CreateResourceInput) error {
 	}
 	if input.SecretMode == SecretModePrompt && input.SecretValue != "" {
 		return fmt.Errorf("%w: prompt-on-launch resources cannot store a secret value", ErrInvalidInput)
+	}
+	if input.SecretMode == SecretModeNone {
+		if input.Type != TypeWebPortal {
+			return fmt.Errorf("%w: passwordless mode is only valid for web portal logins", ErrInvalidInput)
+		}
+		if input.SecretValue != "" {
+			return fmt.Errorf("%w: passwordless entries cannot store a secret value", ErrInvalidInput)
+		}
 	}
 
 	return nil

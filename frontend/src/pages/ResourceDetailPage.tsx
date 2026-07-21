@@ -431,11 +431,17 @@ export function ResourceDetailPage({
             </div>
             <div>
               <dt>Password source</dt>
-              <dd>{resource.personal ? "personal saved password" : "shared saved password"}</dd>
+              <dd>
+                {resource.secret.mode === "none"
+                  ? "passwordless (SSO / emailed code)"
+                  : resource.personal
+                    ? "personal saved password"
+                    : "shared saved password"}
+              </dd>
             </div>
             <div>
               <dt>Reveal policy</dt>
-              <dd>{resource.revealAllowed ? "allowed" : "disabled"}</dd>
+              <dd>{resource.secret.mode === "none" ? "n/a" : resource.revealAllowed ? "allowed" : "disabled"}</dd>
             </div>
             <div>
               <dt>Browser fill policy</dt>
@@ -446,26 +452,35 @@ export function ResourceDetailPage({
               <dd>{resource.launchAllowed ? "allowed" : "disabled"}</dd>
             </div>
           </dl>
-          <div className="detail-section">
-            <p className="eyebrow">Password</p>
-            <div className="password-detail-row">
-              <input
-                className="password-detail-input"
-                type={passwordVisible ? "text" : "password"}
-                value={revealedPassword || "••••••••••••"}
-                readOnly
-                aria-label="Stored password"
-              />
-              <button
-                className="button ghost"
-                disabled={loading || (!resource.revealAllowed && !canOverrideRevealPolicy)}
-                onClick={() => void handleCopyPassword()}
-              >
-                Reveal
-              </button>
+          {resource.secret.mode === "none" ? (
+            <div className="detail-section">
+              <p className="eyebrow">Password</p>
+              <p className="detail-description">
+                This portal signs in without a stored password (SSO or a code sent by email). Check the notes for sign-in instructions.
+              </p>
             </div>
-            {passwordCopyMessage ? <p className="detail-description">{passwordCopyMessage}</p> : null}
-          </div>
+          ) : (
+            <div className="detail-section">
+              <p className="eyebrow">Password</p>
+              <div className="password-detail-row">
+                <input
+                  className="password-detail-input"
+                  type={passwordVisible ? "text" : "password"}
+                  value={revealedPassword || "••••••••••••"}
+                  readOnly
+                  aria-label="Stored password"
+                />
+                <button
+                  className="button ghost"
+                  disabled={loading || (!resource.revealAllowed && !canOverrideRevealPolicy)}
+                  onClick={() => void handleCopyPassword()}
+                >
+                  Reveal
+                </button>
+              </div>
+              {passwordCopyMessage ? <p className="detail-description">{passwordCopyMessage}</p> : null}
+            </div>
+          )}
         </>
       ) : null}
 
