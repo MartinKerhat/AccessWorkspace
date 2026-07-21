@@ -423,6 +423,7 @@ export type Resource = ResourceSummary & {
   secret: {
     mode: SecretMode;
     reference: string;
+    hasValue: boolean;
   };
   connectionAdminSession: boolean;
   connectionAutomaticLogon: boolean;

@@ -784,6 +784,7 @@ func scanResource(scanner summaryScanner) (Resource, error) {
 		return Resource{}, err
 	}
 	item.Category = CategoryForType(item.Type)
+	item.Secret.HasValue = strings.TrimSpace(item.Secret.Value) != ""
 	if targetPort.Valid {
 		port := int(targetPort.Int32)
 		item.TargetPort = &port

@@ -279,6 +279,11 @@ export function ResourceFormCard({
         : "Passwords";
   const resourceCategory = categoryForType(resource?.type ?? initialType ?? form.type);
   const isConnectionResource = form.type === "ssh" || form.type === "rdp";
+  // The secret value is never sent to the browser, so the field is always blank
+  // on edit. This flag lets us show that a password IS stored (leave blank to
+  // keep it) instead of the field looking empty/unset.
+  const storedSecretPresent = Boolean(resource?.secret?.hasValue);
+  const storedSecretPlaceholder = storedSecretPresent ? "•••••••••• — stored, leave blank to keep" : "";
   const isPasswordResource = form.type === "web_portal" || form.type === "shared_secret";
   const isSharedPassword = form.type === "shared_secret";
   const isWebPortalPassword = form.type === "web_portal";
@@ -711,23 +716,40 @@ export function ResourceFormCard({
 
         {isConnectionResource ? (
           <>
-            <label>
-              <span>Target host</span>
-              <input disabled={coreLocked} value={form.targetHost} onChange={(event) => update("targetHost", event.target.value)} />
-            </label>
-            <label>
-              <span>Target port</span>
-              <input
-                type="number"
-                disabled={coreLocked}
-                value={form.targetPort ?? ""}
-                onChange={(event) => update("targetPort", event.target.value ? Number(event.target.value) : undefined)}
-              />
-            </label>
-            <label>
-              <span>Username</span>
-              <input disabled={coreLocked} value={form.username} onChange={(event) => update("username", event.target.value)} />
-            </label>
+            {/* Host+port and username+password are each wrapped in a full-width
+                sub-grid so the pair always shares one row regardless of how the
+                surrounding fields flow. */}
+            <div className="wide form-grid">
+              <label>
+                <span>Target host</span>
+                <input disabled={coreLocked} value={form.targetHost} onChange={(event) => update("targetHost", event.target.value)} />
+              </label>
+              <label>
+                <span>Target port</span>
+                <input
+                  type="number"
+                  disabled={coreLocked}
+                  value={form.targetPort ?? ""}
+                  onChange={(event) => update("targetPort", event.target.value ? Number(event.target.value) : undefined)}
+                />
+              </label>
+            </div>
+            <div className="wide form-grid">
+              <label>
+                <span>Username</span>
+                <input disabled={coreLocked} value={form.username} onChange={(event) => update("username", event.target.value)} />
+              </label>
+              <label>
+                <span>Password / passphrase</span>
+                <input
+                  disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
+                  value={form.secretValue}
+                  onChange={(event) => update("secretValue", event.target.value)}
+                  type="password"
+                  placeholder={storedSecretPlaceholder}
+                />
+              </label>
+            </div>
             <label>
               <span>Launch mode</span>
               <input disabled={coreLocked} value={form.launchMode} onChange={(event) => update("launchMode", event.target.value)} />
@@ -864,15 +886,16 @@ export function ResourceFormCard({
           </>
         ) : null}
 
+        {!isConnectionResource ? (
         <label>
-          <span>{isConnectionResource ? "Password / passphrase" : isPasswordResource ? "Password" : "Secret value"}</span>
+          <span>{isPasswordResource ? "Password" : "Secret value"}</span>
           <div className={isPasswordResource && resource && onRevealStoredPassword ? "password-field-row" : undefined}>
             <input
               disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
               value={form.secretValue}
               onChange={(event) => update("secretValue", event.target.value)}
               type={isPasswordResource && passwordVisible ? "text" : "password"}
-              placeholder={resource && isPasswordResource ? "Leave blank to keep stored password" : ""}
+              placeholder={storedSecretPlaceholder}
             />
             {isPasswordResource && resource && onRevealStoredPassword ? (
               <button
@@ -899,6 +922,7 @@ export function ResourceFormCard({
             ) : null}
           </div>
         </label>
+        ) : null}
         {!isPasswordResource ? (
           <>
             <label>

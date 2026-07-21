@@ -46,6 +46,10 @@ type Secret struct {
 	Mode      SecretMode `json:"mode"`
 	Value     string     `json:"-"`
 	Reference string     `json:"reference"`
+	// HasValue reports whether an inline secret is stored, without ever exposing
+	// the value itself. The edit form uses it to show that a password is set
+	// (the value is never sent to the browser).
+	HasValue bool `json:"hasValue"`
 }
 
 type Resource struct {
