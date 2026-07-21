@@ -975,8 +975,7 @@ dd {
 }
 
 .folder-tree-list {
-  max-height: 720px;
-  overflow: auto;
+  align-content: start;
 }
 
 .folder-tree-all,
@@ -1575,6 +1574,13 @@ textarea {
     padding-bottom: 8px;
     border-right: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Stacked layout: cap the tree so a large folder set cannot push the
+     results list below the fold. Side-by-side layout has no cap. */
+  .folder-tree-list {
+    max-height: 480px;
+    overflow: auto;
   }
 
   .user-admin-grid {
