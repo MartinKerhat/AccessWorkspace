@@ -28,6 +28,7 @@ const defaultForm: ResourceForm = {
   connectionShowConnectionBar: true,
   connectionScreenMode: "launcher_default",
   connectionMacAddress: "",
+  connectionGatewayHost: "",
   vaultName: "",
   objectName: "",
   objectType: "",
@@ -185,6 +186,7 @@ export function ResourceFormCard({
       connectionShowConnectionBar: resource.connectionShowConnectionBar,
       connectionScreenMode: resource.connectionScreenMode,
       connectionMacAddress: resource.connectionMacAddress,
+      connectionGatewayHost: resource.connectionGatewayHost,
       vaultName: resource.vaultName,
       objectName: resource.objectName,
       objectType: resource.objectType,
@@ -742,6 +744,15 @@ export function ResourceFormCard({
             <label>
               <span>MAC address</span>
               <input disabled={coreLocked} value={form.connectionMacAddress} onChange={(event) => update("connectionMacAddress", event.target.value)} />
+            </label>
+            <label>
+              <span>RD Gateway host</span>
+              <input
+                disabled={coreLocked}
+                value={form.connectionGatewayHost}
+                onChange={(event) => update("connectionGatewayHost", event.target.value)}
+                placeholder="gateway.example.com (blank = direct connect)"
+              />
             </label>
             <label className="checkbox">
               <input

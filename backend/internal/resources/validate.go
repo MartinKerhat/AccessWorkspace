@@ -27,6 +27,7 @@ func normalizeInput(input CreateResourceInput) CreateResourceInput {
 	input.ConnectionWindowMode = strings.TrimSpace(input.ConnectionWindowMode)
 	input.ConnectionScreenMode = strings.TrimSpace(input.ConnectionScreenMode)
 	input.ConnectionMacAddress = strings.TrimSpace(input.ConnectionMacAddress)
+	input.ConnectionGatewayHost = strings.TrimSpace(input.ConnectionGatewayHost)
 	input.VaultName = strings.TrimSpace(input.VaultName)
 	input.ObjectName = strings.TrimSpace(input.ObjectName)
 	input.ObjectType = strings.TrimSpace(input.ObjectType)
@@ -272,6 +273,7 @@ func resourceToUpdateInput(resource Resource) UpdateResourceInput {
 		ConnectionShowConnectionBar:   resource.ConnectionShowConnectionBar,
 		ConnectionScreenMode:          resource.ConnectionScreenMode,
 		ConnectionMacAddress:          resource.ConnectionMacAddress,
+		ConnectionGatewayHost:         resource.ConnectionGatewayHost,
 		VaultName:                     resource.VaultName,
 		ObjectName:                    resource.ObjectName,
 		ObjectType:                    resource.ObjectType,

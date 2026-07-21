@@ -188,6 +188,7 @@ func buildLaunchPayload(resource Resource) LaunchPayload {
 		payload.Metadata["connectionAdminSession"] = resource.ConnectionAdminSession
 		payload.Metadata["connectionAutomaticLogon"] = resource.ConnectionAutomaticLogon
 		payload.Metadata["connectionMacAddress"] = resource.ConnectionMacAddress
+		payload.Metadata["connectionGatewayHost"] = resource.ConnectionGatewayHost
 	case TypeSSH:
 		port := 22
 		if resource.TargetPort != nil {

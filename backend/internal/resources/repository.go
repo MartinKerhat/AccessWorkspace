@@ -165,6 +165,7 @@ func (r *Repository) Get(ctx context.Context, id string) (Resource, error) {
 			r.target_host, r.target_port, r.target_url, r.target_system, r.username,
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
+			r.connection_gateway_host,
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
@@ -195,6 +196,7 @@ func (r *Repository) GetAny(ctx context.Context, id string) (Resource, error) {
 			r.target_host, r.target_port, r.target_url, r.target_system, r.username,
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
+			r.connection_gateway_host,
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
@@ -225,6 +227,7 @@ func (r *Repository) ListManagedKeyVault(ctx context.Context) ([]Resource, error
 			r.target_host, r.target_port, r.target_url, r.target_system, r.username,
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
+			r.connection_gateway_host,
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
@@ -261,6 +264,7 @@ func (r *Repository) ListManagedAppRegistrations(ctx context.Context) ([]Resourc
 			r.target_host, r.target_port, r.target_url, r.target_system, r.username,
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
+			r.connection_gateway_host,
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
@@ -344,6 +348,7 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 			last_synced_at, notes, target_host, target_port, target_url, target_system, username,
 			connection_domain, connection_admin_session, connection_automatic_logon, connection_window_mode,
 			connection_use_multiple_monitors, connection_show_connection_bar, connection_screen_mode, connection_mac_address,
+			connection_gateway_host,
 			vault_name, object_name, object_type, object_version, content_type, expires_at,
 			provider, application_id, tenant_id, client_id, credential_type, credential_expires_at,
 			display_name_external, linked_secret_ref, launch_allowed, reveal_allowed, copy_allowed, allowed_groups
@@ -351,6 +356,7 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
 			$15, $16, $17, $18, $19, $20, $21,
 			$22, $23, $24, $25, $26, $27, $28, $29,
+			$48,
 			$30, $31, $32, $33, $34, $35,
 			$36, $37, $38, $39, $40, $41,
 			$42, $43, $44, $45, $46, $47
@@ -361,7 +367,8 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 		input.ConnectionUseMultipleMonitors, input.ConnectionShowConnectionBar, input.ConnectionScreenMode, input.ConnectionMacAddress,
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
-		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups)
+		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups,
+		input.ConnectionGatewayHost)
 	if err != nil {
 		return Resource{}, err
 	}
@@ -418,6 +425,7 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 			connection_show_connection_bar = $27,
 			connection_screen_mode = $28,
 			connection_mac_address = $29,
+			connection_gateway_host = $48,
 			vault_name = $30,
 			object_name = $31,
 			object_type = $32,
@@ -444,7 +452,8 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 		input.ConnectionUseMultipleMonitors, input.ConnectionShowConnectionBar, input.ConnectionScreenMode, input.ConnectionMacAddress,
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
-		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups)
+		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups,
+		input.ConnectionGatewayHost)
 	if err != nil {
 		return Resource{}, err
 	}
@@ -765,6 +774,7 @@ func scanResource(scanner summaryScanner) (Resource, error) {
 		&item.TargetHost, &targetPort, &item.TargetURL, &item.TargetSystem, &item.Username,
 		&item.ConnectionDomain, &item.ConnectionAdminSession, &item.ConnectionAutomaticLogon, &item.ConnectionWindowMode,
 		&item.ConnectionUseMultipleMonitors, &item.ConnectionShowConnectionBar, &item.ConnectionScreenMode, &item.ConnectionMacAddress,
+		&item.ConnectionGatewayHost,
 		&item.VaultName, &item.ObjectName, &item.ObjectType, &item.ObjectVersion, &item.ContentType, &expiresAt,
 		&item.Provider, &item.ApplicationID, &item.TenantID, &item.ClientID, &item.CredentialType, &credentialExpiresAt,
 		&item.DisplayNameExternal, &item.LinkedSecretRef,

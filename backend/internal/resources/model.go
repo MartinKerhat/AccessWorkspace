@@ -79,6 +79,7 @@ type Resource struct {
 	ConnectionShowConnectionBar   bool                               `json:"connectionShowConnectionBar"`
 	ConnectionScreenMode          string                             `json:"connectionScreenMode"`
 	ConnectionMacAddress          string                             `json:"connectionMacAddress"`
+	ConnectionGatewayHost         string                             `json:"connectionGatewayHost"`
 	VaultName                     string                             `json:"vaultName"`
 	ObjectName                    string                             `json:"objectName"`
 	ObjectType                    string                             `json:"objectType"`
@@ -208,6 +209,7 @@ type CreateResourceInput struct {
 	ConnectionShowConnectionBar   bool       `json:"connectionShowConnectionBar"`
 	ConnectionScreenMode          string     `json:"connectionScreenMode"`
 	ConnectionMacAddress          string     `json:"connectionMacAddress"`
+	ConnectionGatewayHost         string     `json:"connectionGatewayHost"`
 	VaultName                     string     `json:"vaultName"`
 	ObjectName                    string     `json:"objectName"`
 	ObjectType                    string     `json:"objectType"`

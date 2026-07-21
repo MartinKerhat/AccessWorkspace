@@ -431,6 +431,7 @@ export type Resource = ResourceSummary & {
   connectionShowConnectionBar: boolean;
   connectionScreenMode: string;
   connectionMacAddress: string;
+  connectionGatewayHost: string;
   appNotificationPolicyOverride?: AppRegistrationNotificationPolicy;
   appCredentials?: AppRegistrationCredential[];
   appOwners?: AppRegistrationOwner[];
@@ -523,6 +524,7 @@ export type ResourceForm = {
   connectionShowConnectionBar: boolean;
   connectionScreenMode: string;
   connectionMacAddress: string;
+  connectionGatewayHost: string;
   vaultName: string;
   objectName: string;
   objectType: string;

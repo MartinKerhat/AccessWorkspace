@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -109,6 +110,16 @@ func runRDP(item payload.LaunchPayload) error {
 		port = "3389"
 	}
 
+	// Fail fast on an unreachable target instead of handing mstsc a dead address
+	// and leaving a windowless ghost process behind (which also makes the web app
+	// falsely report a successful hand-off). When a gateway is configured the
+	// reachable endpoint is the gateway, not the target host.
+	gatewayHost := strings.TrimSpace(payload.MetadataString(item.Metadata, "connectionGatewayHost"))
+	if err := ensureRDPReachable(host, port, gatewayHost); err != nil {
+		Logf("rdp: preflight reachability failed: %v", err)
+		return err
+	}
+
 	args := buildRDPArgs(host, port, item.Metadata)
 
 	login := windowsConnectionIdentity(
@@ -178,6 +189,32 @@ func runRDP(item payload.LaunchPayload) error {
 	if err := waitForEarlyRDPExit(command, 2500*time.Millisecond); err != nil {
 		return err
 	}
+	return nil
+}
+
+// ensureRDPReachable does a quick TCP dial of the endpoint mstsc will actually
+// connect to, so an unreachable target surfaces as a clear error before mstsc
+// is ever launched. With a gateway configured the real endpoint is the gateway
+// on 443; without one it is the target host:port directly.
+func ensureRDPReachable(host string, port string, gatewayHost string) error {
+	const timeout = 6 * time.Second
+	if gatewayHost != "" {
+		address := net.JoinHostPort(gatewayHost, "443")
+		conn, err := net.DialTimeout("tcp", address, timeout)
+		if err != nil {
+			return fmt.Errorf("cannot reach the Remote Desktop Gateway %s (%v) — check your network/VPN and that this machine's address is whitelisted at the gateway", address, err)
+		}
+		_ = conn.Close()
+		Logf("rdp: preflight ok (gateway %s reachable)", address)
+		return nil
+	}
+	address := net.JoinHostPort(host, port)
+	conn, err := net.DialTimeout("tcp", address, timeout)
+	if err != nil {
+		return fmt.Errorf("cannot reach %s (%v) — the host is not resolvable/reachable from this machine; if it lives behind a Remote Desktop Gateway, configure the gateway on this connection", address, err)
+	}
+	_ = conn.Close()
+	Logf("rdp: preflight ok (%s reachable)", address)
 	return nil
 }
 
@@ -311,6 +348,20 @@ func buildRDPProfileLines(host string, port string, metadata map[string]interfac
 		"negotiate security layer:i:1",
 		"enablecredsspsupport:i:1",
 		"authentication level:i:0",
+	}
+	// When a Remote Desktop Gateway is configured, mstsc tunnels to it (443) and
+	// the gateway resolves/routes to the target on the internal side — so the
+	// client never has to resolve the target host itself. gatewayusagemethod:i:1
+	// = always use the gateway; gatewaycredentialssource:i:0 + the
+	// promptcredentialonce above = reuse the connection's own credentials for the
+	// gateway (no separate gateway login).
+	if gateway := strings.TrimSpace(payload.MetadataString(metadata, "connectionGatewayHost")); gateway != "" {
+		lines = append(lines,
+			fmt.Sprintf("gatewayhostname:s:%s", gateway),
+			"gatewayusagemethod:i:1",
+			"gatewaycredentialssource:i:0",
+			"gatewayprofileusagemethod:i:1",
+		)
 	}
 	if username != "" {
 		lines = append(lines, fmt.Sprintf("username:s:%s", username))
