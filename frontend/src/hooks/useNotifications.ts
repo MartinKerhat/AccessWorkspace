@@ -31,8 +31,8 @@ export function useNotifications({
     mode: "closed"
   });
 
-  async function loadNotifications(authToken: string) {
-    const response = await api.myNotifications(authToken);
+  async function loadNotifications() {
+    const response = await api.myNotifications();
     setNotifications(response.items);
   }
 
@@ -41,7 +41,7 @@ export function useNotifications({
       return;
     }
     try {
-      await api.markNotificationRead(notificationID, session.authToken);
+      await api.markNotificationRead(notificationID);
       setNotifications((current) =>
         current.map((item) => (item.id === notificationID ? { ...item, readAt: new Date().toISOString() } : item))
       );
@@ -61,13 +61,12 @@ export function useNotifications({
         {
           resourcePolicy: notificationPolicyModalState.useResourceOverride ? notificationPolicyModalState.draft : undefined,
           credentialPolicies: notificationPolicyModalState.credentialDrafts
-        },
-        session.authToken
+        }
       );
       setSelectedResource(resource);
       setAllResources((current) => current.map((item) => (item.id === resource.id ? { ...item, status: resource.status } : item)));
       setNotificationPolicyModalState({ mode: "closed" });
-      await loadNotifications(session.authToken);
+      await loadNotifications();
       setMessage("Notification policy updated.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to update notification policy");

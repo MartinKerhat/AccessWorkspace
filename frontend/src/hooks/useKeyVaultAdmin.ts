@@ -58,12 +58,12 @@ type UseKeyVaultAdminDeps = {
   setMessage: (message: string | undefined) => void;
   adminForm: AdminForm;
   applyAdminConfigResponse: (response: AdminConfig) => void;
-  loadAdminConfig: (authToken: string) => Promise<void>;
-  loadArchivedResources: (authToken: string) => Promise<void>;
-  loadAllResources: (authToken: string) => Promise<{ id: string }[]>;
-  loadActivity: (authToken: string) => Promise<void>;
-  loadAudit: (authToken: string) => Promise<void>;
-  loadResource: (id: string, authToken: string) => Promise<void>;
+  loadAdminConfig: () => Promise<void>;
+  loadArchivedResources: () => Promise<void>;
+  loadAllResources: () => Promise<{ id: string }[]>;
+  loadActivity: () => Promise<void>;
+  loadAudit: () => Promise<void>;
+  loadResource: (id: string) => Promise<void>;
   selectedResourceId: string | undefined;
   setSelectedResourceId: Dispatch<SetStateAction<string | undefined>>;
   setSelectedResource: Dispatch<SetStateAction<Resource | undefined>>;
@@ -98,8 +98,8 @@ export function useKeyVaultAdmin({
   const [keyVaultSyncing, setKeyVaultSyncing] = useState(false);
   const [keyVaultModalState, setKeyVaultModalState] = useState<KeyVaultModalState>(closedKeyVaultModalState);
 
-  async function loadKeyVaultDiscoveries(authToken: string) {
-    const response = await api.discoverKeyVault(authToken);
+  async function loadKeyVaultDiscoveries() {
+    const response = await api.discoverKeyVault();
     setKeyVaultDiscoveries({
       sources: (response.sources ?? []).map((source) => ({
         ...source,
@@ -120,14 +120,14 @@ export function useKeyVaultAdmin({
     }
     setKeyVaultSyncing(true);
     try {
-      const result = await api.syncKeyVault(automatic, session.authToken);
+      const result = await api.syncKeyVault(automatic);
       if (session.user.isAdmin) {
-        await Promise.all([loadAdminConfig(session.authToken), loadArchivedResources(session.authToken)]);
+        await Promise.all([loadAdminConfig(), loadArchivedResources()]);
       }
       if (result.updatedResources > 0 || result.removedResources > 0 || result.missingResources > 0 || !automatic) {
-        const items = await loadAllResources(session.authToken);
+        const items = await loadAllResources();
         if (selectedResourceId && items.some((item) => item.id === selectedResourceId)) {
-          await loadResource(selectedResourceId, session.authToken);
+          await loadResource(selectedResourceId);
         } else if (selectedResourceId) {
           setSelectedResourceId(undefined);
           setSelectedResource(undefined);
@@ -163,8 +163,7 @@ export function useKeyVaultAdmin({
           entraEnabled: adminForm.entraEnabled,
           rdpSigningEnabled: adminForm.rdpSigningEnabled,
           keyVaultSources: adminForm.keyVaultSources
-        },
-        session.authToken
+        }
       );
       applyAdminConfigResponse(response);
       setMessage("Key Vault sources updated");
@@ -182,7 +181,7 @@ export function useKeyVaultAdmin({
     }
     setBusy(true);
     try {
-      await loadKeyVaultDiscoveries(session.authToken);
+      await loadKeyVaultDiscoveries();
       setKeyVaultImportForm(emptyKeyVaultImportForm());
       setKeyVaultModalState({ mode: "import" });
     } catch (error) {
@@ -215,19 +214,18 @@ export function useKeyVaultAdmin({
         {
           ...keyVaultImportForm,
           items: payloadItems
-        },
-        session.authToken
+        }
       );
       const createdItems = response.items ?? [];
       setMessage(createdItems.length === 1 ? "Key Vault secret imported" : `${createdItems.length} Key Vault secrets imported`);
-      await loadAllResources(session.authToken);
-      await loadActivity(session.authToken);
+      await loadAllResources();
+      await loadActivity();
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       if (createdItems[0]) {
         setSelectedResourceId(createdItems[0].id);
-        await loadResource(createdItems[0].id, session.authToken);
+        await loadResource(createdItems[0].id);
       }
       setKeyVaultModalState(closedKeyVaultModalState);
       setKeyVaultImportForm(emptyKeyVaultImportForm());

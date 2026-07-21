@@ -140,9 +140,10 @@ export type WorkspaceCapabilities = {
   canViewAdmin: boolean;
 };
 
+// The session token itself never reaches page JavaScript — it lives in the
+// httpOnly cookie the backend manages.
 export type Session = {
   user: User;
-  authToken: string;
   authMode: AuthMode;
   capabilities: WorkspaceCapabilities;
 };

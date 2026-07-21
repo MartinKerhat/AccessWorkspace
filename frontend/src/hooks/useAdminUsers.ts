@@ -16,9 +16,9 @@ type UseAdminUsersDeps = {
   session: Session | null;
   setBusy: (busy: boolean) => void;
   setMessage: (message: string | undefined) => void;
-  loadAllResources: (authToken: string) => Promise<unknown>;
-  loadAudit: (authToken: string) => Promise<void>;
-  refreshCurrentSession: (authToken: string) => Promise<unknown>;
+  loadAllResources: () => Promise<unknown>;
+  loadAudit: () => Promise<void>;
+  refreshCurrentSession: () => Promise<unknown>;
   // Invoked when refreshing the current user's own session fails after an
   // access change: App clears everything it still owns (the hook clears its
   // own state first). Mirrors the old inline forced-reset block exactly.
@@ -65,23 +65,23 @@ export function useAdminUsers({
       setSelectedAdminUserResources([]);
       return;
     }
-    void loadAdminUserDetail(selectedAdminUserId, session.authToken);
+    void loadAdminUserDetail(selectedAdminUserId);
   }, [selectedAdminUserId, session]);
 
-  async function loadLocalGroups(authToken: string) {
-    const response = await api.listLocalGroups(authToken);
+  async function loadLocalGroups() {
+    const response = await api.listLocalGroups();
     setLocalGroups(response.items);
   }
 
-  async function loadKnownUsers(authToken: string) {
-    const response = await api.listUsers(authToken);
+  async function loadKnownUsers() {
+    const response = await api.listUsers();
     setKnownUsers(response.items);
   }
 
-  async function loadAdminUserDetail(id: string, authToken: string) {
+  async function loadAdminUserDetail(id: string) {
     const [userResponse, visibleResourcesResponse] = await Promise.all([
-      api.getAdminUser(id, authToken),
-      api.getAdminUserVisibleResources(id, authToken)
+      api.getAdminUser(id),
+      api.getAdminUserVisibleResources(id)
     ]);
     setSelectedAdminUser(userResponse);
     setSelectedAdminUserResources(visibleResourcesResponse.items);
@@ -94,17 +94,17 @@ export function useAdminUsers({
     setBusy(true);
     try {
       if (mode === "edit" && originalName) {
-        await api.updateLocalGroup(originalName, input, session.authToken);
+        await api.updateLocalGroup(originalName, input);
         setMessage("Local group updated");
       } else {
-        await api.createLocalGroup(input, session.authToken);
+        await api.createLocalGroup(input);
         setMessage("Local group created");
       }
-      await Promise.all([loadLocalGroups(session.authToken), loadKnownUsers(session.authToken)]);
+      await Promise.all([loadLocalGroups(), loadKnownUsers()]);
       if (selectedAdminUserId) {
-        await loadAdminUserDetail(selectedAdminUserId, session.authToken);
+        await loadAdminUserDetail(selectedAdminUserId);
       }
-      await refreshCurrentSession(session.authToken);
+      await refreshCurrentSession();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Saving local group failed");
       throw error;
@@ -119,15 +119,15 @@ export function useAdminUsers({
     }
     setBusy(true);
     try {
-      const updated = await api.updateAdminUser(selectedAdminUserId, input, session.authToken);
+      const updated = await api.updateAdminUser(selectedAdminUserId, input);
       setSelectedAdminUser(updated);
-      await Promise.all([loadKnownUsers(session.authToken), loadLocalGroups(session.authToken)]);
+      await Promise.all([loadKnownUsers(), loadLocalGroups()]);
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       if (selectedAdminUserId === session.user.id) {
         try {
-          await refreshCurrentSession(session.authToken);
+          await refreshCurrentSession();
         } catch (error) {
           setLocalGroups([]);
           setKnownUsers([]);
@@ -152,13 +152,13 @@ export function useAdminUsers({
     }
     setBusy(true);
     try {
-      const { user: created, invite } = await api.createAdminUser(input, session.authToken);
+      const { user: created, invite } = await api.createAdminUser(input);
       setSelectedAdminUserId(created.id);
       setSelectedAdminUser(created);
-      await Promise.all([loadKnownUsers(session.authToken), loadLocalGroups(session.authToken)]);
-      await loadAdminUserDetail(created.id, session.authToken);
+      await Promise.all([loadKnownUsers(), loadLocalGroups()]);
+      await loadAdminUserDetail(created.id);
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       setMessage(invite ? `User ${created.name} created — share the invite link` : `User ${created.name} created`);
       return { ok: true, invite };
@@ -176,11 +176,11 @@ export function useAdminUsers({
     }
     setBusy(true);
     try {
-      const invite = await api.resetUserPassword(target.id, session.authToken);
-      await loadKnownUsers(session.authToken);
-      await loadAdminUserDetail(target.id, session.authToken);
+      const invite = await api.resetUserPassword(target.id);
+      await loadKnownUsers();
+      await loadAdminUserDetail(target.id);
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       setMessage(
         invite.personalResourcesDeleted && invite.personalResourcesDeleted > 0
@@ -208,19 +208,19 @@ export function useAdminUsers({
     }
     setBusy(true);
     try {
-      const result = await api.deleteAdminUser(target.id, session.authToken);
+      const result = await api.deleteAdminUser(target.id);
       if (selectedAdminUserId === target.id) {
         setSelectedAdminUserId(undefined);
         setSelectedAdminUser(undefined);
         setSelectedAdminUserResources([]);
       }
       await Promise.all([
-        loadKnownUsers(session.authToken),
-        loadLocalGroups(session.authToken),
-        loadAllResources(session.authToken)
+        loadKnownUsers(),
+        loadLocalGroups(),
+        loadAllResources()
       ]);
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       setMessage(
         `User ${target.name} deleted — ${result.personalResourcesDeleted} personal ${

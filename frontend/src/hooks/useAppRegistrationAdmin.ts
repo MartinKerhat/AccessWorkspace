@@ -59,13 +59,13 @@ type UseAppRegistrationAdminDeps = {
   adminConfig: AdminConfig | null;
   adminForm: AdminForm;
   allResources: ResourceSummary[];
-  loadAdminConfig: (authToken: string) => Promise<void>;
-  loadArchivedResources: (authToken: string) => Promise<void>;
-  loadAllResources: (authToken: string) => Promise<{ id: string }[]>;
-  loadActivity: (authToken: string) => Promise<void>;
-  loadAudit: (authToken: string) => Promise<void>;
-  loadNotifications: (authToken: string) => Promise<void>;
-  loadResource: (id: string, authToken: string) => Promise<void>;
+  loadAdminConfig: () => Promise<void>;
+  loadArchivedResources: () => Promise<void>;
+  loadAllResources: () => Promise<{ id: string }[]>;
+  loadActivity: () => Promise<void>;
+  loadAudit: () => Promise<void>;
+  loadNotifications: () => Promise<void>;
+  loadResource: (id: string) => Promise<void>;
   selectedResourceId: string | undefined;
   setSelectedResourceId: Dispatch<SetStateAction<string | undefined>>;
   setSelectedResource: Dispatch<SetStateAction<Resource | undefined>>;
@@ -107,8 +107,8 @@ export function useAppRegistrationAdmin({
       .filter(Boolean)
   );
 
-  async function loadAppRegistrationDiscoveries(authToken: string) {
-    const response = await api.discoverAppRegistrations(authToken);
+  async function loadAppRegistrationDiscoveries() {
+    const response = await api.discoverAppRegistrations();
     setAppRegistrationDiscoveries({
       items: (response.items ?? []).map((item) => ({
         ...item,
@@ -130,11 +130,11 @@ export function useAppRegistrationAdmin({
     }
     setAppRegistrationSyncing(true);
     try {
-      const result = await api.syncAppRegistrations(automatic, session.authToken);
+      const result = await api.syncAppRegistrations(automatic);
       if (result.updatedResources > 0 || result.removedResources > 0 || result.missingResources > 0 || !automatic) {
-        const items = await loadAllResources(session.authToken);
+        const items = await loadAllResources();
         if (selectedResourceId && items.some((item) => item.id === selectedResourceId)) {
-          await loadResource(selectedResourceId, session.authToken);
+          await loadResource(selectedResourceId);
         } else if (selectedResourceId) {
           setSelectedResourceId(undefined);
           setSelectedResource(undefined);
@@ -143,11 +143,11 @@ export function useAppRegistrationAdmin({
         }
       }
       if (session.capabilities.canViewAdmin && result.removedResources > 0) {
-        await loadArchivedResources(session.authToken);
+        await loadArchivedResources();
       }
-      await loadNotifications(session.authToken);
+      await loadNotifications();
       if (session.capabilities.canViewAdmin) {
-        await loadAdminConfig(session.authToken);
+        await loadAdminConfig();
       }
       if (!automatic) {
         setMessage(summarizeAppRegistrationSync(result));
@@ -167,7 +167,7 @@ export function useAppRegistrationAdmin({
     }
     setBusy(true);
     try {
-      await loadAppRegistrationDiscoveries(session.authToken);
+      await loadAppRegistrationDiscoveries();
       setAppRegistrationImportForm(emptyAppRegistrationImportForm());
       setAppRegistrationModalState({ mode: "import" });
     } catch (error) {
@@ -193,8 +193,7 @@ export function useAppRegistrationAdmin({
             .filter((item) => !importedAppRegistrationIds.has(item.appId))
             .map((item) => item.id),
           tenantId: adminConfig?.entraTenantId ?? adminForm.entraTenantId
-        },
-        session.authToken
+        }
       );
       const createdItems = response.items ?? [];
       if (createdItems.length === 0) {
@@ -202,14 +201,14 @@ export function useAppRegistrationAdmin({
       } else {
         setMessage(createdItems.length === 1 ? "App registration imported" : `${createdItems.length} app registrations imported`);
       }
-      await loadAllResources(session.authToken);
-      await loadActivity(session.authToken);
+      await loadAllResources();
+      await loadActivity();
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       if (createdItems[0]) {
         setSelectedResourceId(createdItems[0].id);
-        await loadResource(createdItems[0].id, session.authToken);
+        await loadResource(createdItems[0].id);
       }
       setAppRegistrationModalState(closedAppRegistrationModalState);
       setAppRegistrationImportForm(emptyAppRegistrationImportForm());

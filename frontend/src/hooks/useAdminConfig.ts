@@ -73,14 +73,14 @@ export function useAdminConfig({ session, setBusy, setMessage, onEntraHint }: Us
     setNotificationAdminForm(toNotificationAdminForm(adminConfig));
   }, [adminConfig]);
 
-  async function loadAdminConfig(authToken: string) {
-    const response = await api.adminConfig(authToken);
+  async function loadAdminConfig() {
+    const response = await api.adminConfig();
     setAdminConfig(response);
     onEntraHint(response.entraEnabled && response.entraConfigured);
   }
 
-  async function loadNotificationDeliveries(authToken: string) {
-    const response = await api.listAdminNotificationDeliveries(authToken);
+  async function loadNotificationDeliveries() {
+    const response = await api.listAdminNotificationDeliveries();
     setNotificationDeliveries(response.items);
   }
 
@@ -110,8 +110,7 @@ export function useAdminConfig({ session, setBusy, setMessage, onEntraHint }: Us
             azureReaderUseAmbientIdentity: adminForm.azureReaderUseAmbientIdentity,
             rdpSigningEnabled: adminForm.rdpSigningEnabled,
             keyVaultSources: adminForm.keyVaultSources
-          },
-        session.authToken
+          }
       );
       setAdminConfig(response);
       setAdminForm(toAdminForm(response));
@@ -150,8 +149,7 @@ export function useAdminConfig({ session, setBusy, setMessage, onEntraHint }: Us
           notificationEmailFrom: notificationAdminForm.notificationEmailFrom,
           appRegistrationAutoSyncEnabled: notificationAdminForm.appRegistrationAutoSyncEnabled,
           appRegistrationSyncIntervalMinutes: notificationAdminForm.appRegistrationSyncIntervalMinutes
-        },
-        session.authToken
+        }
       );
       setAdminConfig(response);
       setNotificationAdminForm(toNotificationAdminForm(response));
@@ -169,7 +167,7 @@ export function useAdminConfig({ session, setBusy, setMessage, onEntraHint }: Us
     }
     try {
       setBusy(true);
-      await loadNotificationDeliveries(session.authToken);
+      await loadNotificationDeliveries();
       setMessage("Notification delivery log refreshed.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to refresh notification delivery log");
@@ -184,13 +182,13 @@ export function useAdminConfig({ session, setBusy, setMessage, onEntraHint }: Us
     }
     setBusy(true);
     try {
-      await api.generateRDPSigningTestCertificate(session.authToken);
-      const response = await api.adminConfig(session.authToken);
+      await api.generateRDPSigningTestCertificate();
+      const response = await api.adminConfig();
       setAdminConfig(response);
       setAdminForm(toAdminForm(response));
-      setMessage("Test RDP signing certificate generated.");
+      setMessage("RDP signing certificate generated.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to generate test RDP signing certificate");
+      setMessage(error instanceof Error ? error.message : "Failed to generate RDP signing certificate");
     } finally {
       setBusy(false);
     }

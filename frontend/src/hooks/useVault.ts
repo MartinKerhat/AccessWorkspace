@@ -30,13 +30,16 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
     if (!session) {
       return;
     }
-    if (vaultCheckedTokenRef.current === session.authToken) {
+    // Once per signed-in user (the raw token now lives in the httpOnly
+    // cookie, invisible to JS); reset() clears this on sign-out so the next
+    // login re-checks.
+    if (vaultCheckedTokenRef.current === session.user.id) {
       return;
     }
-    vaultCheckedTokenRef.current = session.authToken;
+    vaultCheckedTokenRef.current = session.user.id;
     void (async () => {
       try {
-        const status = await api.vaultStatus(session.authToken);
+        const status = await api.vaultStatus();
         setVaultUnlocked(status.unlocked);
         if (!status.unlocked) {
           setVaultPrompt({ status, retry: async () => {} });
@@ -55,7 +58,7 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
       return false;
     }
     try {
-      const status = await api.vaultStatus(session.authToken);
+      const status = await api.vaultStatus();
       setVaultPrompt({ status, retry });
     } catch {
       setVaultPrompt({ status: { hasVault: true, unlocked: false, methods: [], passkeys: [] }, retry });
@@ -71,9 +74,9 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
       return;
     }
     try {
-      const status = await api.vaultStatus(session.authToken);
+      const status = await api.vaultStatus();
       if (status.unlocked) {
-        await api.vaultLock(session.authToken);
+        await api.vaultLock();
         setVaultUnlocked(false);
         setMessage("Personal passwords locked");
         return;
@@ -101,9 +104,9 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
     setBusy(true);
     try {
       if (vaultPrompt.status.hasVault) {
-        await api.vaultUnlock(passphrase, session.authToken);
+        await api.vaultUnlock(passphrase);
       } else {
-        await api.vaultSetup(passphrase, session.authToken);
+        await api.vaultSetup(passphrase);
       }
       return await afterVaultUnlocked();
     } catch (error) {
@@ -122,10 +125,10 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
     try {
       if (vaultPrompt.status.hasVault) {
         const unlock = await unlockWithPasskey(vaultPrompt.status.passkeys);
-        await api.vaultPasskeyUnlock(unlock, session.authToken);
+        await api.vaultPasskeyUnlock(unlock);
       } else {
         const registration = await registerPasskey(session.user.id, session.user.name);
-        await api.vaultPasskeySetup(registration, session.authToken);
+        await api.vaultPasskeySetup(registration);
       }
       return await afterVaultUnlocked();
     } catch (error) {

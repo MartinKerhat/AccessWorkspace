@@ -25,7 +25,7 @@ func (s *Server) handleVaultSetup(w http.ResponseWriter, r *http.Request, user a
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := s.authenticator.SetupVault(r.Context(), user, requestBearerToken(r), input.Passphrase); err != nil {
+	if err := s.authenticator.SetupVault(r.Context(), user, requestSessionToken(r), input.Passphrase); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -41,7 +41,7 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request, user 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := s.authenticator.UnlockVault(r.Context(), user, requestBearerToken(r), input.Passphrase); err != nil {
+	if err := s.authenticator.UnlockVault(r.Context(), user, requestSessionToken(r), input.Passphrase); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -80,7 +80,7 @@ func (s *Server) handleVaultPasskeySetup(w http.ResponseWriter, r *http.Request,
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := s.authenticator.SetupVaultWithPasskey(r.Context(), user, requestBearerToken(r), input.CredentialID, input.PRFSalt, input.PRFSecret); err != nil {
+	if err := s.authenticator.SetupVaultWithPasskey(r.Context(), user, requestSessionToken(r), input.CredentialID, input.PRFSalt, input.PRFSecret); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -94,7 +94,7 @@ func (s *Server) handleVaultPasskeyUnlock(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := s.authenticator.UnlockVaultWithPasskey(r.Context(), user, requestBearerToken(r), input.CredentialID, input.PRFSecret); err != nil {
+	if err := s.authenticator.UnlockVaultWithPasskey(r.Context(), user, requestSessionToken(r), input.CredentialID, input.PRFSecret); err != nil {
 		writeError(w, err)
 		return
 	}

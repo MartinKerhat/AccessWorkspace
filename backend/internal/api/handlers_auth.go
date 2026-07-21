@@ -10,6 +10,44 @@ import (
 	"access-workspace/backend/internal/auth"
 )
 
+// setSessionCookie stores the raw session token in the httpOnly cookie.
+// Secure is always set — browsers treat http://localhost as trustworthy, so
+// dev still works. SameSite=Lax: invite/reset links from email are top-level
+// cross-site navigations and must still carry the session.
+func (s *Server) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.SessionCookieName,
+		Value:    token,
+		Path:     "/api",
+		MaxAge:   int(s.authenticator.SessionTTL().Seconds()),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.SessionCookieName,
+		Value:    "",
+		Path:     "/api",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// loginResponse is LoginResult without the token — the cookie carries it;
+// the token must never reach page JavaScript.
+func loginResponse(result auth.LoginResult) map[string]any {
+	return map[string]any{
+		"user":         result.User,
+		"authMode":     result.AuthMode,
+		"capabilities": result.Capabilities,
+	}
+}
+
 func (s *Server) handleAuthBootstrap(w http.ResponseWriter, r *http.Request) {
 	bootstrap := s.authenticator.Bootstrap()
 	payload := map[string]any{
@@ -70,7 +108,8 @@ func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	s.setSessionCookie(w, result.Token)
+	writeJSON(w, http.StatusOK, loginResponse(result))
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +139,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		UserName:  result.User.Name,
 		Metadata:  map[string]any{"ip": clientIP(r)},
 	})
-	writeJSON(w, http.StatusOK, result)
+	s.setSessionCookie(w, result.Token)
+	writeJSON(w, http.StatusOK, loginResponse(result))
 }
 
 // loginFailureReason maps an auth error to a coarse, non-sensitive tag for the
@@ -117,7 +157,7 @@ func loginFailureReason(err error) string {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, user auth.User) {
-	token := bearerToken(r.Header.Get("Authorization"))
+	token := auth.SessionTokenFromRequest(r)
 	if err := s.authenticator.Logout(r.Context(), token); err != nil {
 		writeError(w, err)
 		return
@@ -129,7 +169,22 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, user auth.
 			UserName:  user.Name,
 		})
 	}
+	clearSessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
+}
+
+// handleSessionCookieUpgrade migrates a live pre-cookie session: the frontend
+// finds a token still in localStorage on boot, sends it as a bearer once, and
+// gets it back as the httpOnly cookie. Requires bearer auth explicitly — a
+// cookie-authenticated call has nothing to upgrade.
+func (s *Server) handleSessionCookieUpgrade(w http.ResponseWriter, r *http.Request, _ auth.User) {
+	token := bearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bearer token required"})
+		return
+	}
+	s.setSessionCookie(w, token)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {

@@ -339,7 +339,7 @@ export default function App() {
 
   function signOut() {
     if (session) {
-      void api.authLogout(session.authToken);
+      void api.authLogout();
     }
     localStorage.removeItem(authTokenStorageKey);
     setBrowserExtensionManagerOpen(false);
@@ -377,17 +377,17 @@ export default function App() {
     try {
       setBusy(true);
       await Promise.all([
-        loadAllResources(session.authToken),
-        loadActivity(session.authToken),
-        loadNotifications(session.authToken),
-        session.capabilities.canViewAudit ? loadAudit(session.authToken) : Promise.resolve(),
+        loadAllResources(),
+        loadActivity(),
+        loadNotifications(),
+        session.capabilities.canViewAudit ? loadAudit() : Promise.resolve(),
         session.capabilities.canViewAdmin
           ? Promise.all([
-              loadAdminConfig(session.authToken),
-              loadArchivedResources(session.authToken),
-              loadLocalGroups(session.authToken),
-              loadKnownUsers(session.authToken),
-              loadNotificationDeliveries(session.authToken)
+              loadAdminConfig(),
+              loadArchivedResources(),
+              loadLocalGroups(),
+              loadKnownUsers(),
+              loadNotificationDeliveries()
             ])
           : Promise.resolve()
       ]);
@@ -398,15 +398,15 @@ export default function App() {
     }
   }
 
-  async function loadAllResources(authToken: string): Promise<ResourceSummary[]> {
-    const response = await api.listResources(new URLSearchParams(), authToken);
+  async function loadAllResources(): Promise<ResourceSummary[]> {
+    const response = await api.listResources(new URLSearchParams());
     setAllResources(response.items);
     return response.items;
   }
 
-  async function loadResource(id: string, authToken: string) {
+  async function loadResource(id: string) {
     try {
-      const item = await api.getResource(id, authToken);
+      const item = await api.getResource(id);
       setSelectedResource(item);
       setReveal(null);
       setLaunch(null);
@@ -415,13 +415,13 @@ export default function App() {
     }
   }
 
-  async function loadActivity(authToken: string) {
-    const response = await api.myActivity(authToken);
+  async function loadActivity() {
+    const response = await api.myActivity();
     setActivity(response.items);
   }
 
-  async function loadAudit(authToken: string, filters = auditFilters) {
-    const response = await api.listAudit(authToken, {
+  async function loadAudit(filters = auditFilters) {
+    const response = await api.listAudit({
       limit: AUDIT_PAGE_SIZE,
       offset: 0,
       query: filters.query,
@@ -437,7 +437,7 @@ export default function App() {
     if (!session) {
       return;
     }
-    const response = await api.listAudit(session.authToken, {
+    const response = await api.listAudit({
       limit: AUDIT_PAGE_SIZE,
       offset: audit.length,
       query: auditFilters.query,
@@ -455,12 +455,12 @@ export default function App() {
   function handleAuditFiltersChange(filters: { query: string; eventType: string }) {
     setAuditFilters(filters);
     if (session?.capabilities.canViewAudit) {
-      void loadAudit(session.authToken, filters);
+      void loadAudit(filters);
     }
   }
 
-  async function loadArchivedResources(authToken: string) {
-    const response = await api.listArchivedResources(authToken);
+  async function loadArchivedResources() {
+    const response = await api.listArchivedResources();
     setArchivedResources(response.items);
   }
 
@@ -468,6 +468,9 @@ export default function App() {
   // fails after an access change: clear everything App still owns (the hook
   // clears its own state before calling this).
   function onForcedSignOut(failureMessage: string) {
+    // JS cannot drop the httpOnly cookie itself — invalidate the session
+    // server-side, which also clears the cookie.
+    void api.authLogout();
     localStorage.removeItem(authTokenStorageKey);
     setSession(null);
     setAllResources([]);
@@ -986,7 +989,7 @@ export default function App() {
             busy={busy}
             onRefresh={() => {
               if (session) {
-                void loadKeyVaultDiscoveries(session.authToken);
+                void loadKeyVaultDiscoveries();
               }
             }}
             onImport={() => void handleImportKeyVaultSecret()}
@@ -1007,7 +1010,7 @@ export default function App() {
             busy={busy}
             onRefresh={() => {
               if (session) {
-                void loadAppRegistrationDiscoveries(session.authToken);
+                void loadAppRegistrationDiscoveries();
               }
             }}
             onImport={() => void handleImportAppRegistrations()}

@@ -28,7 +28,7 @@ export function ConnectionsAdminSection({
           <span className="muted">{adminConfig?.rdpSigning.certificateConfigured ? "Certificate ready" : "No certificate"}</span>
         </div>
         <p className="section-copy">
-          Generate a test publisher certificate that the launcher can install into the current Windows user profile and use for signing managed RDP files before MSTSC opens them.
+          Generate a publisher certificate that the launcher can install into the current Windows user profile and use for signing managed RDP files before MSTSC opens them. Use this if your organization doesn't already have its own signing certificate.
         </p>
         <div className="form-grid">
           <label className="checkbox wide">
@@ -67,7 +67,7 @@ export function ConnectionsAdminSection({
             Save RDP signing settings
           </button>
           <button className="button ghost" disabled={busy} onClick={onGenerateTestCertificate}>
-            Generate test certificate
+            Generate certificate
           </button>
         </div>
       </section>

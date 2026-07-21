@@ -84,8 +84,9 @@ type AuthMeResponse = {
   capabilities: WorkspaceCapabilities;
 };
 
+// The session token never reaches page JavaScript — it travels in the
+// httpOnly cookie the backend sets on login/invite/SSO.
 type AuthLoginResponse = {
-  token: string;
   user: User;
   authMode: AuthMode;
   capabilities: WorkspaceCapabilities;
@@ -106,12 +107,16 @@ export function isVaultLocked(error: unknown): boolean {
   return error instanceof ApiError && error.code === "vault_locked";
 }
 
-async function request<T>(path: string, options: RequestInit = {}, authToken?: string): Promise<T> {
+// The session rides in the httpOnly cookie; credentials mode makes the
+// browser attach it (needed in dev, where the SPA is a different origin).
+// `bearerToken` exists solely for the one-time localStorage migration.
+async function request<T>(path: string, options: RequestInit = {}, bearerToken?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
       ...(options.headers ?? {})
     }
   });
@@ -140,8 +145,13 @@ export const api = {
       body: JSON.stringify({ username, password })
     });
   },
-  authMe(authToken: string) {
-    return request<AuthMeResponse>("/auth/me", {}, authToken);
+  authMe() {
+    return request<AuthMeResponse>("/auth/me");
+  },
+  // One-time migration: a token still sitting in localStorage from before the
+  // cookie era is sent as a bearer once and comes back as the httpOnly cookie.
+  upgradeSessionCookie(legacyToken: string) {
+    return request<{ status: string }>("/auth/session/cookie", { method: "POST" }, legacyToken);
   },
   acceptInvite(token: string, password: string) {
     return request<AuthLoginResponse>("/auth/invite/accept", {
@@ -149,125 +159,93 @@ export const api = {
       body: JSON.stringify({ token, password })
     });
   },
-  vaultStatus(authToken: string) {
-    return request<VaultStatus>("/auth/vault", {}, authToken);
+  vaultStatus() {
+    return request<VaultStatus>("/auth/vault");
   },
-  vaultSetup(passphrase: string, authToken: string) {
-    return request<{ status: string }>("/auth/vault/setup", { method: "POST", body: JSON.stringify({ passphrase }) }, authToken);
+  vaultSetup(passphrase: string) {
+    return request<{ status: string }>("/auth/vault/setup", { method: "POST", body: JSON.stringify({ passphrase }) });
   },
-  vaultUnlock(passphrase: string, authToken: string) {
-    return request<{ status: string }>("/auth/vault/unlock", { method: "POST", body: JSON.stringify({ passphrase }) }, authToken);
+  vaultUnlock(passphrase: string) {
+    return request<{ status: string }>("/auth/vault/unlock", { method: "POST", body: JSON.stringify({ passphrase }) });
   },
-  vaultPasskeySetup(payload: { credentialId: string; prfSalt: string; prfSecret: string }, authToken: string) {
-    return request<{ status: string }>("/auth/vault/passkey/setup", { method: "POST", body: JSON.stringify(payload) }, authToken);
+  vaultPasskeySetup(payload: { credentialId: string; prfSalt: string; prfSecret: string }) {
+    return request<{ status: string }>("/auth/vault/passkey/setup", { method: "POST", body: JSON.stringify(payload) });
   },
-  vaultPasskeyUnlock(payload: { credentialId: string; prfSecret: string }, authToken: string) {
-    return request<{ status: string }>("/auth/vault/passkey/unlock", { method: "POST", body: JSON.stringify(payload) }, authToken);
+  vaultPasskeyUnlock(payload: { credentialId: string; prfSecret: string }) {
+    return request<{ status: string }>("/auth/vault/passkey/unlock", { method: "POST", body: JSON.stringify(payload) });
   },
-  vaultLock(authToken: string) {
-    return request<{ status: string }>("/auth/vault/lock", { method: "POST" }, authToken);
+  vaultLock() {
+    return request<{ status: string }>("/auth/vault/lock", { method: "POST" });
   },
-  changePassword(currentPassword: string, newPassword: string, authToken: string) {
-    return request<{ status: string }>(
-      "/auth/password",
-      {
-        method: "POST",
-        body: JSON.stringify({ currentPassword, newPassword })
-      },
-      authToken
-    );
+  changePassword(currentPassword: string, newPassword: string) {
+    return request<{ status: string }>("/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
   },
-  issueUserInvite(userId: string, authToken: string) {
-    return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/invite`, { method: "POST" }, authToken);
+  issueUserInvite(userId: string) {
+    return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/invite`, { method: "POST" });
   },
-  resetUserPassword(userId: string, authToken: string) {
-    return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/reset-password`, { method: "POST" }, authToken);
+  resetUserPassword(userId: string) {
+    return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/reset-password`, { method: "POST" });
   },
-  authLogout(authToken: string) {
-    return request<{ status: string }>("/auth/logout", { method: "POST" }, authToken);
+  authLogout() {
+    return request<{ status: string }>("/auth/logout", { method: "POST" });
   },
-  listResources(params: URLSearchParams, authToken: string) {
-    return request<{ items: ResourceSummary[] }>(`/resources?${params.toString()}`, {}, authToken);
+  listResources(params: URLSearchParams) {
+    return request<{ items: ResourceSummary[] }>(`/resources?${params.toString()}`);
   },
-  getResource(id: string, authToken: string) {
-    return request<Resource>(`/resources/${id}`, {}, authToken);
+  getResource(id: string) {
+    return request<Resource>(`/resources/${id}`);
   },
-  createResource(input: ResourceForm, authToken: string) {
-    return request<Resource>(
-      "/resources",
-      {
-        method: "POST",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+  createResource(input: ResourceForm) {
+    return request<Resource>("/resources", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
   },
-  updateResource(id: string, input: ResourceForm, authToken: string) {
-    return request<Resource>(
-      `/resources/${id}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+  updateResource(id: string, input: ResourceForm) {
+    return request<Resource>(`/resources/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input)
+    });
   },
-  archiveResource(id: string, authToken: string) {
-    return request<{ status: string }>(
-      `/resources/${id}/archive`,
-      {
-        method: "POST"
-      },
-      authToken
-    );
+  archiveResource(id: string) {
+    return request<{ status: string }>(`/resources/${id}/archive`, {
+      method: "POST"
+    });
   },
-  revealResource(id: string, authToken: string) {
-    return request<RevealResult>(
-      `/resources/${id}/reveal`,
-      {
-        method: "POST"
-      },
-      authToken
-    );
+  revealResource(id: string) {
+    return request<RevealResult>(`/resources/${id}/reveal`, {
+      method: "POST"
+    });
   },
-  launchResource(id: string, authToken: string) {
-    return request<LaunchPayload>(
-      `/resources/${id}/launch`,
-      {
-        method: "POST"
-      },
-      authToken
-    );
+  launchResource(id: string) {
+    return request<LaunchPayload>(`/resources/${id}/launch`, {
+      method: "POST"
+    });
   },
   launcherTicketResolveUrl(ticket: string) {
     // Handed to the desktop launcher, which fetches it from its own process —
     // must be absolute, not the page-relative "/api".
     return `${absoluteApiBase()}/launcher/tickets/${encodeURIComponent(ticket)}`;
   },
-  listPasswordOptions(authToken: string) {
-    return request<{ items: ResourceSummary[] }>("/passwords/options", {}, authToken);
+  listPasswordOptions() {
+    return request<{ items: ResourceSummary[] }>("/passwords/options");
   },
-  getConnectionCredentialOverride(id: string, authToken: string) {
-    return request<ConnectionCredentialOverride>(`/resources/${id}/connection-override`, {}, authToken);
+  getConnectionCredentialOverride(id: string) {
+    return request<ConnectionCredentialOverride>(`/resources/${id}/connection-override`);
   },
-  setConnectionCredentialOverride(id: string, passwordResourceId: string, authToken: string) {
-    return request<ConnectionCredentialOverride>(
-      `/resources/${id}/connection-override`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ passwordResourceId })
-      },
-      authToken
-    );
+  setConnectionCredentialOverride(id: string, passwordResourceId: string) {
+    return request<ConnectionCredentialOverride>(`/resources/${id}/connection-override`, {
+      method: "PUT",
+      body: JSON.stringify({ passwordResourceId })
+    });
   },
-  clearConnectionCredentialOverride(id: string, authToken: string) {
-    return request<{ status: string }>(
-      `/resources/${id}/connection-override`,
-      {
-        method: "DELETE"
-      },
-      authToken
-    );
+  clearConnectionCredentialOverride(id: string) {
+    return request<{ status: string }>(`/resources/${id}/connection-override`, {
+      method: "DELETE"
+    });
   },
   async launcherRuntime() {
     const runtime = await request<LauncherRuntime>("/launcher/runtime");
@@ -295,14 +273,10 @@ export const api = {
       }))
     };
   },
-  createBrowserExtensionConnectToken(authToken: string) {
-    return request<BrowserExtensionConnectToken>(
-      "/auth/browser-extension-connect-token",
-      {
-        method: "POST"
-      },
-      authToken
-    );
+  createBrowserExtensionConnectToken() {
+    return request<BrowserExtensionConnectToken>("/auth/browser-extension-connect-token", {
+      method: "POST"
+    });
   },
   async launcherLocalStatus(statusUrl: string) {
     const response = await fetch(statusUrl);
@@ -325,7 +299,7 @@ export const api = {
     }
     return response.json() as Promise<{ status: string }>;
   },
-  listAudit(authToken: string, options: { limit?: number; offset?: number; query?: string; eventType?: string } = {}) {
+  listAudit(options: { limit?: number; offset?: number; query?: string; eventType?: string } = {}) {
     const params = new URLSearchParams();
     params.set("limit", String(options.limit ?? 100));
     params.set("offset", String(options.offset ?? 0));
@@ -335,210 +309,160 @@ export const api = {
     if (options.eventType) {
       params.set("eventType", options.eventType);
     }
-    return request<{ items: AuditEvent[]; total: number; eventTypes: string[] }>(`/audit?${params.toString()}`, {}, authToken);
+    return request<{ items: AuditEvent[]; total: number; eventTypes: string[] }>(`/audit?${params.toString()}`);
   },
-  adminConfig(authToken: string) {
-    return request<AdminConfig>("/admin/config", {}, authToken);
+  adminConfig() {
+    return request<AdminConfig>("/admin/config");
   },
-  updateAdminConfig(
-    input: {
-      entraTenantId?: string;
-      entraClientId?: string;
-      entraAuthority?: string;
-      entraRedirectUri?: string;
-      entraGroupSource?: string;
-      entraEnabled?: boolean;
-      azureReaderUseAmbientIdentity?: boolean;
-      keyVaultSources?: AdminConfig["keyVaultSources"];
-      appRegistrationNotificationPolicy?: AdminConfig["appRegistrationNotificationPolicy"];
-      notificationEmailEnabled?: boolean;
-      notificationEmailHost?: string;
-      notificationEmailPort?: number;
-      notificationEmailUsername?: string;
-      notificationEmailFrom?: string;
-      appRegistrationAutoSyncEnabled?: boolean;
-      appRegistrationSyncIntervalMinutes?: number;
-      entraClientSecret?: string;
-      notificationEmailPassword?: string;
-      rdpSigningEnabled?: boolean;
-    },
-    authToken: string
-  ) {
-    return request<AdminConfig>(
-      "/admin/config",
-      {
-        method: "PUT",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+  updateAdminConfig(input: {
+    entraTenantId?: string;
+    entraClientId?: string;
+    entraAuthority?: string;
+    entraRedirectUri?: string;
+    entraGroupSource?: string;
+    entraEnabled?: boolean;
+    azureReaderUseAmbientIdentity?: boolean;
+    keyVaultSources?: AdminConfig["keyVaultSources"];
+    appRegistrationNotificationPolicy?: AdminConfig["appRegistrationNotificationPolicy"];
+    notificationEmailEnabled?: boolean;
+    notificationEmailHost?: string;
+    notificationEmailPort?: number;
+    notificationEmailUsername?: string;
+    notificationEmailFrom?: string;
+    appRegistrationAutoSyncEnabled?: boolean;
+    appRegistrationSyncIntervalMinutes?: number;
+    entraClientSecret?: string;
+    notificationEmailPassword?: string;
+    rdpSigningEnabled?: boolean;
+  }) {
+    return request<AdminConfig>("/admin/config", {
+      method: "PUT",
+      body: JSON.stringify(input)
+    });
   },
-  generateRDPSigningTestCertificate(authToken: string) {
+  generateRDPSigningTestCertificate() {
     return request<{ enabled: boolean; certificateConfigured: boolean; subject: string; thumbprintSha256: string; generatedAt?: string }>(
       "/admin/rdp-signing/test-certificate",
       {
         method: "POST"
-      },
-      authToken
+      }
     );
   },
-  myActivity(authToken: string) {
-    return request<{ items: AuditEvent[] }>("/me/activity", {}, authToken);
+  myActivity() {
+    return request<{ items: AuditEvent[] }>("/me/activity");
   },
-  myNotifications(authToken: string) {
-    return request<{ items: UserNotification[] }>("/me/notifications", {}, authToken);
+  myNotifications() {
+    return request<{ items: UserNotification[] }>("/me/notifications");
   },
-  markNotificationRead(id: string, authToken: string) {
-    return request<{ status: string }>(`/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }, authToken);
+  markNotificationRead(id: string) {
+    return request<{ status: string }>(`/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
   },
-  listLocalGroups(authToken: string) {
-    return request<{ items: LocalGroup[] }>("/admin/local-groups", {}, authToken);
+  listLocalGroups() {
+    return request<{ items: LocalGroup[] }>("/admin/local-groups");
   },
-  listArchivedResources(authToken: string) {
-    return request<{ items: ArchivedResourceSummary[] }>("/admin/archived-resources", {}, authToken);
+  listArchivedResources() {
+    return request<{ items: ArchivedResourceSummary[] }>("/admin/archived-resources");
   },
-  listUsers(authToken: string) {
-    return request<{ items: UserSummary[] }>("/admin/users", {}, authToken);
+  listUsers() {
+    return request<{ items: UserSummary[] }>("/admin/users");
   },
-  async createAdminUser(input: CreateUserInput, authToken: string) {
+  async createAdminUser(input: CreateUserInput) {
     // Invite mode responds with { user, invite }; direct mode with the user.
-    const response = await request<UserAccessDetail | { user: UserAccessDetail; invite: UserInvite }>(
-      "/admin/users",
-      {
-        method: "POST",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+    const response = await request<UserAccessDetail | { user: UserAccessDetail; invite: UserInvite }>("/admin/users", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
     if ("invite" in response) {
       return response;
     }
     return { user: response, invite: null as UserInvite | null };
   },
-  listAdminNotificationDeliveries(authToken: string) {
-    return request<{ items: NotificationDeliveryRecord[] }>("/admin/notification-deliveries", {}, authToken);
+  listAdminNotificationDeliveries() {
+    return request<{ items: NotificationDeliveryRecord[] }>("/admin/notification-deliveries");
   },
-  getAdminUser(id: string, authToken: string) {
-    return request<UserAccessDetail>(`/admin/users/${encodeURIComponent(id)}`, {}, authToken);
+  getAdminUser(id: string) {
+    return request<UserAccessDetail>(`/admin/users/${encodeURIComponent(id)}`);
   },
-  getAdminUserVisibleResources(id: string, authToken: string) {
-    return request<{ items: VisibleResourceSummary[] }>(`/admin/users/${encodeURIComponent(id)}/visible-resources`, {}, authToken);
+  getAdminUserVisibleResources(id: string) {
+    return request<{ items: VisibleResourceSummary[] }>(`/admin/users/${encodeURIComponent(id)}/visible-resources`);
   },
-  updateAdminUser(id: string, input: UserAccessUpdateInput, authToken: string) {
-    return request<UserAccessDetail>(
-      `/admin/users/${encodeURIComponent(id)}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+  updateAdminUser(id: string, input: UserAccessUpdateInput) {
+    return request<UserAccessDetail>(`/admin/users/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(input)
+    });
   },
-  deleteAdminUser(id: string, authToken: string) {
+  deleteAdminUser(id: string) {
     return request<{ personalResourcesDeleted: number; sharedResourcesReassigned: number }>(
       `/admin/users/${encodeURIComponent(id)}`,
       {
         method: "DELETE"
-      },
-      authToken
+      }
     );
   },
-  restoreArchivedResource(id: string, authToken: string) {
-    return request<{ status: string }>(
-      `/admin/archived-resources/${id}/restore`,
-      {
-        method: "POST"
-      },
-      authToken
-    );
+  restoreArchivedResource(id: string) {
+    return request<{ status: string }>(`/admin/archived-resources/${id}/restore`, {
+      method: "POST"
+    });
   },
-  discoverKeyVault(authToken: string) {
-    return request<KeyVaultDiscoverResult>("/keyvault/discover", {}, authToken);
+  discoverKeyVault() {
+    return request<KeyVaultDiscoverResult>("/keyvault/discover");
   },
-  importKeyVaultSecrets(input: KeyVaultImportForm & { items: KeyVaultImportItem[] }, authToken: string) {
-    return request<{ items: Resource[] }>(
-      "/keyvault/import",
-      {
-        method: "POST",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+  importKeyVaultSecrets(input: KeyVaultImportForm & { items: KeyVaultImportItem[] }) {
+    return request<{ items: Resource[] }>("/keyvault/import", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
   },
-  syncKeyVault(automatic: boolean, authToken: string) {
-    return request<KeyVaultSyncResult>(
-      "/keyvault/sync",
-      {
-        method: "POST",
-        body: JSON.stringify({ automatic })
-      },
-      authToken
-    );
+  syncKeyVault(automatic: boolean) {
+    return request<KeyVaultSyncResult>("/keyvault/sync", {
+      method: "POST",
+      body: JSON.stringify({ automatic })
+    });
   },
-  discoverAppRegistrations(authToken: string) {
-    return request<AppRegistrationDiscoverResult>("/appregistrations/discover", {}, authToken);
+  discoverAppRegistrations() {
+    return request<AppRegistrationDiscoverResult>("/appregistrations/discover");
   },
-  importAppRegistrations(input: AppRegistrationImportForm & { tenantId: string }, authToken: string) {
-    return request<{ items: Resource[] }>(
-      "/appregistrations/import",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          owner: input.owner,
-          ownerTeam: input.ownerTeam,
-          environment: input.environment,
-          tenantId: input.tenantId,
-          description: input.description,
-          notes: input.notes,
-          allowedGroups: input.allowedGroups,
-          applicationIds: input.selectedApplicationIds
-        })
-      },
-      authToken
-    );
+  importAppRegistrations(input: AppRegistrationImportForm & { tenantId: string }) {
+    return request<{ items: Resource[] }>("/appregistrations/import", {
+      method: "POST",
+      body: JSON.stringify({
+        owner: input.owner,
+        ownerTeam: input.ownerTeam,
+        environment: input.environment,
+        tenantId: input.tenantId,
+        description: input.description,
+        notes: input.notes,
+        allowedGroups: input.allowedGroups,
+        applicationIds: input.selectedApplicationIds
+      })
+    });
   },
-  syncAppRegistrations(automatic: boolean, authToken: string) {
-    return request<AppRegistrationSyncResult>(
-      "/appregistrations/sync",
-      {
-        method: "POST",
-        body: JSON.stringify({ automatic })
-      },
-      authToken
-    );
+  syncAppRegistrations(automatic: boolean) {
+    return request<AppRegistrationSyncResult>("/appregistrations/sync", {
+      method: "POST",
+      body: JSON.stringify({ automatic })
+    });
   },
   updateAppRegistrationNotificationPolicies(
     id: string,
-    input: { resourcePolicy?: AppRegistrationNotificationPolicy; credentialPolicies: AppRegistrationCredentialPolicyInput[] },
-    authToken: string
+    input: { resourcePolicy?: AppRegistrationNotificationPolicy; credentialPolicies: AppRegistrationCredentialPolicyInput[] }
   ) {
-    return request<Resource>(
-      `/resources/${encodeURIComponent(id)}/app-registration-notifications`,
-      {
-        method: "PUT",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+    return request<Resource>(`/resources/${encodeURIComponent(id)}/app-registration-notifications`, {
+      method: "PUT",
+      body: JSON.stringify(input)
+    });
   },
-  createLocalGroup(input: LocalGroupForm, authToken: string) {
-    return request<{ status: string }>(
-      "/admin/local-groups",
-      {
-        method: "POST",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+  createLocalGroup(input: LocalGroupForm) {
+    return request<{ status: string }>("/admin/local-groups", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
   },
-  updateLocalGroup(name: string, input: LocalGroupForm, authToken: string) {
-    return request<{ status: string }>(
-      `/admin/local-groups/${encodeURIComponent(name)}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(input)
-      },
-      authToken
-    );
+  updateLocalGroup(name: string, input: LocalGroupForm) {
+    return request<{ status: string }>(`/admin/local-groups/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify(input)
+    });
   }
 };

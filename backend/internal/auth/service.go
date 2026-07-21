@@ -35,9 +35,26 @@ type BrowserExtensionConnectToken struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
+// SessionCookieName is the httpOnly cookie carrying the web session token.
+// The raw token is the cookie value — it doubles as key material for the
+// session-held vault key (openSessionVaultKey), so it must not be transformed.
+const SessionCookieName = "aw_session"
+
+// SessionTokenFromRequest extracts the web session token: the httpOnly
+// cookie first, the Authorization bearer header as fallback (the browser
+// extension keeps its own bearer token; the fallback also lets an old
+// frontend work against a new backend during rollout).
+func SessionTokenFromRequest(r *http.Request) string {
+	if cookie, err := r.Cookie(SessionCookieName); err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+	return bearerToken(r.Header.Get("Authorization"))
+}
+
 type Authenticator interface {
 	Bootstrap() Bootstrap
 	CurrentUser(ctx context.Context, r *http.Request) (User, error)
+	SessionTTL() time.Duration
 	Login(ctx context.Context, username, password string) (LoginResult, error)
 	IssueSession(ctx context.Context, user User, mode Mode) (LoginResult, error)
 	IssueBrowserExtensionConnectToken(ctx context.Context, user User, mode Mode) (BrowserExtensionConnectToken, error)
@@ -211,8 +228,12 @@ func (s *Service) issueSession(ctx context.Context, user User, mode Mode, upsert
 	}, nil
 }
 
+func (s *Service) SessionTTL() time.Duration {
+	return s.sessionTTL
+}
+
 func (s *Service) CurrentUser(ctx context.Context, r *http.Request) (User, error) {
-	token := bearerToken(r.Header.Get("Authorization"))
+	token := SessionTokenFromRequest(r)
 	if token == "" {
 		return User{}, ErrUnauthenticated
 	}

@@ -113,7 +113,7 @@ export function useBrowserExtension({ session, setBusy, setMessage }: UseBrowser
     setMessage(undefined);
     setBusy(true);
     try {
-      const connectToken = await api.createBrowserExtensionConnectToken(session.authToken);
+      const connectToken = await api.createBrowserExtensionConnectToken();
       setBrowserExtensionConnectState({
         user: connectToken.user,
         phase: "connecting"

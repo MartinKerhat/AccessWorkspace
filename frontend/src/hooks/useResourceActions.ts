@@ -40,11 +40,11 @@ type UseResourceActionsDeps = {
   launcherRuntime: LauncherRuntime | null;
   setLauncherRuntime: Dispatch<SetStateAction<LauncherRuntime | null>>;
   refreshLauncherStatus: (runtimeArg?: LauncherRuntime | null) => Promise<{ version: string } | null>;
-  loadAllResources: (authToken: string) => Promise<ResourceSummary[]>;
-  loadResource: (id: string, authToken: string) => Promise<void>;
-  loadActivity: (authToken: string) => Promise<void>;
-  loadAudit: (authToken: string) => Promise<void>;
-  loadArchivedResources: (authToken: string) => Promise<void>;
+  loadAllResources: () => Promise<ResourceSummary[]>;
+  loadResource: (id: string) => Promise<void>;
+  loadActivity: () => Promise<void>;
+  loadAudit: () => Promise<void>;
+  loadArchivedResources: () => Promise<void>;
   closeResourceForm: () => void;
 };
 
@@ -92,8 +92,8 @@ export function useResourceActions({
       }
       try {
         const [optionsResponse, overrideResponse] = await Promise.all([
-          api.listPasswordOptions(session.authToken),
-          api.getConnectionCredentialOverride(selectedResource.id, session.authToken)
+          api.listPasswordOptions(),
+          api.getConnectionCredentialOverride(selectedResource.id)
         ]);
         if (cancelled) {
           return;
@@ -122,7 +122,7 @@ export function useResourceActions({
       setConnectionOverride(null);
       return;
     }
-    void loadResource(selectedResourceId, session.authToken);
+    void loadResource(selectedResourceId);
   }, [selectedResourceId, session]);
 
   useEffect(() => {
@@ -135,9 +135,9 @@ export function useResourceActions({
     if (!session) {
       return;
     }
-    await loadActivity(session.authToken);
+    await loadActivity();
     if (session.capabilities.canViewAudit) {
-      await loadAudit(session.authToken);
+      await loadAudit();
     }
   }
 
@@ -147,7 +147,7 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      const response = await api.revealResource(selectedResourceId, session.authToken);
+      const response = await api.revealResource(selectedResourceId);
       setReveal(response);
       await refreshAfterSensitiveAction();
       return response.secretValue;
@@ -168,7 +168,7 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      const response = await api.revealResource(selectedResourceId, session.authToken);
+      const response = await api.revealResource(selectedResourceId);
       await refreshAfterSensitiveAction();
       return response.secretValue;
     } catch (error) {
@@ -200,7 +200,7 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      const response = await api.launchResource(selectedResourceId, session.authToken);
+      const response = await api.launchResource(selectedResourceId);
       setLaunch(response);
       if (selectedResource?.type === "rdp" || selectedResource?.type === "ssh") {
         let runtime = launcherRuntime;
@@ -255,11 +255,11 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      const override = await api.setConnectionCredentialOverride(selectedResourceId, passwordResourceId, session.authToken);
+      const override = await api.setConnectionCredentialOverride(selectedResourceId, passwordResourceId);
       setConnectionOverride(override);
       setMessage("Personal connection override saved.");
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Saving the connection override failed");
@@ -274,7 +274,7 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      await api.clearConnectionCredentialOverride(selectedResourceId, session.authToken);
+      await api.clearConnectionCredentialOverride(selectedResourceId);
       setConnectionOverride({
         connectionId: selectedResourceId,
         passwordResourceId: "",
@@ -284,7 +284,7 @@ export function useResourceActions({
       });
       setMessage("Personal connection override cleared.");
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Clearing the connection override failed");
@@ -299,13 +299,13 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      const created = await api.createResource(input, session.authToken);
+      const created = await api.createResource(input);
       setMessage("Object created");
-      await loadAllResources(session.authToken);
+      await loadAllResources();
       setSelectedResourceId(created.id);
-      await loadResource(created.id, session.authToken);
+      await loadResource(created.id);
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       closeResourceForm();
     } catch (error) {
@@ -324,12 +324,12 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      await api.updateResource(selectedResourceId, input, session.authToken);
+      await api.updateResource(selectedResourceId, input);
       setMessage("Object updated");
-      await loadAllResources(session.authToken);
-      await loadResource(selectedResourceId, session.authToken);
+      await loadAllResources();
+      await loadResource(selectedResourceId);
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       closeResourceForm();
     } catch (error) {
@@ -367,14 +367,14 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      await api.archiveResource(selectedResourceId, session.authToken);
+      await api.archiveResource(selectedResourceId);
       setMessage(selectedResource.personal ? "Personal object permanently deleted" : "Object removed from app");
-      await loadAllResources(session.authToken);
+      await loadAllResources();
       if (session.capabilities.canViewAdmin) {
-        await loadArchivedResources(session.authToken);
+        await loadArchivedResources();
       }
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
       setSelectedResourceId(undefined);
       setSelectedResource(undefined);
@@ -398,11 +398,11 @@ export function useResourceActions({
     }
     setBusy(true);
     try {
-      await api.restoreArchivedResource(item.id, session.authToken);
+      await api.restoreArchivedResource(item.id);
       setMessage(`${item.name} restored to the workspace catalog`);
-      await Promise.all([loadAllResources(session.authToken), loadArchivedResources(session.authToken)]);
+      await Promise.all([loadAllResources(), loadArchivedResources()]);
       if (session.capabilities.canViewAudit) {
-        await loadAudit(session.authToken);
+        await loadAudit();
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Restore failed");

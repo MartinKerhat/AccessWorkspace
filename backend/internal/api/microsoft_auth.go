@@ -366,5 +366,8 @@ func (s *Server) handleMicrosoftCallback(w http.ResponseWriter, r *http.Request)
 	}
 
 	log.Printf("microsoft auth callback: signed in user=%s email=%s groups=%d", user.ID, user.Email, len(user.Groups))
-	http.Redirect(w, r, s.frontendURL+"?authToken="+url.QueryEscape(result.Token), http.StatusFound)
+	// The session travels in the httpOnly cookie — never in the redirect URL
+	// (query tokens land in browser history and proxy logs).
+	s.setSessionCookie(w, result.Token)
+	http.Redirect(w, r, s.frontendURL, http.StatusFound)
 }

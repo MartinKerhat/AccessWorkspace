@@ -201,6 +201,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// CSRF guard: a state-changing request that authenticates via the session
+	// cookie must originate from the frontend. SameSite=Lax already keeps the
+	// cookie off cross-site fetches; this is defense in depth. Bearer-authed
+	// requests (browser extension) skip it — no browser-attached credential.
+	if !s.originAllowed(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request rejected"})
+		return
+	}
+
 	user, authErr := s.authenticator.CurrentUser(r.Context(), r)
 
 	switch {
@@ -220,6 +229,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLogin(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/logout":
 		s.handleLogout(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/session/cookie":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleSessionCookieUpgrade(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/password":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -266,7 +280,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !requireAuth(w, user, authErr) {
 			return
 		}
-		if err := s.authenticator.LockVault(r.Context(), requestBearerToken(r)); err != nil {
+		if err := s.authenticator.LockVault(r.Context(), requestSessionToken(r)); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -503,12 +517,30 @@ type browserExtensionConnectExchangeInput struct {
 	InstallationID string `json:"installationId"`
 }
 
-func requestBearerToken(r *http.Request) string {
-	header := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		return ""
+// requestSessionToken returns the caller's raw session token (cookie first,
+// bearer fallback). The vault handlers need the raw token as key material for
+// the session-held vault key.
+func requestSessionToken(r *http.Request) string {
+	return auth.SessionTokenFromRequest(r)
+}
+
+// originAllowed implements the CSRF origin check. Only cookie-authenticated,
+// non-idempotent requests are constrained; when the browser sends an Origin
+// header it must match the configured frontend origin. An absent Origin is
+// allowed (non-browser clients; browsers always send it on cross-site POST).
+func (s *Server) originAllowed(r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		return true
 	}
-	return strings.TrimSpace(header[7:])
+	cookie, err := r.Cookie(auth.SessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return true
+	}
+	origin := strings.TrimSuffix(strings.TrimSpace(r.Header.Get("Origin")), "/")
+	if origin == "" {
+		return true
+	}
+	return strings.EqualFold(origin, strings.TrimSuffix(strings.TrimSpace(s.frontendURL), "/"))
 }
 
 type vaultPasskeyInput struct {
@@ -521,6 +553,10 @@ func (s *Server) writeCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", s.frontendURL)
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	// Dev runs the SPA on a different port (same site, different origin) —
+	// cookie-authenticated fetches there need credentials mode. Prod is
+	// same-origin and ignores this.
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	// Defensive headers on the API itself. Responses are JSON, never a
 	// document, so the CSP is fully locked down; nosniff stops content-type
 	// confusion; HSTS reinforces TLS. The SPA's own CSP lives in nginx.

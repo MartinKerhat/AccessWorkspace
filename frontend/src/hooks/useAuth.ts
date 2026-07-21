@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Session } from "../types";
 
+// Legacy storage key from the pre-cookie era. Boot migrates any remaining
+// token into the httpOnly cookie and removes it; sign-out keeps clearing it
+// defensively. Remove once every session predating the cookie migration has
+// expired.
 export const authTokenStorageKey = "authToken";
 
 export type LoginOptions = {
@@ -11,9 +15,6 @@ export type LoginOptions = {
 
 function loginMessageFromQuery(): string | undefined {
   const params = new URLSearchParams(window.location.search);
-  if (params.get("authToken")) {
-    return undefined;
-  }
   const authError = params.get("authError");
 
   if (authError) {
@@ -67,9 +68,10 @@ type UseAuthDeps = {
   setMessage: (message: string | undefined) => void;
 };
 
-// Session lifecycle: bootstrap (remembered/query token), local sign-in,
-// invite acceptance, password change, and session refresh. Sign-out stays in
-// App — it composes the reset of every other hook.
+// Session lifecycle: bootstrap (cookie session + one-time legacy-token
+// migration), local sign-in, invite acceptance, password change, and session
+// refresh. The token itself lives in the httpOnly cookie — this hook never
+// sees it. Sign-out stays in App — it composes the reset of every other hook.
 export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
   const [loginOptions, setLoginOptions] = useState<LoginOptions>({
     localLoginEnabled: true,
@@ -101,20 +103,23 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
         localLoginEnabled: bootstrap.localLoginEnabled,
         microsoftLoginHint: bootstrap.microsoftLoginHint
       });
-      const params = new URLSearchParams(window.location.search);
-      const tokenFromQuery = params.get("authToken") ?? undefined;
-      const rememberedToken = tokenFromQuery ?? localStorage.getItem(authTokenStorageKey) ?? undefined;
-      if (!rememberedToken) {
-        return;
+
+      // One-time migration: a token still in localStorage from before the
+      // cookie era becomes the httpOnly cookie, then leaves localStorage.
+      const legacyToken = localStorage.getItem(authTokenStorageKey);
+      if (legacyToken) {
+        try {
+          await api.upgradeSessionCookie(legacyToken);
+        } catch {
+          // Expired or invalid legacy session — the cookie-based authMe below
+          // decides whether the user is signed in.
+        }
+        localStorage.removeItem(authTokenStorageKey);
       }
-      if (tokenFromQuery) {
-        localStorage.setItem(authTokenStorageKey, tokenFromQuery);
-        clearLoginQuery();
-      }
-      const response = await api.authMe(rememberedToken);
+
+      const response = await api.authMe();
       setSession({
         user: response.user,
-        authToken: rememberedToken,
         authMode: response.authMode,
         capabilities: response.capabilities
       });
@@ -122,7 +127,6 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
         window.location.hash = "#connections";
       }
     } catch (error) {
-      localStorage.removeItem(authTokenStorageKey);
       const nextMessage = authMessage(error, "Failed to load auth bootstrap");
       if (nextMessage !== "unauthenticated") {
         setMessage(nextMessage);
@@ -138,10 +142,8 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
     setBusy(true);
     try {
       const response = await api.authLogin(username, password);
-      localStorage.setItem(authTokenStorageKey, response.token);
       setSession({
         user: response.user,
-        authToken: response.token,
         authMode: response.authMode,
         capabilities: response.capabilities
       });
@@ -160,10 +162,8 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
     setBusy(true);
     try {
       const response = await api.acceptInvite(inviteToken, password);
-      localStorage.setItem(authTokenStorageKey, response.token);
       setSession({
         user: response.user,
-        authToken: response.token,
         authMode: response.authMode,
         capabilities: response.capabilities
       });
@@ -187,7 +187,7 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
     }
     setBusy(true);
     try {
-      await api.changePassword(currentPassword, newPassword, session.authToken);
+      await api.changePassword(currentPassword, newPassword);
       setMessage("Password changed");
       return true;
     } catch (error) {
@@ -198,11 +198,10 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
     }
   }
 
-  async function refreshCurrentSession(authToken: string) {
-    const response = await api.authMe(authToken);
+  async function refreshCurrentSession() {
+    const response = await api.authMe();
     setSession({
       user: response.user,
-      authToken,
       authMode: response.authMode,
       capabilities: response.capabilities
     });
