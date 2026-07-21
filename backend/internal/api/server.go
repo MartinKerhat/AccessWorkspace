@@ -532,6 +532,24 @@ func (s *Server) originAllowed(r *http.Request) bool {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 		return true
 	}
+	// Requests that present an Authorization header authenticate via that
+	// header, not the cookie, so the cookie-origin binding does not apply.
+	// A cross-site page cannot attach a custom header without a CORS
+	// preflight this server never grants a foreign origin. This matters for
+	// the browser extension: its background fetches to a host it holds
+	// host-permissions for get the site's cookies attached by the browser,
+	// so the plain cookie-present rule below would reject its bearer calls
+	// (Origin: chrome-extension://...).
+	if strings.TrimSpace(r.Header.Get("Authorization")) != "" {
+		return true
+	}
+	// The extension connect exchange authenticates solely by the one-time
+	// token in the request body — the session cookie is never consulted — and
+	// is called from the extension's own origin with the site cookie attached
+	// (see above). CSRF via cookie is moot on this endpoint.
+	if r.URL.Path == "/api/auth/browser-extension-connect-exchange" {
+		return true
+	}
 	cookie, err := r.Cookie(auth.SessionCookieName)
 	if err != nil || cookie.Value == "" {
 		return true

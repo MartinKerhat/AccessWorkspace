@@ -49,6 +49,21 @@ func TestOriginAllowed(t *testing.T) {
 		{"POST cookie matching origin case-insensitive", requestWithSessionCookie(http.MethodPost, "https://WORKSPACE.example.com"), true},
 		{"POST cookie foreign origin rejected", requestWithSessionCookie(http.MethodPost, "https://evil.example.com"), false},
 		{"DELETE cookie foreign origin rejected", requestWithSessionCookie(http.MethodDelete, "https://evil.example.com"), false},
+		// The browser extension's background fetches carry the site cookie
+		// (host permissions) plus a chrome-extension:// Origin. Bearer-authed
+		// calls and the body-token connect exchange must not be CSRF-blocked.
+		{"POST bearer with stray cookie and extension origin allowed", func() *http.Request {
+			r := requestWithSessionCookie(http.MethodPost, "chrome-extension://abcdefgh")
+			r.Header.Set("Authorization", "Bearer ext-token")
+			return r
+		}(), true},
+		{"POST connect exchange with stray cookie and extension origin allowed", func() *http.Request {
+			r := httptest.NewRequest(http.MethodPost, "/api/auth/browser-extension-connect-exchange", nil)
+			r.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+			r.Header.Set("Origin", "chrome-extension://abcdefgh")
+			return r
+		}(), true},
+		{"POST other path with cookie and extension origin still rejected", requestWithSessionCookie(http.MethodPost, "chrome-extension://abcdefgh"), false},
 	}
 	for _, tc := range cases {
 		if got := s.originAllowed(tc.req); got != tc.want {
