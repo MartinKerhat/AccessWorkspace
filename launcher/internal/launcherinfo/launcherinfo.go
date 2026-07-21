@@ -1,9 +1,9 @@
 package launcherinfo
 
 const (
-	Version      = "0.5.9"
+	Version      = "0.5.13"
 	ListenURL    = "127.0.0.1:47654"
-	DownloadFile = "access-workspace-launcher-windows-amd64-v0.5.9.exe"
+	DownloadFile = "access-workspace-launcher-windows-amd64-v0.5.13.exe"
 
 	// RDPTrustPath is the workspace API path exposing the public RDP publisher
 	// trust configuration. It is joined onto the workspace base URL the launcher

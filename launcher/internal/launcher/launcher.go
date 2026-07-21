@@ -137,6 +137,20 @@ func runRDP(item payload.LaunchPayload) error {
 				return fmt.Errorf("store rdp credentials: %w (%s)", err, strings.TrimSpace(string(output)))
 			}
 		}
+		if gatewayHost != "" {
+			// The RD Gateway is a second authenticated hop and its credential
+			// lookup does NOT use the generic TERMSRV/* entries that satisfy the
+			// target hop — it reads a DOMAIN-type credential for the bare gateway
+			// hostname (exactly what Windows stores when "remember me" is ticked
+			// on the gateway prompt). cmdkey /add: creates that domain-type entry;
+			// /generic: does not work here (verified: mstsc still prompted).
+			gatewayCred := exec.Command("cmdkey.exe", "/add:"+gatewayHost, "/user:"+login, "/pass:"+secret)
+			hideWindow(gatewayCred)
+			if output, err := gatewayCred.CombinedOutput(); err != nil {
+				return fmt.Errorf("store rdp gateway credentials: %w (%s)", err, strings.TrimSpace(string(output)))
+			}
+			cmdkeyTargets = append(cmdkeyTargets, gatewayHost)
+		}
 		Logf("rdp: stored credentials for %v", cmdkeyTargets)
 	} else {
 		Logf("rdp: no stored credentials (login present=%t, secret present=%t)", login != "", secret != "")
@@ -369,6 +383,10 @@ func buildRDPProfileLines(host string, port string, metadata map[string]interfac
 	if domain != "" {
 		lines = append(lines, fmt.Sprintf("domain:s:%s", domain))
 	}
+	// NOTE: do not embed "password 51:b:" here — modern mstsc (Windows 8+)
+	// ignores it entirely, and an unsigned profile only trades the credential
+	// prompt for an untrusted-publisher warning. Credentials are provided via
+	// Credential Manager instead (see runRDP).
 	width, height := preferredRDPDesktopSize()
 	lines = append(lines,
 		fmt.Sprintf("desktopwidth:i:%d", width),
