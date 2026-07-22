@@ -698,6 +698,9 @@ export default function App() {
                       : undefined
                   }
                   onCreate={() => {
+                    // Drop any stale banner text so the modal starts clean; it
+                    // mirrors the message state while open.
+                    setMessage(undefined);
                     if (categoryView === "keyvault") {
                       void openKeyVaultImport();
                       return;
@@ -738,7 +741,10 @@ export default function App() {
                   browserExtensionRuntime={browserExtensionRuntime}
                   passwordOptions={passwordOptions}
                   connectionOverride={connectionOverride}
-                  onEdit={() => setFormState({ mode: "edit" })}
+                  onEdit={() => {
+                    setMessage(undefined);
+                    setFormState({ mode: "edit" });
+                  }}
                   onEditNotifications={() => {
                     if (!selectedResource || selectedResource.type !== "app_registration") {
                       return;
@@ -915,6 +921,7 @@ export default function App() {
                   selectedResource.ownerUserId !== session.user.id
               )
             }
+            message={message}
             loading={busy}
             onSubmit={formState.mode === "create" ? handleCreate : handleUpdate}
             onRevealStoredPassword={
@@ -986,6 +993,7 @@ export default function App() {
             setForm={setKeyVaultImportForm}
             knownUsers={knownUsers}
             localGroups={localGroups}
+            message={message}
             busy={busy}
             onRefresh={() => {
               if (session) {
@@ -1007,6 +1015,7 @@ export default function App() {
             importedAppIds={importedAppRegistrationIds}
             tenantLabel={adminConfig?.entraTenantId || "Configured tenant"}
             authorityLabel={adminConfig?.entraAuthority || "Microsoft Graph"}
+            message={message}
             busy={busy}
             onRefresh={() => {
               if (session) {

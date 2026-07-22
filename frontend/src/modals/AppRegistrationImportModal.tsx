@@ -13,6 +13,10 @@ type Props = {
   importedAppIds: Set<string>;
   tenantLabel: string;
   authorityLabel: string;
+  // Global status/error message mirrored inside the modal: import errors are
+  // reported through App's message state, and the main banner is hidden
+  // behind the modal scrim while the modal is open.
+  message?: string;
   busy: boolean;
   onRefresh: () => void;
   onImport: () => void;
@@ -28,6 +32,7 @@ export function AppRegistrationImportModal({
   importedAppIds,
   tenantLabel,
   authorityLabel,
+  message,
   busy,
   onRefresh,
   onImport,
@@ -121,6 +126,7 @@ export function AppRegistrationImportModal({
             Close
           </button>
         </div>
+        {message ? <div className="banner compact">{message}</div> : null}
         <div className="keyvault-import-grid">
           <section className="panel embedded-panel">
             <div className="panel-header">

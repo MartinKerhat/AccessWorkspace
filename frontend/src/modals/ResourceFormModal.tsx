@@ -11,6 +11,10 @@ type Props = {
   defaultPersonalPassword: boolean;
   canAssignOwner: boolean;
   sharedMetadataOnly?: boolean;
+  // Global status/error message mirrored inside the modal: submit errors are
+  // reported through App's message state, and the main banner is hidden
+  // behind the modal scrim while the form is open.
+  message?: string;
   loading: boolean;
   onSubmit: (input: ResourceForm) => Promise<void>;
   onRevealStoredPassword?: () => Promise<string | undefined>;
@@ -28,6 +32,7 @@ export function ResourceFormModal({
   defaultPersonalPassword,
   canAssignOwner,
   sharedMetadataOnly = false,
+  message,
   loading,
   onSubmit,
   onRevealStoredPassword,
@@ -46,6 +51,7 @@ export function ResourceFormModal({
             Close
           </button>
         </div>
+        {message ? <div className="banner compact">{message}</div> : null}
         <ResourceFormCard
           resource={resource}
           initialType={initialType}

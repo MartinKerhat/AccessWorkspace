@@ -9,6 +9,10 @@ type Props = {
   setForm: Dispatch<SetStateAction<KeyVaultImportForm>>;
   knownUsers: UserSummary[];
   localGroups: LocalGroup[];
+  // Global status/error message mirrored inside the modal: import errors are
+  // reported through App's message state, and the main banner is hidden
+  // behind the modal scrim while the modal is open.
+  message?: string;
   busy: boolean;
   onRefresh: () => void;
   onImport: () => void;
@@ -21,6 +25,7 @@ export function KeyVaultImportModal({
   setForm,
   knownUsers,
   localGroups,
+  message,
   busy,
   onRefresh,
   onImport,
@@ -122,6 +127,7 @@ export function KeyVaultImportModal({
             Close
           </button>
         </div>
+        {message ? <div className="banner compact">{message}</div> : null}
         <div className="keyvault-import-grid">
           <section className="panel embedded-panel">
             <div className="panel-header">
