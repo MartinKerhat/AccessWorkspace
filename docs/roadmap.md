@@ -372,6 +372,15 @@ Exit criteria:
 - personal secrets are cryptographically owner-only, with recovery by design limited to the user's own unlock methods
 - brute-force attempts against login or vault unlock are throttled, locked out, and visible in the audit log
 
+## Current focus (2026-07-23)
+
+Open fronts, in no committed order:
+
+- cross-platform launcher follow-through (Linux, then macOS)
+- shared cross-category expiry dashboard on top of the delivered notification plumbing
+- App Configs module MVP 1 (see [app-config-module-spec.md](app-config-module-spec.md))
+- remaining security follow-ups: session-revocation controls, optional second factor for local-account login
+
 ## Ongoing work across phases
 
 - QA feedback and defect fixing

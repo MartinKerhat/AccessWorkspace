@@ -9,7 +9,7 @@ Secrets are protected with envelope encryption: every stored secret has its own 
 - `backend`: Go API, PostgreSQL migrations, seed command, and tests
 - `frontend`: React + TypeScript UI
 - `deploy`: Dockerfiles and deployment-oriented assets
-- `docs`: product, architecture, roadmap, and QA planning docs
+- `docs`: product, architecture, and roadmap docs
 
 ## Documentation
 
@@ -19,9 +19,7 @@ Secrets are protected with envelope encryption: every stored secret has its own 
 - [Domain Model](docs/domain-model.md)
 - [Object Model Spec](docs/object-model-spec.md)
 - [Roadmap](docs/roadmap.md)
-- [Iteration Plan](docs/iteration-plan.md)
 - [Browser Extension Distribution](docs/browser-extension-distribution.md)
-- [QA Workflow](docs/qa-workflow.md)
 
 ## What's included
 
