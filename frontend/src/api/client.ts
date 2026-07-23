@@ -168,11 +168,23 @@ export const api = {
   vaultUnlock(passphrase: string) {
     return request<{ status: string }>("/auth/vault/unlock", { method: "POST", body: JSON.stringify({ passphrase }) });
   },
-  vaultPasskeySetup(payload: { credentialId: string; prfSalt: string; prfSecret: string }) {
+  vaultPasskeySetup(payload: { credentialId: string; prfSalt: string; prfSecret: string; nickname?: string }) {
     return request<{ status: string }>("/auth/vault/passkey/setup", { method: "POST", body: JSON.stringify(payload) });
   },
   vaultPasskeyUnlock(payload: { credentialId: string; prfSecret: string }) {
     return request<{ status: string }>("/auth/vault/passkey/unlock", { method: "POST", body: JSON.stringify(payload) });
+  },
+  vaultAddPassphrase(passphrase: string) {
+    return request<{ status: string }>("/auth/vault/passphrase", { method: "POST", body: JSON.stringify({ passphrase }) });
+  },
+  vaultPasskeyAdd(payload: { credentialId: string; prfSalt: string; prfSecret: string; nickname?: string }) {
+    return request<{ status: string }>("/auth/vault/passkey/add", { method: "POST", body: JSON.stringify(payload) });
+  },
+  vaultMethodRemove(method: string, label: string) {
+    return request<{ status: string }>("/auth/vault/method/remove", { method: "POST", body: JSON.stringify({ method, label }) });
+  },
+  vaultMethodRename(credentialId: string, nickname: string) {
+    return request<{ status: string }>("/auth/vault/method/rename", { method: "POST", body: JSON.stringify({ credentialId, nickname }) });
   },
   vaultLock() {
     return request<{ status: string }>("/auth/vault/lock", { method: "POST" });

@@ -28,6 +28,9 @@ type VaultStatus struct {
 	// Passkeys lets the browser build a WebAuthn get() to unlock without a
 	// passphrase (credential IDs + PRF salts; none are secret).
 	Passkeys []PasskeyDescriptor `json:"passkeys"`
+	// MethodDetails backs the vault settings management list (one entry per
+	// wrap, with nickname + enrollment date).
+	MethodDetails []VaultMethodDetail `json:"methodDetails"`
 }
 
 // VaultStatus reports whether the user has a vault and which unlock methods

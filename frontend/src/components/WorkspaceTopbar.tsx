@@ -18,7 +18,7 @@ type WorkspaceTopbarProps = {
   onMarkNotificationRead: (notificationID: string) => Promise<void>;
   onOpenNotificationResource: (resourceId: string) => void;
   vaultUnlocked: boolean;
-  onToggleVaultLock: () => Promise<void>;
+  onOpenVaultSettings: () => void;
   onOpenBrowserExtensions: () => void;
   onOpenChangePassword: () => void;
   onSignOut: () => void;
@@ -38,7 +38,7 @@ export function WorkspaceTopbar({
   onMarkNotificationRead,
   onOpenNotificationResource,
   vaultUnlocked,
-  onToggleVaultLock,
+  onOpenVaultSettings,
   onOpenBrowserExtensions,
   onOpenChangePassword,
   onSignOut
@@ -162,42 +162,47 @@ export function WorkspaceTopbar({
           </button>
           {accountMenuOpen ? (
             <div className="account-popover">
-              <p className="eyebrow">Signed in</p>
-              <strong>{currentUser.name}</strong>
-              <span>{currentUser.email}</span>
-              <span>{currentUser.isAdmin ? "Administrator" : "Standard user"}</span>
-              {canViewPasswords ? (
+              <div className="account-popover-identity">
+                <p className="eyebrow">Signed in</p>
+                <strong>{currentUser.name}</strong>
+                <span>{currentUser.email}</span>
+                <span>{currentUser.isAdmin ? "Administrator" : "Standard user"}</span>
+              </div>
+              <div className="account-popover-menu">
                 <button
-                  className="button ghost"
+                  className="menu-item"
                   onClick={() => {
                     setAccountMenuOpen(false);
-                    onOpenBrowserExtensions();
+                    onOpenVaultSettings();
                   }}
                 >
-                  Browser extensions
+                  <span>Personal passwords</span>
+                  <small>{vaultUnlocked ? "Unlocked" : "Locked"}</small>
                 </button>
-              ) : null}
-              <button
-                className="button ghost"
-                onClick={() => {
-                  setAccountMenuOpen(false);
-                  void onToggleVaultLock();
-                }}
-              >
-                {vaultUnlocked ? "Lock personal passwords" : "Unlock personal passwords"}
-              </button>
-              <button
-                className="button ghost"
-                onClick={() => {
-                  setAccountMenuOpen(false);
-                  onOpenChangePassword();
-                }}
-              >
-                Change password
-              </button>
-              <button className="button ghost" onClick={onSignOut}>
-                Sign out
-              </button>
+                {canViewPasswords ? (
+                  <button
+                    className="menu-item"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      onOpenBrowserExtensions();
+                    }}
+                  >
+                    <span>Browser extensions</span>
+                  </button>
+                ) : null}
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    onOpenChangePassword();
+                  }}
+                >
+                  <span>Change password</span>
+                </button>
+                <button className="menu-item" onClick={onSignOut}>
+                  <span>Sign out</span>
+                </button>
+              </div>
             </div>
           ) : null}
         </div>

@@ -106,11 +106,19 @@ export type VaultPasskeyDescriptor = {
   prfSalt: string;
 };
 
+export type VaultMethodDetail = {
+  method: string;
+  label: string;
+  nickname: string;
+  createdAt: string;
+};
+
 export type VaultStatus = {
   hasVault: boolean;
   unlocked: boolean;
   methods: string[];
   passkeys: VaultPasskeyDescriptor[];
+  methodDetails: VaultMethodDetail[];
 };
 
 export type UserInvite = {

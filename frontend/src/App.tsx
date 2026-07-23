@@ -4,6 +4,7 @@ import { ResourceFormModal } from "./modals/ResourceFormModal";
 import { AdminConfigModal } from "./modals/AdminConfigModal";
 import { ChangePasswordModal } from "./modals/ChangePasswordModal";
 import { VaultUnlockModal } from "./modals/VaultUnlockModal";
+import { VaultSettingsModal } from "./modals/VaultSettingsModal";
 import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
 import { KeyVaultImportModal } from "./modals/KeyVaultImportModal";
@@ -107,8 +108,16 @@ export default function App() {
     setVaultPrompt,
     passkeyCapable,
     vaultUnlocked,
+    vaultSettings,
     guardVaultLocked,
-    toggleVaultLock,
+    openVaultSettings,
+    closeVaultSettings,
+    lockVault,
+    unlockFromSettings,
+    addVaultPassphrase,
+    addVaultPasskey,
+    removeVaultMethod,
+    renameVaultPasskey,
     submitVaultPassphrase,
     submitVaultPasskey,
     reset: resetVault
@@ -648,7 +657,7 @@ export default function App() {
             setSelectedResourceId(resourceId);
           }}
           vaultUnlocked={vaultUnlocked}
-          onToggleVaultLock={toggleVaultLock}
+          onOpenVaultSettings={() => void openVaultSettings()}
           onOpenBrowserExtensions={() => setBrowserExtensionManagerOpen(true)}
           onOpenChangePassword={() => setChangePasswordOpen(true)}
           onSignOut={signOut}
@@ -947,6 +956,22 @@ export default function App() {
 
         {changePasswordOpen ? (
           <ChangePasswordModal busy={busy} onSave={changePassword} onClose={() => setChangePasswordOpen(false)} />
+        ) : null}
+
+        {vaultSettings ? (
+          <VaultSettingsModal
+            status={vaultSettings}
+            passkeyCapable={passkeyCapable}
+            message={message}
+            busy={busy}
+            onUnlock={() => void unlockFromSettings()}
+            onLock={lockVault}
+            onAddPassphrase={addVaultPassphrase}
+            onAddPasskey={addVaultPasskey}
+            onRemoveMethod={removeVaultMethod}
+            onRenamePasskey={renameVaultPasskey}
+            onClose={closeVaultSettings}
+          />
         ) : null}
 
         {vaultPrompt ? (

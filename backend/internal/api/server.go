@@ -276,6 +276,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleVaultPasskeyAdd(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/method/remove":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultMethodRemove(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/method/rename":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleVaultMethodRename(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/vault/lock":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -565,6 +575,9 @@ type vaultPasskeyInput struct {
 	CredentialID string `json:"credentialId"`
 	PRFSalt      string `json:"prfSalt"`
 	PRFSecret    string `json:"prfSecret"`
+	// Nickname names the device the passkey lives on ("Work laptop") so the
+	// management list stays tellable-apart; setup/add only.
+	Nickname string `json:"nickname"`
 }
 
 func (s *Server) writeCORS(w http.ResponseWriter) {

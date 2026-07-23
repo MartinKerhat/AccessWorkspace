@@ -203,6 +203,11 @@ func (s *Service) GetVaultStatus(ctx context.Context, user User) (VaultStatus, e
 		return VaultStatus{}, err
 	}
 	status.Passkeys = descriptors
+	details, err := s.repo.ListUnlockMethods(ctx, user.ID)
+	if err != nil {
+		return VaultStatus{}, err
+	}
+	status.MethodDetails = details
 	return status, nil
 }
 
@@ -213,8 +218,8 @@ func (s *Service) LockVault(ctx context.Context, token string) error {
 
 // SetupVaultWithPasskey creates a first vault wrapped under a WebAuthn PRF
 // secret (Windows Hello / Touch ID) — no passphrase — and unlocks the session.
-func (s *Service) SetupVaultWithPasskey(ctx context.Context, user User, token, credentialID, prfSalt, prfSecret string) error {
-	privateKey, err := s.repo.SetupVaultWithPasskey(ctx, user.ID, credentialID, prfSalt, prfSecret)
+func (s *Service) SetupVaultWithPasskey(ctx context.Context, user User, token, credentialID, prfSalt, prfSecret, nickname string) error {
+	privateKey, err := s.repo.SetupVaultWithPasskey(ctx, user.ID, credentialID, prfSalt, prfSecret, nickname)
 	if err != nil {
 		return err
 	}
@@ -235,11 +240,31 @@ func (s *Service) UnlockVaultWithPasskey(ctx context.Context, user User, token, 
 }
 
 // AddVaultPasskey registers an extra passkey against an unlocked vault.
-func (s *Service) AddVaultPasskey(ctx context.Context, user User, credentialID, prfSalt, prfSecret string) error {
+func (s *Service) AddVaultPasskey(ctx context.Context, user User, credentialID, prfSalt, prfSecret, nickname string) error {
 	if len(user.VaultPrivateKey) == 0 {
 		return ErrVaultLocked
 	}
-	return s.repo.AddPasskeyMethod(ctx, user.ID, user.VaultPrivateKey, credentialID, prfSalt, prfSecret)
+	return s.repo.AddPasskeyMethod(ctx, user.ID, user.VaultPrivateKey, credentialID, prfSalt, prfSecret, nickname)
+}
+
+// RemoveVaultMethod deletes one unlock method. Requires the unlocked private
+// key in this session — the token alone must not be able to shrink the set
+// of doors — plus the repository's own guards (login-password wrap is never
+// removable, the last method can't be removed).
+func (s *Service) RemoveVaultMethod(ctx context.Context, user User, method, label string) error {
+	if len(user.VaultPrivateKey) == 0 {
+		return ErrVaultLocked
+	}
+	return s.repo.RemoveUnlockMethod(ctx, user.ID, method, label)
+}
+
+// RenameVaultPasskey updates a passkey's display name. Cosmetic, but gated
+// on unlocked like the other management operations.
+func (s *Service) RenameVaultPasskey(ctx context.Context, user User, credentialID, nickname string) error {
+	if len(user.VaultPrivateKey) == 0 {
+		return ErrVaultLocked
+	}
+	return s.repo.RenamePasskeyMethod(ctx, user.ID, credentialID, nickname)
 }
 
 // SetupVault creates a first vault for a user who has none (SSO users on

@@ -79,7 +79,7 @@ func (r *Repository) ListPasskeyDescriptors(ctx context.Context, userID string) 
 
 // SetupVaultWithPasskey creates a vault for a user who has none, wrapping the
 // private key under the passkey's PRF secret — no passphrase involved.
-func (r *Repository) SetupVaultWithPasskey(ctx context.Context, userID, credentialID, prfSalt, prfSecretB64 string) ([]byte, error) {
+func (r *Repository) SetupVaultWithPasskey(ctx context.Context, userID, credentialID, prfSalt, prfSecretB64, nickname string) ([]byte, error) {
 	userID = strings.TrimSpace(userID)
 	credentialID = strings.TrimSpace(credentialID)
 	if userID == "" || credentialID == "" {
@@ -118,11 +118,12 @@ func (r *Repository) SetupVaultWithPasskey(ctx context.Context, userID, credenti
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `
-		insert into user_vault_unlocks (user_id, method, label, wrapped_private_key, salt)
-		values ($1, $2, $3, $4, $5)
+		insert into user_vault_unlocks (user_id, method, label, wrapped_private_key, salt, nickname)
+		values ($1, $2, $3, $4, $5, $6)
 		on conflict (user_id, method, label) do update
-		set wrapped_private_key = excluded.wrapped_private_key, salt = excluded.salt, updated_at = now()
-	`, userID, vaultUnlockMethodPasskey, credentialID, wrapped, prfSalt); err != nil {
+		set wrapped_private_key = excluded.wrapped_private_key, salt = excluded.salt,
+		    nickname = excluded.nickname, updated_at = now()
+	`, userID, vaultUnlockMethodPasskey, credentialID, wrapped, prfSalt, sanitizeVaultNickname(nickname)); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -133,7 +134,7 @@ func (r *Repository) SetupVaultWithPasskey(ctx context.Context, userID, credenti
 
 // AddPasskeyMethod registers an additional passkey against an already-unlocked
 // vault (a second device, or adding Hello to a passphrase-only vault).
-func (r *Repository) AddPasskeyMethod(ctx context.Context, userID string, privateKey []byte, credentialID, prfSalt, prfSecretB64 string) error {
+func (r *Repository) AddPasskeyMethod(ctx context.Context, userID string, privateKey []byte, credentialID, prfSalt, prfSecretB64, nickname string) error {
 	if len(privateKey) != 32 {
 		return fmt.Errorf("%w: vault is locked", ErrInvalidInput)
 	}
@@ -150,11 +151,12 @@ func (r *Repository) AddPasskeyMethod(ctx context.Context, userID string, privat
 		return err
 	}
 	_, err = r.db.Exec(ctx, `
-		insert into user_vault_unlocks (user_id, method, label, wrapped_private_key, salt)
-		values ($1, $2, $3, $4, $5)
+		insert into user_vault_unlocks (user_id, method, label, wrapped_private_key, salt, nickname)
+		values ($1, $2, $3, $4, $5, $6)
 		on conflict (user_id, method, label) do update
-		set wrapped_private_key = excluded.wrapped_private_key, salt = excluded.salt, updated_at = now()
-	`, strings.TrimSpace(userID), vaultUnlockMethodPasskey, credentialID, wrapped, prfSalt)
+		set wrapped_private_key = excluded.wrapped_private_key, salt = excluded.salt,
+		    nickname = excluded.nickname, updated_at = now()
+	`, strings.TrimSpace(userID), vaultUnlockMethodPasskey, credentialID, wrapped, prfSalt, sanitizeVaultNickname(nickname))
 	return err
 }
 
