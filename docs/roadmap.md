@@ -188,7 +188,7 @@ Exit criteria:
 
 Status:
 
-- implemented foundation
+- delivered, including credential-expiry notifications (in-app notification center + SMTP email with delivery log and per-resource policy overrides)
 
 Goal:
 
@@ -211,7 +211,7 @@ Exit criteria:
 
 Status:
 
-- queued after the app registration integration foundation
+- partially covered: app registration credential expiry with reminders/notifications is live; the shared cross-category expiry dashboard remains open
 
 Goal:
 
@@ -259,6 +259,8 @@ Delivered highlights so far:
 - RDP and SSH records are now modeled as real connection objects with folder organization and app-managed encrypted secrets
 - the web app performs launcher version/status checks before connect and hands off through backend-issued one-time launch tickets
 - the Windows launcher now provides working RDP and SSH connect flows, including trusted RDP publisher installation, signed `.rdp` profile launch, RDP credential handoff, and launcher-managed SSH password sessions
+- RDP connections support Remote Desktop Gateway hosts end to end (record field, launch payload, launcher execution, reachability diagnostics)
+- the Connections catalog renders folder paths as a tree for Royal TS-style organization
 
 ## Phase 9: Personal credential overlays
 
@@ -318,7 +320,7 @@ Exit criteria:
 
 Status:
 
-- planned
+- delivered
 
 Goal:
 
@@ -334,6 +336,41 @@ Scope:
 Exit criteria:
 
 - users can use assisted fill for selected approved portals
+
+Delivered highlights:
+
+- extension connect flow through one-time exchange tokens and a dedicated extension session
+- credential fill on allowed portals, honoring per-object fill/reveal policy
+- saving new personal logins from the browser back into the workspace (silent save via the personal vault public key)
+- web portal login objects with launch-in-browser support, including passwordless portals
+- fill actions audited like other sensitive actions
+
+## Phase 12: Security foundation — encryption, personal vaults, hardening
+
+Status:
+
+- delivered
+
+Goal:
+
+Close the passive and active security gaps of the earlier phases: no plaintext secrets at rest, personal secrets unreadable even by admins, and a hardened session/perimeter layer.
+
+Scope:
+
+- envelope encryption for all app-managed secrets (per-secret data keys wrapped by a deployment KEK: local key in dev, Azure Key Vault via workload identity in production)
+- encryption of sensitive admin settings and hashing of session tokens
+- personal vaults: per-user keypair, personal secrets sealed to the owner, unreadable by admins or database access
+- vault unlock methods: local login password (automatic), passphrase, passkeys (Windows Hello / Touch ID); user-managed add/rename/remove with last-method and login-password guards
+- account lifecycle: invites, self-service password change (vault rewraps), admin reset with explicit vault destruction
+- session hardening: httpOnly cookie sessions, CSRF origin checks, no tokens in localStorage or redirect URLs
+- perimeter: account lockout, per-IP throttling of auth endpoints, CSP/HSTS/security headers
+- audit expansion: login/logout, vault setup/unlock/lock, unlock-method changes
+
+Exit criteria:
+
+- a database dump alone yields no secret material and no session takeover
+- personal secrets are cryptographically owner-only, with recovery by design limited to the user's own unlock methods
+- brute-force attempts against login or vault unlock are throttled, locked out, and visible in the audit log
 
 ## Ongoing work across phases
 

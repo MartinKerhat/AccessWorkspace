@@ -138,13 +138,18 @@ Core attributes:
 
 ### Passwords
 
-Used for shared login/password style access to websites, tools, and legacy systems.
+Used for login/password style access to websites, tools, and legacy systems — both shared and personal.
+
+Object shapes:
+
+- saved password: a reusable username/password pair
+- web portal login: a saved password plus a portal URL and launch/fill behavior; supports passwordless portals (SSO or emailed-code sign-in, where only URL and username are stored)
 
 Examples:
 
 - shared website login
 - legacy admin portal credential
-- shared vendor account
+- a user's own saved login for a shared endpoint
 
 Core attributes:
 
@@ -155,54 +160,54 @@ Core attributes:
 - `secret_ref`
 - `owner`
 - `allowed_groups`
+- `launch_allowed` for web portal logins
 - `reveal_allowed`
 - `copy_allowed`
 - `notes`
 - `personal`
 
-Additional rule:
+Additional rules:
 
-- personal Password objects are visible only to their creator
+- personal Password objects are visible only to their creator and encrypted to that user's personal vault (see Secret model)
 - these Password objects may be reused as per-user overrides for shared SSH and RDP Connections
+- switching an object between personal and shared is an owner-only action and never exposes the plaintext
 
 ## Secret model
 
-Secret handling should remain separate from resource metadata.
+Secret handling stays separate from resource metadata.
 
-### Secret record
+### Secret modes
 
-Fields:
+- `inline` — app-managed value, stored under envelope encryption
+- `external_reference` — pointer to a value owned elsewhere
+- `azure_key_vault` — fetched on demand from Key Vault, never persisted locally
+- `prompt_on_launch` — connections that ask for the credential at launch time
+- `none` — passwordless web portal logins
 
-- `secret_id`
-- `provider_type`
-- `inline_value` for local development only
-- `external_reference`
-- `display_hint`
-- `expires_at`
-- `last_checked_at`
+### Encryption classes (app-managed values)
 
-### Provider types
+Every stored value is envelope-encrypted (per-secret data key, wrapped by a deployment KEK — local key in development, Azure Key Vault via workload identity in production). The wrap differs by class:
 
-- `inline`
-- `azure_key_vault`
-- `external_reference`
+- `shared` — readable by authorized users under category policy
+- `personal` — sealed to the owner's personal vault public key; reading requires the owner's unlocked session, so admins and database access cannot decrypt it
+- `app-scope` — integration credentials (Entra, SMTP, RDP signing) the backend needs without a user session
 
-Target rule:
+### Personal vault
+
+Each user has a vault keypair. Saving encrypts to the public key (no unlock needed, from any session); reading requires the private key, which is unlocked per session by one of the user's methods: local login password (automatic at sign-in), passphrase, or passkeys (Windows Hello / Touch ID, one per device). Users manage their methods — add, rename, remove — from the vault settings UI. Losing all methods makes the vault unrecoverable by design.
+
+Rule:
 
 - metadata lives in catalog records
-- actual secret retrieval happens through providers on demand
+- actual secret retrieval happens through providers or decryption on demand, and is audited
 
 ## Identity and authorization model
 
 ### User
 
-Near term:
+Current state:
 
-- local development identity
-
-Target:
-
-- Entra-backed user identity
+- Entra-backed sign-in and local workspace accounts coexist; local accounts support invites, self-service password change, and admin reset (which destroys the personal vault by design)
 
 Fields:
 
@@ -233,17 +238,14 @@ Suggested rule:
 
 ## Audit model
 
-Sensitive actions to audit:
+Sensitive actions audited today:
 
-- resource viewed
-- resource revealed
-- secret copied
-- resource launched
-- portal fill requested later
-- resource created
-- resource updated
-- resource archived
-- resource restored
+- resource viewed / revealed / copied / launched / filled
+- resource created / updated / archived / deleted / restored
+- login succeeded / failed, logout
+- vault setup / unlocked / locked
+- vault unlock method added / removed
+- admin user-management actions
 
 Suggested audit fields:
 

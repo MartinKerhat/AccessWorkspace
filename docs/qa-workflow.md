@@ -6,22 +6,22 @@ This project is intentionally run with a lightweight customer-developer workflow
 
 Roles:
 
-- Codex is the primary developer and technical owner of implementation details.
-- The user acts as customer, product reviewer, and QA tester.
+- An AI coding assistant is the primary developer and technical owner of implementation details.
+- The user acts as customer, product reviewer, QA tester, and owns all git operations (commits, branches, pushes).
 
 ## How work should proceed
 
 1. A small iteration is selected from the plan.
-2. Codex implements the agreed scope.
-3. Codex verifies the result locally as far as possible.
-4. Codex commits the work in a stable review state.
-5. The user tests behavior and reports:
+2. The assistant implements the agreed scope (for larger changes: a written plan first, approved before code).
+3. The assistant verifies the result locally as far as possible (build, tests, typecheck).
+4. The user reviews the working tree, tests behavior, and commits when satisfied.
+5. The user reports:
    - bugs
    - UX issues
    - missing cases
    - enhancement requests
    - changed business expectations
-6. Codex incorporates feedback and continues.
+6. The assistant incorporates feedback and continues.
 
 ## What QA feedback should focus on
 
@@ -52,7 +52,7 @@ Not every iteration needs a perfect plan upfront. Product understanding can evol
 
 - small increments
 - working software at each step
-- commit before handoff
+- the user commits after review
 - QA before broadening scope
 
 ## Local runtime expectations

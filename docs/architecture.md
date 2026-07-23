@@ -10,12 +10,12 @@ Current deployment target:
 - one frontend application
 - one PostgreSQL database
 
-Future optional clients:
+Shipped companion clients:
 
-- local launcher/helper for SSH and RDP
-- browser extension for portal autofill
+- local desktop launcher for SSH and RDP (Windows today; localhost bridge + one-time launch tickets)
+- browser extension for portal credential fill
 
-These should integrate with the same backend rather than becoming separate platforms.
+Both integrate with the same backend rather than becoming separate platforms.
 
 ## System components
 
@@ -96,25 +96,51 @@ For category-specific storage and retrieval rules, see [object-model-spec.md](ob
 
 ### Local launcher/helper
 
-Planned responsibilities:
+Current responsibilities (shipped, Windows):
 
-- receive approved launch payloads from the backend or web app
-- execute cross-platform SSH and RDP launches
-- handle OS-specific launch behavior
-- preserve a minimal local integration layer without owning central access policy
+- expose a localhost bridge (`/status`, `/launch`) the web app checks before connect
+- redeem one-time backend launch tickets so secrets never travel inside browser URIs
+- execute RDP launches through signed per-connection `.rdp` profiles with temporary credential handoff and Remote Desktop Gateway support
+- execute SSH launches in a visible terminal, including launcher-managed password sessions
+- self-install, register the `access-workspace://` handler, and report its version so the web app can require upgrades
 
-This component is required for a serious RoyalTS replacement path.
+macOS and Linux launcher targets are planned follow-through; the launch payload stays semantic (host, port, user, options) so each platform can pick its native client mechanics.
 
 ### Browser extension
 
-Planned responsibilities:
+Current responsibilities (shipped):
 
-- identify supported login pages
+- connect to the workspace through a one-time exchange token and its own session
 - request approved portal credentials from backend flows
-- assist with field fill on allowed websites
-- log sensitive fill actions
+- fill credentials on allowed websites, including saving new personal logins back to the workspace
+- log sensitive fill actions to the audit trail
 
-This should remain separate from the main web UI.
+It remains separate from the main web UI.
+
+## Security architecture
+
+Delivered layers (2026-07):
+
+### Secrets at rest
+
+- every stored secret uses envelope encryption: a fresh per-secret data key encrypts the value, and the data key itself is wrapped by a key-encryption key
+- the KEK provider is deployment configuration: a local key for development, or Azure Key Vault wrap/unwrap through workload identity for production
+- sensitive admin settings are encrypted at rest; session tokens are stored only as hashes
+
+### Personal vault
+
+- every user has a personal vault keypair: the public half encrypts, so saving a personal secret works from any session without any prompt (including extension saves)
+- the private half is never stored bare — it exists only wrapped by the user's unlock methods, and a database copy alone cannot open it
+- unlock methods are peers of one another: the local login password (unlocks automatically at sign-in), a passphrase, and passkeys (Windows Hello / Touch ID via WebAuthn PRF, one per device)
+- users manage their own methods from the vault settings UI: add a passphrase or per-device passkey, rename passkeys, and remove methods (the last remaining method and the login-password wrap are protected)
+- consequence by design: administrators and database access cannot read personal secrets, and a user who loses every unlock method loses the vault — there are no recovery codes
+
+### Sessions and perimeter
+
+- web sessions ride an httpOnly cookie (no token in localStorage or redirect URLs) with a CSRF origin check; the extension keeps a separate bearer-token session
+- login and vault-unlock endpoints have account lockout and per-IP rate limiting
+- the frontend ships CSP, HSTS, and related security headers; the API sets equivalent headers on its responses
+- authentication, vault, and unlock-method changes are audited alongside resource events
 
 ## Architectural principles
 
@@ -131,24 +157,25 @@ This should remain separate from the main web UI.
 Current state:
 
 - development auth mode for local work
-- login entry flow and session bootstrap
-- Microsoft sign-in start/callback path
+- Microsoft Entra sign-in with local-account fallback, invites, and self-service password change
+- httpOnly-cookie sessions with CSRF origin checks; account lockout and IP throttling on auth endpoints
 - backend authorization based on resolved category capabilities and roles
+- admin user administration: effective-access inspection, local groups, blocking, resets
 
 Next target:
 
 - broader Entra group resolution hardening
-- cleaner separation of QA-only auth diagnostics from the main account UI
+- optional second factor for local-account login
 
 ### Secret access
 
 Current state:
 
-- inline secret mode for development/demo
-- external reference placeholders
-- secret providers fetch values on demand
-- Key Vault provider is the first real provider
-- reveal and related actions are audited
+- app-managed secret values stored under envelope encryption (see Security architecture)
+- three secret classes: shared (org-readable under policy), personal (owner-keyed, sealed to the user's vault), and app-scope (integration credentials the backend needs without a session)
+- personal/shared switching rewraps keys server-side without exposing plaintext, and is restricted to the object's owner
+- Key Vault-backed values are fetched on demand and never persisted locally
+- reveal, copy, fill, and launch are distinct audited actions
 
 Next target:
 
@@ -157,50 +184,56 @@ Next target:
 
 ### Launching
 
-Near term:
+Current state:
 
-- backend returns structured launch payloads
+- backend returns structured launch payloads and one-time launch tickets
+- the web app verifies launcher presence/version through the localhost bridge, then hands off
+- Windows launcher executes RDP (signed profiles, credential handoff, RD Gateway) and SSH (visible terminal, managed password sessions)
+- web portal launches open in the browser, with extension-assisted fill where allowed
 
 Target:
 
-- local helper receives and executes approved launch instructions
-- helper supports SSH first, then RDP
+- equivalent launcher behavior on Linux and macOS
 
 ### External integrations
 
 Current state:
 
-- manual records plus placeholders for several categories
-- Key Vault adapter and automatic sync job
-- admin-managed Entra and Key Vault runtime configuration
+- Key Vault adapter with discovery, batch import, manual + automatic sync, and archived/restore views
+- app registration discovery/import/sync with owner snapshots, credential expiry metadata, and notification policies (in-app + SMTP email)
+- admin-managed Entra and Key Vault runtime configuration; Azure access runs through a dedicated reader identity (workload identity), separate from the OIDC login app
+- SMTP notification delivery with a delivery log
 
 Next target:
 
-- app registration integration
 - richer Entra group-resolution and rights-mapping depth
 - selected additional external systems where the workspace adds operational value
 
 ## Evolution path
 
-### Stage 1
+### Stage 1 — done
 
 Category-based monolith with dev auth and simple CRUD.
 
-### Stage 2
+### Stage 2 — done
 
 Real Azure/Entra identity and group mapping.
 
-### Stage 3
+### Stage 3 — done
 
 Key Vault-backed secret retrieval and richer secret workflows.
 
-### Stage 4
+### Stage 4 — partial
 
-Expiry tracking and operational dashboards.
+Expiry tracking and operational dashboards (app registration credential expiry + notifications shipped; the shared cross-category expiry dashboard is still open).
 
-### Stage 5
+### Stage 5 — done (Windows launcher + extension)
 
-Launcher helper and browser extension clients.
+Launcher helper and browser extension clients; Linux/macOS launcher targets remain.
+
+### Stage 6 — done
+
+Security foundation: envelope encryption at rest, personal vaults with user-managed unlock methods, hardened sessions and perimeter.
 
 ## Deployment notes
 

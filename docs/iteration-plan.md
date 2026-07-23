@@ -2,20 +2,22 @@
 
 ## Working model
 
-- Codex is the primary implementer.
+- An AI coding assistant is the primary implementer.
 - The user acts as customer and QA.
 - Work is delivered in small, reviewable increments.
 - Each iteration should remain testable on its own.
 
-## Status snapshot (2026-06-22)
+## Status snapshot (2026-07-23)
 
-- Iterations 1 through 7 have now been delivered in usable operational form.
-- The most complete implemented areas are category-based navigation, auth entry flow, local group administration, user access administration, Key Vault discovery/import/sync, and app registration discovery/import/sync.
-- App registrations are now a live Azure-backed operational workflow with expiry reminders, notification policy overrides, notification-center delivery, and SMTP email support.
-- The user administration gap for local accounts is now closed: admins can create local workspace users, inspect effective access, assign direct local groups, and block workspace sign-in.
-- Connections now have a usable launcher-first Windows MVP for shared RDP and SSH access, including encrypted app-managed credentials, launcher version checks, RDP credential handoff/signing, trusted publisher installation, fullscreen primary-monitor launch defaults, and launcher-managed SSH password sessions.
-- Passwords now support baseline personal saved-credential objects, and Connections can resolve per-user password overrides on top of shared/default connection credentials without duplicating secret material.
-- The next Connections slice is hardening and extension work: launcher-owned machine-local preferences, broader Connections administration, and cross-platform launcher follow-through for macOS and Linux.
+- Iterations 1 through 12 have been delivered in usable operational form.
+- The category workspace (Connections, Key Vault, App registrations, Passwords), user/group administration, and the Azure-backed Key Vault and app registration workflows (including expiry notifications with SMTP delivery) are all live.
+- Connections are a working launcher-first Windows flow: encrypted app-managed credentials, one-time launch tickets, signed RDP profiles with credential handoff and Remote Desktop Gateway support, launcher-managed SSH sessions, and a folder-tree catalog.
+- The browser extension is live: one-time connect exchange, portal credential fill under policy, and silent save of new personal logins back to the workspace.
+- The security foundation is delivered: all app-managed secrets use envelope encryption (deployment KEK: local key in dev, Azure Key Vault via workload identity in production); sensitive admin settings are encrypted and session tokens hashed.
+- Personal secrets are cryptographically owner-only through per-user vaults: sealed to the owner's keypair, unlocked per session via login password, passphrase, or passkeys (Windows Hello / Touch ID), with a vault settings UI where users add, rename, and remove their own unlock methods.
+- Sessions ride httpOnly cookies with CSRF origin checks; auth endpoints have account lockout and IP throttling; the frontend ships CSP/HSTS security headers; auth and vault events are audited.
+- Passwords support saved passwords and web portal logins, including passwordless portals; personal/shared switching is owner-only and never exposes plaintext.
+- The next open fronts are cross-platform launcher follow-through (Linux, then macOS), the shared cross-category expiry dashboard, and the App Configs module (see app-config-module-spec.md).
 
 ## Iteration 1: UX cleanup and product framing in UI
 
@@ -330,13 +332,60 @@ Delivered notes:
 - Connection launch resolution now follows `personal override -> connection shared/default` without copying username/password strings into a second override secret store
 - access control was tightened so non-admin users can create only personal Password objects, password-override APIs enforce ownership, and password discovery/reveal rights stay aligned with the current category permission model
 
+## Iteration 11: Browser extension and web portal logins
+
+Status:
+
+- delivered
+
+Objective:
+
+Bring assisted portal credential workflows into the browser while keeping the web app as the control plane.
+
+Scope:
+
+- extension connect flow with one-time exchange tokens and a dedicated extension session
+- credential fill on allowed portals under per-object fill/reveal policy
+- saving new personal logins from the browser back to the workspace
+- web portal login objects with browser launch, including passwordless portals (SSO / emailed code)
+- audit coverage for fill and extension actions
+
+Delivered notes:
+
+- the extension authenticates without ever seeing the web session cookie model change underneath it (bearer session kept through the httpOnly-cookie migration)
+- personal saves work silently from any session because personal secrets encrypt to the owner's vault public key
+
+## Iteration 12: Security foundation — encryption, personal vaults, hardening
+
+Status:
+
+- delivered
+
+Objective:
+
+Make a database dump worthless, personal secrets owner-only even against admins, and the auth perimeter resistant to brute force.
+
+Scope:
+
+- envelope encryption for all app-managed secrets with pluggable KEK providers (local dev key; Azure Key Vault via workload identity in production)
+- encrypted sensitive admin settings; hashed session tokens
+- per-user personal vaults (keypair; save-anywhere, unlock-to-read) with unlock methods: login password, passphrase, passkeys (Windows Hello / Touch ID)
+- vault settings UI for user-managed unlock methods: add passphrase, add per-device passkeys with nicknames, rename, remove (last-method and login-password guards)
+- account lifecycle: invites, self-service password change with vault rewrap, admin reset with explicit vault destruction
+- httpOnly cookie sessions, CSRF origin checks, account lockout, IP throttling, CSP/HSTS headers
+- audit expansion: login/logout, vault setup/unlock/lock, unlock-method add/remove
+
+Delivered notes:
+
+- personal↔shared switching rewraps keys server-side, restricted to the object owner
+- recovery is by design limited to the user's own unlock methods; there are no recovery codes, and the vault settings UI warns single-method users to add a backup
+
 ## QA flow per iteration
 
-1. Codex implements a focused slice.
-2. Codex commits the work in a reviewable state.
-3. The user runs and tests the behavior.
-4. The user returns bugs, change requests, or product clarifications.
-5. Codex fixes and continues to the next iteration.
+1. The assistant implements a focused slice and verifies it locally (build, tests, typecheck).
+2. The user reviews the working tree, runs and tests the behavior, and commits when satisfied.
+3. The user returns bugs, change requests, or product clarifications.
+4. The assistant fixes and continues to the next iteration.
 
 ## Definition of done for an iteration
 
@@ -347,6 +396,6 @@ Delivered notes:
 
 ## Recommended next slice
 
-1. Connections launcher hardening and machine-local preferences beyond the current baseline
-2. broader Connections administration and cross-platform launcher follow-through for macOS and Linux
-3. browser extension and approved portal workflows after the launcher path is more mature
+1. cross-platform launcher follow-through, Linux first, then macOS
+2. shared cross-category expiry dashboard on top of the delivered notification plumbing
+3. App Configs module MVP 1 (see app-config-module-spec.md)

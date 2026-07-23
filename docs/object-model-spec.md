@@ -123,7 +123,7 @@ Stored locally:
 - ownership
 - notes
 - optional secret reference
-- encrypted app-managed password or passphrase values when the connection is not using an external provider reference
+- app-managed password or passphrase values when the connection is not using an external provider reference, stored under envelope encryption
 - optional per-user override reference that points to a Password object owned or selected by the connecting user
 
 Should not be duplicated locally unless explicitly configured:
@@ -153,6 +153,7 @@ Should not be duplicated locally unless explicitly configured:
 - `use_multiple_monitors`
 - `show_connection_bar`
 - `mac_address`
+- `gateway_host` for RDP connections behind a Remote Desktop Gateway
 - `secret_ref`
 - `description`
 - `environment`
@@ -358,11 +359,15 @@ App registration expiry should be surfaced here, but not duplicated as local sec
 
 ## Purpose
 
-Represents shared login/password style entries for websites, tools, and legacy systems.
+Represents login/password style entries for websites, tools, and legacy systems — shared and personal.
+
+Two object shapes exist: saved passwords (reusable username/password pairs) and web portal logins (a saved password plus portal URL and launch/fill behavior; passwordless portals store only URL and username).
 
 This is the category for the objects that are actually authored inside this app most often.
 
-This category now also acts as the first reusable credential store for per-user Connection overrides.
+This category also acts as the reusable credential store for per-user Connection overrides.
+
+Personal objects are sealed to their creator's personal vault: they encrypt to the owner's vault public key and can only be decrypted in the owner's unlocked session. Shared and app-managed values use the same envelope encryption under the workspace KEK.
 
 ## Source of truth
 
@@ -407,7 +412,8 @@ Stored locally as value only when intentionally using app-managed password mode:
 
 - `target_url`
 - `secret_ref`
-- `password_mode` (`inline`, `external_reference`, `key_vault_reference`)
+- `password_mode` (`inline`, `external_reference`, `none` for passwordless portals)
+- `launch_allowed` for web portal logins
 - `description`
 - `notes`
 - `reveal_allowed`
