@@ -56,6 +56,11 @@ func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewa
 	if payload.MetadataBool(item.Metadata, "connectionAdminSession") {
 		args = append(args, "/admin")
 	}
+	// Title the session window after the connection so several open sessions
+	// stay tellable-apart in the taskbar.
+	if name := strings.TrimSpace(payload.MetadataString(item.Metadata, "connectionName")); name != "" {
+		args = append(args, "/t:"+name)
+	}
 	// Parity with the Windows baseline: fullscreen, resize with the window,
 	// clipboard on, and accept the server certificate on first use (mstsc
 	// profiles ship "authentication level:i:0").

@@ -365,19 +365,36 @@ func rdpProfilePath(item payload.LaunchPayload) (string, error) {
 
 var invalidProfileNameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
+func sanitizeProfileNamePart(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, ":", "_")
+	value = strings.ReplaceAll(value, "\\", "_")
+	value = strings.ReplaceAll(value, "/", "_")
+	value = invalidProfileNameChars.ReplaceAllString(value, "_")
+	return strings.Trim(value, "._-")
+}
+
+// stableProfileName names the per-connection profile file. The connection
+// NAME leads because mstsc titles its window (and taskbar entry) after the
+// .rdp filename — a GUID there makes multiple open sessions indistinguishable.
+// A short resource-id suffix keeps same-named connections from colliding.
 func stableProfileName(item payload.LaunchPayload) string {
-	base := strings.TrimSpace(item.ResourceID)
-	if base == "" {
-		base = strings.TrimSpace(item.Target)
+	id := sanitizeProfileNamePart(item.ResourceID)
+	name := sanitizeProfileNamePart(payload.MetadataString(item.Metadata, "connectionName"))
+	if name != "" {
+		suffix := id
+		if len(suffix) > 8 {
+			suffix = suffix[:8]
+		}
+		if suffix != "" {
+			return name + "-" + suffix
+		}
+		return name
 	}
+	base := id
 	if base == "" {
-		base = "connection"
+		base = sanitizeProfileNamePart(item.Target)
 	}
-	base = strings.ReplaceAll(base, ":", "_")
-	base = strings.ReplaceAll(base, "\\", "_")
-	base = strings.ReplaceAll(base, "/", "_")
-	base = invalidProfileNameChars.ReplaceAllString(base, "_")
-	base = strings.Trim(base, "._-")
 	if base == "" {
 		base = "connection"
 	}

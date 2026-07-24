@@ -57,7 +57,11 @@ func runSSHPlatform(item payload.LaunchPayload) error {
 }
 
 func RunSSHSession(item payload.LaunchPayload) error {
-	restoreConsole, err := prepareSSHConsole()
+	consoleTitle := "Access Workspace SSH"
+	if name := strings.TrimSpace(payload.MetadataString(item.Metadata, "connectionName")); name != "" {
+		consoleTitle = name + " — " + consoleTitle
+	}
+	restoreConsole, err := prepareSSHConsole(consoleTitle)
 	if err != nil {
 		return fmt.Errorf("prepare ssh console: %w", err)
 	}
@@ -175,8 +179,8 @@ func startNativeSSHInCurrentConsole(username string, host string, port string) e
 	return command.Run()
 }
 
-func prepareSSHConsole() (func(), error) {
-	restoreCodePages, err := ensureSSHConsole()
+func prepareSSHConsole(title string) (func(), error) {
+	restoreCodePages, err := ensureSSHConsole(title)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +195,7 @@ func prepareSSHConsole() (func(), error) {
 	}, nil
 }
 
-func ensureSSHConsole() (func(), error) {
+func ensureSSHConsole(title string) (func(), error) {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	getConsoleWindow := kernel32.NewProc("GetConsoleWindow")
 	allocConsole := kernel32.NewProc("AllocConsole")
@@ -223,7 +227,7 @@ func ensureSSHConsole() (func(), error) {
 	os.Stdout = output
 	os.Stderr = output
 
-	titlePtr, _ := syscall.UTF16PtrFromString("Access Workspace SSH")
+	titlePtr, _ := syscall.UTF16PtrFromString(title)
 	setConsoleTitleW.Call(uintptr(unsafe.Pointer(titlePtr)))
 
 	originalInputCP, _, _ := getConsoleCP.Call()
