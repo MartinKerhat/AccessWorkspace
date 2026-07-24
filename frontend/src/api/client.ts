@@ -27,6 +27,7 @@ import type {
   BrowserExtensionConnectToken,
   ConnectionCredentialOverride,
   CreateUserInput,
+  Directory,
   UserInvite,
   VaultStatus,
   UserNotification,
@@ -378,6 +379,9 @@ export const api = {
   },
   listLocalGroups() {
     return request<{ items: LocalGroup[] }>("/admin/local-groups");
+  },
+  getDirectory() {
+    return request<Directory>("/directory");
   },
   listArchivedResources() {
     return request<{ items: ArchivedResourceSummary[] }>("/admin/archived-resources");

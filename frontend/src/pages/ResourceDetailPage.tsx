@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { BrowserExtensionRuntime, ConnectionCredentialOverride, LaunchPayload, LauncherRuntime, Resource, ResourceSummary } from "../types";
+import type { BrowserExtensionRuntime, ConnectionCredentialOverride, DirectoryUser, LaunchPayload, LauncherRuntime, Resource, ResourceSummary } from "../types";
 import { resourceTypeLabel, resourceTypeSummary } from "../resourceMeta";
 
 function formatDateTime(value?: string) {
@@ -47,6 +47,8 @@ type Props = {
   launcherRuntime?: LauncherRuntime | null;
   browserExtensionRuntime?: BrowserExtensionRuntime | null;
   passwordOptions?: ResourceSummary[];
+  // Sharing directory used to resolve allowedUsers ids to display names.
+  sharedUsers?: DirectoryUser[];
   connectionOverride?: ConnectionCredentialOverride | null;
   onEdit?: () => void;
   onEditNotifications?: () => void;
@@ -90,6 +92,7 @@ export function ResourceDetailPage({
   launcherRuntime,
   browserExtensionRuntime,
   passwordOptions = [],
+  sharedUsers = [],
   connectionOverride,
   onEdit,
   onEditNotifications,
@@ -281,8 +284,19 @@ export function ResourceDetailPage({
           <dd>{resource.status || "n/a"}</dd>
         </div>
         <div>
-          <dt>Allowed groups</dt>
-          <dd>{resource.allowedGroups.length > 0 ? resource.allowedGroups.join(", ") : "Everyone"}</dd>
+          <dt>Shared with</dt>
+          <dd>
+            {resource.personal
+              ? "Only you (personal)"
+              : resource.allowedGroups.length > 0 || (resource.allowedUsers ?? []).length > 0
+                ? [
+                    ...resource.allowedGroups,
+                    ...(resource.allowedUsers ?? []).map(
+                      (userId) => sharedUsers.find((item) => item.id === userId)?.name ?? userId
+                    )
+                  ].join(", ")
+                : "Everyone"}
+          </dd>
         </div>
       </dl>
 

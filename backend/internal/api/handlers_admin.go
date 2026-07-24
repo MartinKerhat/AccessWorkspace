@@ -68,6 +68,19 @@ func (s *Server) handleListLocalGroups(w http.ResponseWriter, r *http.Request, u
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// handleDirectory serves the sharing picker for every authenticated user:
+// local group names plus minimal user records (id, name, email). Unlike the
+// /api/admin/* listings it must not require admin — non-admin owners restrict
+// visibility on their own objects too.
+func (s *Server) handleDirectory(w http.ResponseWriter, r *http.Request, user auth.User) {
+	directory, err := s.localGroups.ListDirectory(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, directory)
+}
+
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request, user auth.User) {
 	if !user.IsAdmin {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})

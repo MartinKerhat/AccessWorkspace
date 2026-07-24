@@ -363,6 +363,19 @@ export type LocalGroup = {
 
 export type LocalGroupForm = LocalGroup;
 
+// Minimal sharing directory served to every authenticated user (the sharing
+// picker needs group names and user identities without admin rights).
+export type DirectoryUser = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export type Directory = {
+  groups: string[];
+  users: DirectoryUser[];
+};
+
 export type ResourceType =
   | "rdp"
   | "ssh"
@@ -405,6 +418,7 @@ export type ResourceSummary = {
   revealAllowed: boolean;
   copyAllowed: boolean;
   allowedGroups: string[];
+  allowedUsers: string[];
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
@@ -412,7 +426,7 @@ export type ResourceSummary = {
 
 export type VisibleResourceSummary = ResourceSummary & {
   categoryAccessRight: string;
-  visibilityScope: "administrator" | "owner" | "personal" | "everyone" | "matched_groups";
+  visibilityScope: "administrator" | "owner" | "personal" | "everyone" | "matched_groups" | "matched_user";
   matchedLocalGroups: string[];
 };
 
@@ -552,6 +566,7 @@ export type ResourceForm = {
   revealAllowed: boolean;
   copyAllowed: boolean;
   allowedGroups: string[];
+  allowedUsers: string[];
   secretMode: SecretMode;
   secretValue: string;
   secretReference: string;

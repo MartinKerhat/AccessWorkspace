@@ -165,6 +165,7 @@ var sensitiveAuthPaths = map[string]bool{
 type LocalGroupAdminService interface {
 	ListLocalGroups(ctx context.Context) ([]auth.LocalGroup, error)
 	ListUsers(ctx context.Context) ([]auth.UserSummary, error)
+	ListDirectory(ctx context.Context) (auth.Directory, error)
 	CreateUser(ctx context.Context, input auth.CreateUserInput) (auth.UserAccessDetail, error)
 	GetUserAccess(ctx context.Context, id string) (auth.UserAccessDetail, error)
 	UpdateUserAccess(ctx context.Context, id string, input auth.UserAccessUpdateInput) (auth.UserAccessDetail, error)
@@ -359,6 +360,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleGenerateRDPSigningTestCertificate(w, r, user)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/directory":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleDirectory(w, r, user)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/admin/local-groups":
 		if !requireAuth(w, user, authErr) {
 			return

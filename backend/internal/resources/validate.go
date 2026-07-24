@@ -71,8 +71,10 @@ func normalizeInput(input CreateResourceInput) CreateResourceInput {
 	}
 
 	input.AllowedGroups = normalizeValues(input.AllowedGroups)
+	input.AllowedUsers = normalizeValues(input.AllowedUsers)
 	if input.Personal {
 		input.AllowedGroups = []string{}
+		input.AllowedUsers = []string{}
 	}
 	// Saved passwords have a single usage flag (copyAllowed); reveal and
 	// launch are meaningless for them and must not linger in storage where a
@@ -242,6 +244,7 @@ func preserveManagedFields(existing Resource, input UpdateResourceInput, user au
 		input.Owner = existing.Owner
 		input.OwnerUserID = existing.OwnerUserID
 		input.AllowedGroups = []string{}
+		input.AllowedUsers = []string{}
 	}
 	return input
 }
@@ -305,6 +308,7 @@ func resourceToUpdateInput(resource Resource) UpdateResourceInput {
 		RevealAllowed:                 resource.RevealAllowed,
 		CopyAllowed:                   resource.CopyAllowed,
 		AllowedGroups:                 append([]string{}, resource.AllowedGroups...),
+		AllowedUsers:                  append([]string{}, resource.AllowedUsers...),
 		SecretMode:                    resource.Secret.Mode,
 		SecretReference:               resource.Secret.Reference,
 	}

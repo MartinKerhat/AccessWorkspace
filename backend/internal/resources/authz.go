@@ -118,8 +118,11 @@ func visibilityScopeForResource(user devViewer, item ResourceSummary) (string, [
 	if user.GetIsAdmin() {
 		return "administrator", nil, true
 	}
-	if len(item.AllowedGroups) == 0 {
+	if len(item.AllowedGroups) == 0 && len(item.AllowedUsers) == 0 {
 		return "everyone", nil, true
+	}
+	if IsAllowedUser(user, item) {
+		return "matched_user", nil, true
 	}
 	matched := MatchedAllowedGroups(user, item)
 	if len(matched) == 0 {
@@ -265,6 +268,7 @@ func enforcePersonalPasswordOwnership(user auth.User, input CreateResourceInput)
 	input.OwnerUserID = user.ID
 	input.OwnerTeam = ""
 	input.AllowedGroups = []string{}
+	input.AllowedUsers = []string{}
 	return input
 }
 

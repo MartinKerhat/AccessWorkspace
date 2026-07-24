@@ -288,6 +288,37 @@ func (s *Service) ListUsers(ctx context.Context) ([]UserSummary, error) {
 	return items, nil
 }
 
+// ListDirectory returns the minimal sharing directory (local group names and
+// active users) available to every authenticated user, so non-admins can pick
+// sharing targets without access to the admin user-management endpoints.
+func (s *Service) ListDirectory(ctx context.Context) (Directory, error) {
+	users, err := s.repo.listStoredUsers(ctx)
+	if err != nil {
+		return Directory{}, err
+	}
+	localGroups, err := s.repo.ListLocalGroups(ctx)
+	if err != nil {
+		return Directory{}, err
+	}
+
+	groups := make([]string, 0, len(localGroups))
+	for _, group := range localGroups {
+		groups = append(groups, group.Name)
+	}
+	directoryUsers := make([]DirectoryUser, 0, len(users))
+	for _, user := range users {
+		if user.Blocked {
+			continue
+		}
+		directoryUsers = append(directoryUsers, DirectoryUser{
+			ID:    user.ID,
+			Name:  user.Name,
+			Email: user.Email,
+		})
+	}
+	return Directory{Groups: groups, Users: directoryUsers}, nil
+}
+
 func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (UserAccessDetail, error) {
 	input.Username = strings.TrimSpace(input.Username)
 	input.DisplayName = strings.TrimSpace(input.DisplayName)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Resource, ResourceForm, UserSummary } from "../types";
+import type { DirectoryUser, Resource, ResourceForm, UserSummary } from "../types";
 
 const defaultForm: ResourceForm = {
   name: "",
@@ -45,6 +45,7 @@ const defaultForm: ResourceForm = {
   revealAllowed: false,
   copyAllowed: false,
   allowedGroups: [],
+  allowedUsers: [],
   secretMode: "inline",
   secretValue: "",
   secretReference: ""
@@ -81,6 +82,8 @@ type Props = {
   resource?: Resource;
   initialType?: ResourceForm["type"];
   availableGroups?: string[];
+  // Sharing directory for the visibility picker (every user, not admin-only).
+  availableUsers?: DirectoryUser[];
   availableOwners?: UserSummary[];
   // New password objects start as personal so nobody shares a secret by
   // accident; saving as shared asks for confirmation instead of being blocked.
@@ -119,6 +122,7 @@ export function ResourceFormCard({
   resource,
   initialType,
   availableGroups = [],
+  availableUsers = [],
   availableOwners = [],
   defaultPersonalPassword = false,
   canAssignOwner = false,
@@ -144,6 +148,7 @@ export function ResourceFormCard({
   const [secretModePickerOpen, setSecretModePickerOpen] = useState(false);
   const [ownerSearch, setOwnerSearch] = useState("");
   const [ownerTeamSearch, setOwnerTeamSearch] = useState("");
+  const [sharedSearch, setSharedSearch] = useState("");
 
   useEffect(() => {
     if (!resource) {
@@ -205,6 +210,7 @@ export function ResourceFormCard({
       revealAllowed: resource.revealAllowed,
       copyAllowed: resource.copyAllowed,
       allowedGroups: resource.allowedGroups,
+      allowedUsers: resource.allowedUsers ?? [],
       secretMode: resource.secret.mode,
       secretValue: "",
       secretReference: resource.secret.reference
@@ -222,6 +228,19 @@ export function ResourceFormCard({
         ? form.allowedGroups.filter((item) => item !== group)
         : [...form.allowedGroups, group]
     );
+  }
+
+  function toggleAllowedUser(userId: string) {
+    update(
+      "allowedUsers",
+      form.allowedUsers.includes(userId)
+        ? form.allowedUsers.filter((item) => item !== userId)
+        : [...form.allowedUsers, userId]
+    );
+  }
+
+  function allowedUserLabel(userId: string) {
+    return availableUsers.find((item) => item.id === userId)?.name ?? userId;
   }
 
   async function handlePasswordVisibilityToggle() {
@@ -307,6 +326,18 @@ export function ResourceFormCard({
     return owner.name.toLowerCase().includes(query) || owner.email.toLowerCase().includes(query);
   });
   const filteredOwnerTeams = availableGroups.filter((group) => group.toLowerCase().includes(ownerTeamSearch.trim().toLowerCase()));
+  // One search box filters both sharing sections. Filtering is strict — the
+  // current selection always stays visible as tags on the trigger above.
+  const sharedSearchQuery = sharedSearch.trim().toLowerCase();
+  const filteredSharedGroups = availableGroups.filter(
+    (group) => sharedSearchQuery === "" || group.toLowerCase().includes(sharedSearchQuery)
+  );
+  const filteredSharedUsers = availableUsers.filter(
+    (item) =>
+      sharedSearchQuery === "" ||
+      item.name.toLowerCase().includes(sharedSearchQuery) ||
+      item.email.toLowerCase().includes(sharedSearchQuery)
+  );
   const allTypeOptions: Array<{ value: ResourceForm["type"]; label: string }> = [
     { value: "ssh", label: "SSH" },
     { value: "rdp", label: "RDP" },
@@ -575,12 +606,12 @@ export function ResourceFormCard({
           <textarea value={form.notes} onChange={(event) => update("notes", event.target.value)} rows={3} />
         </label>
         <label className="wide">
-          <span>Allowed groups</span>
+          <span>Shared with</span>
           {form.personal ? (
             <div className="selection-grid">
               <span className="selection-hint">Personal password objects are visible only to their creator.</span>
             </div>
-          ) : availableGroups.length > 0 ? (
+          ) : availableGroups.length > 0 || availableUsers.length > 0 ? (
             <div className="picker-shell">
               <button
                 type="button"
@@ -592,12 +623,19 @@ export function ResourceFormCard({
                 }}
               >
                 <div className="group-picker-value">
-                  {form.allowedGroups.length > 0 ? (
-                    form.allowedGroups.map((group) => (
-                      <span key={group} className="tag">
-                        {group}
-                      </span>
-                    ))
+                  {form.allowedGroups.length > 0 || form.allowedUsers.length > 0 ? (
+                    <>
+                      {form.allowedGroups.map((group) => (
+                        <span key={`group-${group}`} className="tag">
+                          {group}
+                        </span>
+                      ))}
+                      {form.allowedUsers.map((userId) => (
+                        <span key={`user-${userId}`} className="tag">
+                          {allowedUserLabel(userId)}
+                        </span>
+                      ))}
+                    </>
                   ) : (
                     <span className="selection-hint">Everyone</span>
                   )}
@@ -606,22 +644,53 @@ export function ResourceFormCard({
               </button>
               {groupPickerOpen ? (
                 <div className="group-picker-dropdown">
-                  {availableGroups.map((group) => (
-                    <label key={group} className="checkbox">
-                      <input
-                        type="checkbox"
-                        checked={form.allowedGroups.includes(group)}
-                        onChange={() => toggleAllowedGroup(group)}
-                      />
-                      <span>{group}</span>
-                    </label>
-                  ))}
+                  <input
+                    className="picker-search-input"
+                    value={sharedSearch}
+                    onChange={(event) => setSharedSearch(event.target.value)}
+                    placeholder="Search groups and users"
+                  />
+                  {filteredSharedGroups.length > 0 ? (
+                    <>
+                      <span className="selection-hint">Local groups</span>
+                      {filteredSharedGroups.map((group) => (
+                        <label key={group} className="checkbox">
+                          <input
+                            type="checkbox"
+                            checked={form.allowedGroups.includes(group)}
+                            onChange={() => toggleAllowedGroup(group)}
+                          />
+                          <span>{group}</span>
+                        </label>
+                      ))}
+                    </>
+                  ) : null}
+                  {filteredSharedUsers.length > 0 ? (
+                    <>
+                      <span className="selection-hint">Specific users</span>
+                      {filteredSharedUsers.map((item) => (
+                        <label key={item.id} className="checkbox">
+                          <input
+                            type="checkbox"
+                            checked={form.allowedUsers.includes(item.id)}
+                            onChange={() => toggleAllowedUser(item.id)}
+                          />
+                          <span>
+                            {item.name} <span className="selection-hint">{item.email}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </>
+                  ) : null}
+                  {filteredSharedGroups.length === 0 && filteredSharedUsers.length === 0 ? (
+                    <span className="selection-hint">No groups or users match the current search.</span>
+                  ) : null}
                 </div>
               ) : null}
             </div>
           ) : (
             <div className="selection-grid">
-              <span className="selection-hint">No local groups available. Everyone can see this resource.</span>
+              <span className="selection-hint">No local groups or users available. Everyone can see this resource.</span>
             </div>
           )}
         </label>
@@ -999,9 +1068,13 @@ export function ResourceFormCard({
           // group list means everyone with password access can see it), so ask
           // once on first save instead of forcing personal-then-edit.
           if (!resource && isPasswordResource && !form.personal) {
+            const audienceParts = [
+              ...(form.allowedGroups.length > 0 ? [`members of: ${form.allowedGroups.join(", ")}`] : []),
+              ...(form.allowedUsers.length > 0 ? [`users: ${form.allowedUsers.map(allowedUserLabel).join(", ")}`] : [])
+            ];
             const audience =
-              form.allowedGroups.length > 0
-                ? `members of: ${form.allowedGroups.join(", ")}`
+              audienceParts.length > 0
+                ? audienceParts.join(" and ")
                 : "everyone with access to the Passwords module";
             const confirmedShared = window.confirm(
               `This password will be created as SHARED and visible to ${audience}.\n\n` +

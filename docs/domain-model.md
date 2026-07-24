@@ -31,6 +31,7 @@ Common fields:
 - `owner_team`
 - `environment`
 - `allowed_groups`
+- `allowed_users`
 - `status`
 - `created_at`
 - `updated_at`
@@ -38,7 +39,8 @@ Common fields:
 
 Access rule:
 
-- empty `allowed_groups` means the resource is visible to everyone who can access that category
+- sharing is expressed as local groups (`allowed_groups`), specific users (`allowed_users`), or any combination — matching either list grants visibility
+- empty `allowed_groups` and `allowed_users` means the resource is visible to everyone who can access that category
 
 Common capabilities:
 
@@ -224,7 +226,8 @@ Resources should be visible based primarily on Azure/Entra groups. The app may a
 Practical rule:
 
 - local groups and resolved external groups both participate in visibility
-- a resource with no allowed groups is intentionally shared to everyone with category access
+- a resource may additionally be shared with specific users directly (`allowed_users`), independent of group membership
+- a resource with no allowed groups and no allowed users is intentionally shared to everyone with category access
 
 ### Menu visibility
 

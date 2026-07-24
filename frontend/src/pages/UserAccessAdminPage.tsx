@@ -59,9 +59,11 @@ function visibilityScopeLabel(resource: VisibleResourceSummary) {
     case "administrator":
       return "Administrator access bypasses group restrictions.";
     case "everyone":
-      return "Visible to everyone because no allowed groups are set.";
+      return "Visible to everyone because no sharing restriction is set.";
     case "matched_groups":
       return `Matched local groups: ${resource.matchedLocalGroups.join(", ")}.`;
+    case "matched_user":
+      return "Shared directly with this user.";
     default:
       return "";
   }
@@ -821,12 +823,21 @@ export function UserAccessAdminPage({
                               Category access via {resource.categoryAccessRight || "workspace policy"} · {visibilityScopeLabel(resource)}
                             </p>
                             <div className="tag-row">
-                              {resource.allowedGroups.length > 0 ? (
-                                resource.allowedGroups.map((group) => (
-                                  <span key={`${resource.id}-${group}`} className="tag">
-                                    {group}
-                                  </span>
-                                ))
+                              {resource.personal ? (
+                                <span className="tag">Personal</span>
+                              ) : resource.allowedGroups.length > 0 || (resource.allowedUsers ?? []).length > 0 ? (
+                                <>
+                                  {resource.allowedGroups.map((group) => (
+                                    <span key={`${resource.id}-group-${group}`} className="tag">
+                                      {group}
+                                    </span>
+                                  ))}
+                                  {(resource.allowedUsers ?? []).map((userId) => (
+                                    <span key={`${resource.id}-user-${userId}`} className="tag">
+                                      {items.find((item) => item.id === userId)?.name ?? userId}
+                                    </span>
+                                  ))}
+                                </>
                               ) : (
                                 <span className="tag">Everyone</span>
                               )}

@@ -1,4 +1,4 @@
-import type { ArchivedResourceSummary } from "../types";
+import type { ArchivedResourceSummary, DirectoryUser } from "../types";
 import { resourceTypeLabel } from "../resourceMeta";
 
 type Filters = {
@@ -9,6 +9,8 @@ type Filters = {
 type Props = {
   filters: Filters;
   items: ArchivedResourceSummary[];
+  // Sharing directory used to resolve allowedUsers ids to display names.
+  sharedUsers?: DirectoryUser[];
   selectedId?: string;
   loading?: boolean;
   onFilterChange: (next: Filters) => void;
@@ -48,6 +50,7 @@ function archivedSummaryLine(item: ArchivedResourceSummary) {
 export function ArchivedKeyVaultPage({
   filters,
   items,
+  sharedUsers = [],
   selectedId,
   loading,
   onFilterChange,
@@ -194,8 +197,17 @@ export function ArchivedKeyVaultPage({
                 <dd>{selectedItem.environment || "n/a"}</dd>
               </div>
               <div>
-                <dt>Allowed groups</dt>
-                <dd>{selectedItem.allowedGroups.length > 0 ? selectedItem.allowedGroups.join(", ") : "Everyone"}</dd>
+                <dt>Shared with</dt>
+                <dd>
+                  {selectedItem.allowedGroups.length > 0 || (selectedItem.allowedUsers ?? []).length > 0
+                    ? [
+                        ...selectedItem.allowedGroups,
+                        ...(selectedItem.allowedUsers ?? []).map(
+                          (userId) => sharedUsers.find((item) => item.id === userId)?.name ?? userId
+                        )
+                      ].join(", ")
+                    : "Everyone"}
+                </dd>
               </div>
             </dl>
           </>

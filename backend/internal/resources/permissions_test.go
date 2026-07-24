@@ -39,6 +39,29 @@ func TestCanAccessAllowsEveryoneWhenNoGroupsAreConfigured(t *testing.T) {
 	}
 }
 
+func TestCanAccessAllowsDirectlySharedUser(t *testing.T) {
+	resource := ResourceSummary{AllowedUsers: []string{"alice"}}
+	if !CanAccess(fakeUser{id: "alice"}, resource) {
+		t.Fatalf("expected directly shared user to access resource")
+	}
+	if CanAccess(fakeUser{id: "bob"}, resource) {
+		t.Fatalf("expected non-listed user to be denied when only user sharing is configured")
+	}
+}
+
+func TestCanAccessMatchesGroupOrUser(t *testing.T) {
+	resource := ResourceSummary{AllowedGroups: []string{"platform"}, AllowedUsers: []string{"alice"}}
+	if !CanAccess(fakeUser{id: "bob", groups: []string{"platform"}}, resource) {
+		t.Fatalf("expected group member to access resource with combined sharing")
+	}
+	if !CanAccess(fakeUser{id: "alice"}, resource) {
+		t.Fatalf("expected listed user to access resource with combined sharing")
+	}
+	if CanAccess(fakeUser{id: "carol", groups: []string{"support"}}, resource) {
+		t.Fatalf("expected user matching neither list to be denied")
+	}
+}
+
 func TestCanAccessDeniesAdminOnPersonalResource(t *testing.T) {
 	resource := ResourceSummary{Personal: true, OwnerUserID: "alice"}
 	if CanAccess(fakeUser{id: "martin", admin: true}, resource) {

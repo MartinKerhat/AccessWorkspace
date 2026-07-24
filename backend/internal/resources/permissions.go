@@ -24,7 +24,11 @@ func CanAccess(user Viewer, resource ResourceSummary) bool {
 	if isOwner {
 		return true
 	}
-	if len(resource.AllowedGroups) == 0 {
+	// No group and no user restriction means everyone with category access.
+	if len(resource.AllowedGroups) == 0 && len(resource.AllowedUsers) == 0 {
+		return true
+	}
+	if IsAllowedUser(user, resource) {
 		return true
 	}
 	for _, group := range resource.AllowedGroups {
@@ -33,6 +37,10 @@ func CanAccess(user Viewer, resource ResourceSummary) bool {
 		}
 	}
 	return false
+}
+
+func IsAllowedUser(user Viewer, resource ResourceSummary) bool {
+	return slices.Contains(resource.AllowedUsers, user.GetID())
 }
 
 func MatchedAllowedGroups(user Viewer, resource ResourceSummary) []string {

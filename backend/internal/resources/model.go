@@ -106,6 +106,7 @@ type Resource struct {
 	RevealAllowed                 bool                               `json:"revealAllowed"`
 	CopyAllowed                   bool                               `json:"copyAllowed"`
 	AllowedGroups                 []string                           `json:"allowedGroups"`
+	AllowedUsers                  []string                           `json:"allowedUsers"`
 	Secret                        Secret                             `json:"secret"`
 	AppNotificationPolicyOverride *AppRegistrationNotificationPolicy `json:"appNotificationPolicyOverride,omitempty"`
 	AppCredentials                []AppRegistrationCredential        `json:"appCredentials,omitempty"`
@@ -167,6 +168,7 @@ type ResourceSummary struct {
 	RevealAllowed       bool         `json:"revealAllowed"`
 	CopyAllowed         bool         `json:"copyAllowed"`
 	AllowedGroups       []string     `json:"allowedGroups"`
+	AllowedUsers        []string     `json:"allowedUsers"`
 	CreatedAt           time.Time    `json:"createdAt"`
 	UpdatedAt           time.Time    `json:"updatedAt"`
 	ArchivedAt          *time.Time   `json:"archivedAt,omitempty"`
@@ -236,6 +238,7 @@ type CreateResourceInput struct {
 	RevealAllowed                 bool       `json:"revealAllowed"`
 	CopyAllowed                   bool       `json:"copyAllowed"`
 	AllowedGroups                 []string   `json:"allowedGroups"`
+	AllowedUsers                  []string   `json:"allowedUsers"`
 	SecretMode                    SecretMode `json:"secretMode"`
 	SecretValue                   string     `json:"secretValue"`
 	SecretReference               string     `json:"secretReference"`
@@ -456,6 +459,7 @@ func (r Resource) Summary() ResourceSummary {
 		RevealAllowed:       r.RevealAllowed,
 		CopyAllowed:         r.CopyAllowed,
 		AllowedGroups:       r.AllowedGroups,
+		AllowedUsers:        r.AllowedUsers,
 		CreatedAt:           r.CreatedAt,
 		UpdatedAt:           r.UpdatedAt,
 		ArchivedAt:          r.ArchivedAt,

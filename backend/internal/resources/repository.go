@@ -123,7 +123,7 @@ func (r *Repository) List(ctx context.Context, filter Filter) ([]ResourceSummary
 			r.folder_path, r.launch_mode, r.source_kind, r.target_host, r.target_port, r.target_url, r.target_system, r.username,
 			r.connection_domain,
 			r.vault_name, r.object_name, r.provider, r.application_id, r.credential_expires_at, r.expires_at,
-			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.created_at, r.updated_at, r.archived_at
+			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at
 		from resources r
 		where r.archived_at is null
 			and ($1 = '' or
@@ -169,7 +169,7 @@ func (r *Repository) Get(ctx context.Context, id string) (Resource, error) {
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
-			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.created_at, r.updated_at, r.archived_at,
+			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
 			rs.secret_mode, rs.secret_value, rs.secret_reference
 		from resources r
 		join resource_secrets rs on rs.resource_id = r.id
@@ -200,7 +200,7 @@ func (r *Repository) GetAny(ctx context.Context, id string) (Resource, error) {
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
-			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.created_at, r.updated_at, r.archived_at,
+			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
 			rs.secret_mode, rs.secret_value, rs.secret_reference
 		from resources r
 		join resource_secrets rs on rs.resource_id = r.id
@@ -231,7 +231,7 @@ func (r *Repository) ListManagedKeyVault(ctx context.Context) ([]Resource, error
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
-			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.created_at, r.updated_at, r.archived_at,
+			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
 			rs.secret_mode, rs.secret_value, rs.secret_reference
 		from resources r
 		join resource_secrets rs on rs.resource_id = r.id
@@ -268,7 +268,7 @@ func (r *Repository) ListManagedAppRegistrations(ctx context.Context) ([]Resourc
 			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
-			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.created_at, r.updated_at, r.archived_at,
+			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
 			rs.secret_mode, rs.secret_value, rs.secret_reference
 		from resources r
 		join resource_secrets rs on rs.resource_id = r.id
@@ -303,7 +303,7 @@ func (r *Repository) ListArchived(ctx context.Context) ([]ArchivedResourceSummar
 			r.folder_path, r.launch_mode, r.source_kind, r.target_host, r.target_port, r.target_url, r.target_system, r.username,
 			r.connection_domain,
 			r.vault_name, r.object_name, r.provider, r.application_id, r.credential_expires_at, r.expires_at,
-			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.created_at, r.updated_at, r.archived_at,
+			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
 			coalesce(a.user_name, ''), coalesce(a.metadata ->> 'reason', ''), a.created_at
 		from resources r
 		left join lateral (
@@ -351,7 +351,7 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 			connection_gateway_host,
 			vault_name, object_name, object_type, object_version, content_type, expires_at,
 			provider, application_id, tenant_id, client_id, credential_type, credential_expires_at,
-			display_name_external, linked_secret_ref, launch_allowed, reveal_allowed, copy_allowed, allowed_groups
+			display_name_external, linked_secret_ref, launch_allowed, reveal_allowed, copy_allowed, allowed_groups, allowed_users
 		) values (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
 			$15, $16, $17, $18, $19, $20, $21,
@@ -359,7 +359,7 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 			$48,
 			$30, $31, $32, $33, $34, $35,
 			$36, $37, $38, $39, $40, $41,
-			$42, $43, $44, $45, $46, $47
+			$42, $43, $44, $45, $46, $47, $49
 		)
 	`, id, input.Name, input.Type, input.Personal, input.Description, input.Owner, input.OwnerUserID, input.OwnerTeam, input.Environment, input.Status, input.FolderPath, input.LaunchMode, input.SourceKind, input.SourceObjectID,
 		input.LastSyncedAt, input.Notes, input.TargetHost, input.TargetPort, input.TargetURL, input.TargetSystem, input.Username,
@@ -368,7 +368,7 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
 		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups,
-		input.ConnectionGatewayHost)
+		input.ConnectionGatewayHost, input.AllowedUsers)
 	if err != nil {
 		return Resource{}, err
 	}
@@ -444,6 +444,7 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 			reveal_allowed = $45,
 			copy_allowed = $46,
 			allowed_groups = $47,
+			allowed_users = $49,
 			updated_at = now()
 		where id = $1
 	`, id, input.Name, input.Type, input.Personal, input.Description, input.Owner, input.OwnerUserID, input.OwnerTeam, input.Environment, input.Status, input.FolderPath, input.LaunchMode, input.SourceKind,
@@ -453,7 +454,7 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
 		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups,
-		input.ConnectionGatewayHost)
+		input.ConnectionGatewayHost, input.AllowedUsers)
 	if err != nil {
 		return Resource{}, err
 	}
@@ -748,7 +749,7 @@ func scanSummary(scanner summaryScanner) (ResourceSummary, error) {
 		&item.ID, &item.Name, &item.Type, &item.Personal, &item.Description, &item.Owner, &item.OwnerUserID, &item.OwnerTeam, &item.Environment, &item.Status,
 		&item.FolderPath, &item.LaunchMode, &item.SourceKind, &item.TargetHost, &targetPort, &item.TargetURL, &item.TargetSystem, &item.Username,
 		&item.ConnectionDomain, &item.VaultName, &item.ObjectName, &item.Provider, &item.ApplicationID, &credentialExpiresAt, &expiresAt,
-		&item.LaunchAllowed, &item.RevealAllowed, &item.CopyAllowed, &item.AllowedGroups, &item.CreatedAt, &item.UpdatedAt, &item.ArchivedAt,
+		&item.LaunchAllowed, &item.RevealAllowed, &item.CopyAllowed, &item.AllowedGroups, &item.AllowedUsers, &item.CreatedAt, &item.UpdatedAt, &item.ArchivedAt,
 	); err != nil {
 		return ResourceSummary{}, err
 	}
@@ -778,7 +779,7 @@ func scanResource(scanner summaryScanner) (Resource, error) {
 		&item.VaultName, &item.ObjectName, &item.ObjectType, &item.ObjectVersion, &item.ContentType, &expiresAt,
 		&item.Provider, &item.ApplicationID, &item.TenantID, &item.ClientID, &item.CredentialType, &credentialExpiresAt,
 		&item.DisplayNameExternal, &item.LinkedSecretRef,
-		&item.LaunchAllowed, &item.RevealAllowed, &item.CopyAllowed, &item.AllowedGroups, &item.CreatedAt, &item.UpdatedAt, &item.ArchivedAt,
+		&item.LaunchAllowed, &item.RevealAllowed, &item.CopyAllowed, &item.AllowedGroups, &item.AllowedUsers, &item.CreatedAt, &item.UpdatedAt, &item.ArchivedAt,
 		&item.Secret.Mode, &item.Secret.Value, &item.Secret.Reference,
 	); err != nil {
 		return Resource{}, err
@@ -805,7 +806,7 @@ func scanArchivedSummary(scanner summaryScanner) (ArchivedResourceSummary, error
 		&item.ID, &item.Name, &item.Type, &item.Personal, &item.Description, &item.Owner, &item.OwnerUserID, &item.OwnerTeam, &item.Environment, &item.Status,
 		&item.FolderPath, &item.LaunchMode, &item.SourceKind, &item.TargetHost, &targetPort, &item.TargetURL, &item.TargetSystem, &item.Username,
 		&item.ConnectionDomain, &item.VaultName, &item.ObjectName, &item.Provider, &item.ApplicationID, &credentialExpiresAt, &expiresAt,
-		&item.LaunchAllowed, &item.RevealAllowed, &item.CopyAllowed, &item.AllowedGroups, &item.CreatedAt, &item.UpdatedAt, &item.ArchivedAt,
+		&item.LaunchAllowed, &item.RevealAllowed, &item.CopyAllowed, &item.AllowedGroups, &item.AllowedUsers, &item.CreatedAt, &item.UpdatedAt, &item.ArchivedAt,
 		&item.ArchivedBy, &item.ArchivedReason, &archivedEventAt,
 	); err != nil {
 		return ArchivedResourceSummary{}, err

@@ -43,6 +43,7 @@ import "./styles/app.css";
 import type {
   ArchivedResourceSummary,
   AuditEvent,
+  Directory,
   Resource,
   ResourceForm,
   ResourceSummary
@@ -301,6 +302,9 @@ export default function App() {
     setLaunch
   });
   const [filters, setFilters] = useState<Filters>(defaultFilters);
+  // Sharing directory (group names + minimal user records) for the resource
+  // form's visibility picker — available to every user, unlike the admin lists.
+  const [directory, setDirectory] = useState<Directory>({ groups: [], users: [] });
   const [view, setView] = useState<View>(currentView());
   const [adminSection, setAdminSection] = useState<AdminSection>("users");
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -369,6 +373,7 @@ export default function App() {
     resetAdminConfig();
     setArchivedResources([]);
     resetAdminUsers();
+    setDirectory({ groups: [], users: [] });
     resetKeyVaultAdmin();
     resetAppRegistrationAdmin();
     setFilters(defaultFilters);
@@ -389,6 +394,7 @@ export default function App() {
         loadAllResources(),
         loadActivity(),
         loadNotifications(),
+        loadDirectory(),
         session.capabilities.canViewAudit ? loadAudit() : Promise.resolve(),
         session.capabilities.canViewAdmin
           ? Promise.all([
@@ -411,6 +417,10 @@ export default function App() {
     const response = await api.listResources(new URLSearchParams());
     setAllResources(response.items);
     return response.items;
+  }
+
+  async function loadDirectory() {
+    setDirectory(await api.getDirectory());
   }
 
   async function loadResource(id: string) {
@@ -671,6 +681,7 @@ export default function App() {
               <ArchivedKeyVaultPage
                 filters={filters}
                 items={currentArchivedKeyVaultItems}
+                sharedUsers={directory.users}
                 selectedId={selectedArchivedKeyVaultId}
                 loading={busy}
                 onFilterChange={setFilters}
@@ -725,6 +736,7 @@ export default function App() {
                   resource={selectedResource}
                   launch={launch}
                   loading={busy}
+                  sharedUsers={directory.users}
                   canEdit={Boolean(
                     selectedResource &&
                       // Owners always manage their own objects (even without the
@@ -917,7 +929,8 @@ export default function App() {
             }
             resource={formState.mode === "edit" ? selectedResource : undefined}
             initialType={formState.mode === "create" ? formState.draftType : undefined}
-            availableGroups={localGroups.map((group) => group.name)}
+            availableGroups={directory.groups}
+            availableUsers={directory.users}
             availableOwners={knownUsers}
             defaultPersonalPassword={!session.user.isAdmin}
             canAssignOwner={session.user.isAdmin}

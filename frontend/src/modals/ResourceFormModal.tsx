@@ -1,5 +1,5 @@
 import { ResourceFormCard } from "../components/ResourceForm";
-import type { Resource, ResourceForm, UserSummary } from "../types";
+import type { DirectoryUser, Resource, ResourceForm, UserSummary } from "../types";
 
 type Props = {
   mode: "create" | "edit";
@@ -7,6 +7,7 @@ type Props = {
   resource?: Resource;
   initialType?: ResourceForm["type"];
   availableGroups: string[];
+  availableUsers: DirectoryUser[];
   availableOwners: UserSummary[];
   defaultPersonalPassword: boolean;
   canAssignOwner: boolean;
@@ -28,6 +29,7 @@ export function ResourceFormModal({
   resource,
   initialType,
   availableGroups,
+  availableUsers,
   availableOwners,
   defaultPersonalPassword,
   canAssignOwner,
@@ -56,6 +58,7 @@ export function ResourceFormModal({
           resource={resource}
           initialType={initialType}
           availableGroups={availableGroups}
+          availableUsers={availableUsers}
           availableOwners={availableOwners}
           defaultPersonalPassword={defaultPersonalPassword}
           canAssignOwner={canAssignOwner}

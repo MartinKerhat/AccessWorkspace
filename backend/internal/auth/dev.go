@@ -52,6 +52,19 @@ type UserSummary struct {
 	RightsCount        int      `json:"rightsCount"`
 }
 
+// DirectoryUser is the minimal user record exposed to every authenticated
+// user for the sharing picker — deliberately no rights, groups or flags.
+type DirectoryUser struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type Directory struct {
+	Groups []string        `json:"groups"`
+	Users  []DirectoryUser `json:"users"`
+}
+
 type ResolvedLocalGroup struct {
 	Name                 string   `json:"name"`
 	AssignmentSource     string   `json:"assignmentSource"`
