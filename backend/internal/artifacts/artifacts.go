@@ -78,6 +78,8 @@ func contentTypeFor(name string) string {
 		return "application/zip"
 	case strings.HasSuffix(lower, ".xpi"):
 		return "application/x-xpinstall"
+	case strings.HasSuffix(lower, ".tar.gz"):
+		return "application/gzip"
 	default:
 		return "application/octet-stream"
 	}
@@ -93,6 +95,10 @@ var (
 	CategoryLauncherWindows = Category{
 		Key: "launcher-windows", Prefix: "launcher/windows",
 		Kind: "launcher", Platform: "windows", Exts: []string{".exe"},
+	}
+	CategoryLauncherLinux = Category{
+		Key: "launcher-linux", Prefix: "launcher/linux",
+		Kind: "launcher", Platform: "linux", Exts: []string{".tar.gz"},
 	}
 	CategoryExtensionChrome = Category{
 		Key: "extension-chrome", Prefix: "extensions/chrome",
@@ -110,7 +116,7 @@ var (
 
 // LauncherCategories and ExtensionCategories group the standard categories.
 var (
-	LauncherCategories  = []Category{CategoryLauncherWindows}
+	LauncherCategories  = []Category{CategoryLauncherWindows, CategoryLauncherLinux}
 	ExtensionCategories = []Category{
 		CategoryExtensionChrome,
 		CategoryExtensionFirefoxSigned,

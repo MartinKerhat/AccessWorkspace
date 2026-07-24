@@ -103,7 +103,7 @@ func main() {
 }
 
 func shouldInstallByDefault(rawURI string, encodedPayload string, args []string) bool {
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		return false
 	}
 	if strings.TrimSpace(rawURI) != "" || strings.TrimSpace(encodedPayload) != "" {
@@ -168,8 +168,10 @@ func runBackgroundServer() error {
 			return
 		}
 		writeLauncherJSON(w, http.StatusOK, map[string]any{
-			"version": launcherinfo.Version,
-			"ready":   true,
+			"version":      launcherinfo.Version,
+			"ready":        true,
+			"platform":     runtime.GOOS,
+			"capabilities": launcher.Capabilities(),
 		})
 	})
 	mux.HandleFunc("/launch", func(w http.ResponseWriter, r *http.Request) {

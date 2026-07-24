@@ -4,6 +4,7 @@ import type {
   ArchivedResourceSummary,
   ConnectionCredentialOverride,
   LaunchPayload,
+  LauncherLocalStatus,
   LauncherRuntime,
   Resource,
   ResourceForm,
@@ -39,7 +40,7 @@ type UseResourceActionsDeps = {
   guardVaultLocked: (error: unknown, retry: () => Promise<void>) => Promise<boolean>;
   launcherRuntime: LauncherRuntime | null;
   setLauncherRuntime: Dispatch<SetStateAction<LauncherRuntime | null>>;
-  refreshLauncherStatus: (runtimeArg?: LauncherRuntime | null) => Promise<{ version: string } | null>;
+  refreshLauncherStatus: (runtimeArg?: LauncherRuntime | null) => Promise<LauncherLocalStatus | null>;
   loadAllResources: () => Promise<ResourceSummary[]>;
   loadResource: (id: string) => Promise<void>;
   loadActivity: () => Promise<void>;
@@ -215,6 +216,17 @@ export function useResourceActions({
         }
         if (isVersionOlder(status.version, runtime.requiredVersion)) {
           setMessage(`Launcher ${status.version} is outdated. Install version ${runtime.requiredVersion}.`);
+          return;
+        }
+        // Launchers report per-capability support (e.g. Linux RDP needs a
+        // FreeRDP client installed) so missing prerequisites surface as a
+        // clear message instead of a failed hand-off.
+        if (status.capabilities && status.capabilities[selectedResource.type] === false) {
+          setMessage(
+            selectedResource.type === "rdp"
+              ? "This machine's launcher cannot open RDP yet — install the FreeRDP client (e.g. the freerdp package) and try again."
+              : "This machine's launcher cannot open SSH yet — install an OpenSSH client and a terminal emulator, then try again."
+          );
           return;
         }
         const launcherTicket = typeof response.metadata.launcherTicket === "string" ? response.metadata.launcherTicket : "";

@@ -45,8 +45,3 @@ func rotateLauncherLog(logPath string) {
 	_ = os.Remove(logPath + ".old")
 	_ = os.Rename(logPath, logPath+".old")
 }
-
-// LauncherLogHint points users at the log location in error dialogs.
-func LauncherLogHint() string {
-	return "Details: %LOCALAPPDATA%\\AccessWorkspaceLauncher\\logs\\launcher.log"
-}

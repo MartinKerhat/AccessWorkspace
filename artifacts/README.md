@@ -16,6 +16,7 @@ folder). Files are filtered by the extension each folder expects.
 artifacts/
   launcher/
     windows/                 *.exe
+    linux/                   *.tar.gz  (binary self-installs on first run)
   extensions/
     chrome/                  *.zip
     firefox/

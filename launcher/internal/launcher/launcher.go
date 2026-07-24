@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"access-workspace/launcher/internal/launcherinfo"
@@ -96,10 +95,6 @@ func runSSH(item payload.LaunchPayload) error {
 }
 
 func runRDP(item payload.LaunchPayload) error {
-	if runtime.GOOS != "windows" {
-		return fmt.Errorf("rdp launcher preview currently supports Windows only")
-	}
-
 	host := strings.TrimSpace(item.Target)
 	if host == "" {
 		return fmt.Errorf("rdp payload is missing target host")
@@ -110,100 +105,17 @@ func runRDP(item payload.LaunchPayload) error {
 		port = "3389"
 	}
 
-	// Fail fast on an unreachable target instead of handing mstsc a dead address
-	// and leaving a windowless ghost process behind (which also makes the web app
-	// falsely report a successful hand-off). When a gateway is configured the
-	// reachable endpoint is the gateway, not the target host.
+	// Fail fast on an unreachable target instead of handing the RDP client a
+	// dead address and leaving a windowless ghost process behind (which also
+	// makes the web app falsely report a successful hand-off). When a gateway
+	// is configured the reachable endpoint is the gateway, not the target host.
 	gatewayHost := strings.TrimSpace(payload.MetadataString(item.Metadata, "connectionGatewayHost"))
 	if err := ensureRDPReachable(host, port, gatewayHost); err != nil {
 		Logf("rdp: preflight reachability failed: %v", err)
 		return err
 	}
 
-	args := buildRDPArgs(host, port, item.Metadata)
-
-	login := windowsConnectionIdentity(
-		payload.MetadataString(item.Metadata, "connectionDomain"),
-		payload.MetadataString(item.Metadata, "username"),
-	)
-	secret := payload.MetadataString(item.Metadata, "secretValue")
-	cmdkeyTargets := []string{}
-	if login != "" && secret != "" {
-		cmdkeyTargets = buildRDPStoredCredentialTargets(host, port)
-		for _, target := range cmdkeyTargets {
-			cmdkey := exec.Command("cmdkey.exe", "/generic:"+target, "/user:"+login, "/pass:"+secret)
-			hideWindow(cmdkey)
-			if output, err := cmdkey.CombinedOutput(); err != nil {
-				return fmt.Errorf("store rdp credentials: %w (%s)", err, strings.TrimSpace(string(output)))
-			}
-		}
-		if gatewayHost != "" {
-			// The RD Gateway is a second authenticated hop and its credential
-			// lookup does NOT use the generic TERMSRV/* entries that satisfy the
-			// target hop — it reads a DOMAIN-type credential for the bare gateway
-			// hostname (exactly what Windows stores when "remember me" is ticked
-			// on the gateway prompt). cmdkey /add: creates that domain-type entry;
-			// /generic: does not work here (verified: mstsc still prompted).
-			gatewayCred := exec.Command("cmdkey.exe", "/add:"+gatewayHost, "/user:"+login, "/pass:"+secret)
-			hideWindow(gatewayCred)
-			if output, err := gatewayCred.CombinedOutput(); err != nil {
-				return fmt.Errorf("store rdp gateway credentials: %w (%s)", err, strings.TrimSpace(string(output)))
-			}
-			cmdkeyTargets = append(cmdkeyTargets, gatewayHost)
-		}
-		Logf("rdp: stored credentials for %v", cmdkeyTargets)
-	} else {
-		Logf("rdp: no stored credentials (login present=%t, secret present=%t)", login != "", secret != "")
-	}
-
-	tempFile := ""
-	if login != "" {
-		var err error
-		var signRequired bool
-		tempFile, signRequired, err = writeRDPProfile(item, host, port, item.Metadata)
-		if err != nil {
-			return err
-		}
-		Logf("rdp: profile %s (signRequired=%t, signingEnabled=%t)", tempFile, signRequired, payload.MetadataBool(item.Metadata, "rdpSigningEnabled"))
-		if err := ensureRDPSigningTrust(item.Metadata); err != nil {
-			return err
-		}
-		if payload.MetadataBool(item.Metadata, "rdpSigningEnabled") {
-			// Best-effort: ensure this machine trusts the deployment's RDP
-			// publisher before mstsc opens the signed profile. Idempotent — it
-			// skips (no prompt) when the thumbprint is already trusted, so it
-			// only elevates the first time or when the cert rotates. If it fails
-			// (e.g. elevation declined) the launch still proceeds; mstsc just
-			// shows its untrusted-publisher warning.
-			if err := SyncAgentPrerequisites(); err != nil {
-				Logf("rdp: publisher trust sync failed (continuing): %v", err)
-			}
-		}
-		if signRequired {
-			if err := signRDPProfile(item.Metadata, tempFile); err != nil {
-				return err
-			}
-			Logf("rdp: profile signed")
-		}
-		args = []string{tempFile}
-	}
-
-	command := exec.Command("mstsc.exe", args...)
-	if err := command.Start(); err != nil {
-		return fmt.Errorf("start mstsc: %w", err)
-	}
-	Logf("rdp: mstsc started (pid=%d, args=%v)", command.Process.Pid, args)
-	go focusLaunchedWindow(command.Process.Pid)
-	if len(cmdkeyTargets) > 0 {
-		go clearRDPCredentialsLater(cmdkeyTargets)
-	}
-	// mstsc exiting within the watch window means no connection window ever
-	// appeared (rejected signature, corrupt profile, ...). Without this check
-	// the web app reports a successful hand-off while nothing happens.
-	if err := waitForEarlyRDPExit(command, 2500*time.Millisecond); err != nil {
-		return err
-	}
-	return nil
+	return runRDPPlatform(item, host, port, gatewayHost)
 }
 
 // ensureRDPReachable does a quick TCP dial of the endpoint mstsc will actually
@@ -449,14 +361,6 @@ func rdpProfilePath(item payload.LaunchPayload) (string, error) {
 	}
 	profileName := stableProfileName(item) + ".rdp"
 	return filepath.Join(profilesDir, profileName), nil
-}
-
-func launcherDataDir() (string, error) {
-	localAppData := strings.TrimSpace(os.Getenv("LOCALAPPDATA"))
-	if localAppData == "" {
-		return "", fmt.Errorf("LOCALAPPDATA is not available")
-	}
-	return filepath.Join(localAppData, "AccessWorkspaceLauncher"), nil
 }
 
 var invalidProfileNameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -780,11 +684,4 @@ func preferredRDPDesktopSize() (int, int) {
 		screenWidth, screenHeight = 1600, 900
 	}
 	return screenWidth, screenHeight
-}
-
-func hideWindow(command *exec.Cmd) {
-	if runtime.GOOS != "windows" || command == nil {
-		return
-	}
-	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 }

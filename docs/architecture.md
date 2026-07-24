@@ -12,7 +12,7 @@ Current deployment target:
 
 Shipped companion clients:
 
-- local desktop launcher for SSH and RDP (Windows today; localhost bridge + one-time launch tickets)
+- local desktop launcher for SSH and RDP (Windows and Linux; localhost bridge + one-time launch tickets)
 - browser extension for portal credential fill
 
 Both integrate with the same backend rather than becoming separate platforms.
@@ -96,15 +96,15 @@ For category-specific storage and retrieval rules, see [object-model-spec.md](ob
 
 ### Local launcher/helper
 
-Current responsibilities (shipped, Windows):
+Current responsibilities (shipped: Windows and Linux):
 
-- expose a localhost bridge (`/status`, `/launch`) the web app checks before connect
+- expose a localhost bridge (`/status`, `/launch`) the web app checks before connect, reporting version, platform, and per-feature capabilities
 - redeem one-time backend launch tickets so secrets never travel inside browser URIs
-- execute RDP launches through signed per-connection `.rdp` profiles with temporary credential handoff and Remote Desktop Gateway support
-- execute SSH launches in a visible terminal, including launcher-managed password sessions
-- self-install, register the `access-workspace://` handler, and report its version so the web app can require upgrades
+- execute RDP launches with credential handoff and Remote Desktop Gateway support — on Windows through signed per-connection `.rdp` profiles and `mstsc`, on Linux through the system FreeRDP client with arguments (password over stdin, no profiles or signing needed)
+- execute SSH launches in a visible terminal, including launcher-managed password sessions (Windows console; auto-detected terminal emulator on Linux)
+- self-install per user, register the `access-workspace://` handler, and arrange bridge autostart (registry on Windows, XDG desktop entries on Linux)
 
-macOS and Linux launcher targets are planned follow-through; the launch payload stays semantic (host, port, user, options) so each platform can pick its native client mechanics.
+The launch payload stays semantic (host, port, user, options) so each platform picks its native client mechanics; a macOS launcher is planned follow-through.
 
 ### Browser extension
 
@@ -188,12 +188,12 @@ Current state:
 
 - backend returns structured launch payloads and one-time launch tickets
 - the web app verifies launcher presence/version through the localhost bridge, then hands off
-- Windows launcher executes RDP (signed profiles, credential handoff, RD Gateway) and SSH (visible terminal, managed password sessions)
+- the launcher executes RDP and SSH natively per platform: Windows via mstsc with signed profiles and credential handoff, Linux via FreeRDP arguments and terminal-hosted SSH sessions — both with RD Gateway support
 - web portal launches open in the browser, with extension-assisted fill where allowed
 
 Target:
 
-- equivalent launcher behavior on Linux and macOS
+- equivalent launcher behavior on macOS
 
 ### External integrations
 

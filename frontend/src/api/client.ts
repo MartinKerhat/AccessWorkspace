@@ -36,6 +36,7 @@ import type {
   UserAccessUpdateInput,
   User
 } from "../types";
+import { detectClientLauncherPlatform, matchesLauncherPlatform } from "../platform";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
@@ -261,13 +262,19 @@ export const api = {
   },
   async launcherRuntime() {
     const runtime = await request<LauncherRuntime>("/launcher/runtime");
+    const downloads = (runtime.downloads ?? []).map((file) => ({
+      ...file,
+      downloadUrl: absolutizeArtifactUrl(file.downloadUrl)
+    }));
+    // The backend's recommended download is simply the newest artifact across
+    // ALL platforms; prefer the newest build for the OS this browser runs on
+    // (downloads are already newest-first).
+    const clientPlatform = detectClientLauncherPlatform();
+    const platformDownload = downloads.find((file) => matchesLauncherPlatform(file, clientPlatform));
     return {
       ...runtime,
-      downloadUrl: absolutizeArtifactUrl(runtime.downloadUrl),
-      downloads: (runtime.downloads ?? []).map((file) => ({
-        ...file,
-        downloadUrl: absolutizeArtifactUrl(file.downloadUrl)
-      }))
+      downloadUrl: platformDownload?.downloadUrl ?? absolutizeArtifactUrl(runtime.downloadUrl),
+      downloads
     };
   },
   async browserExtensionRuntime() {

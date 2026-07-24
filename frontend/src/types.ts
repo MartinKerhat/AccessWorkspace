@@ -633,6 +633,9 @@ export type BrowserExtensionConnectToken = {
 export type LauncherLocalStatus = {
   version: string;
   ready: boolean;
+  // Reported by launcher >= 0.6.0; older builds omit them.
+  platform?: string;
+  capabilities?: Record<string, boolean | string>;
 };
 
 export type ConnectionCredentialOverride = {

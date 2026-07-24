@@ -297,7 +297,12 @@ Delivered highlights:
 
 Status:
 
-- planned
+- Linux launcher delivered (2026-07); macOS and machine-local preference work remain
+
+Delivered highlights so far:
+
+- the Linux launcher covers the full connect surface: RDP via the system FreeRDP client (credential handoff over stdin, Remote Desktop Gateway, admin sessions), launcher-managed SSH sessions in the user's terminal emulator, per-user XDG self-install with `access-workspace://` handler and bridge autostart, distributed as a tarball alongside the Windows build
+- the launcher status endpoint now reports platform and per-feature capabilities, so the web app can tell users about missing prerequisites (e.g. FreeRDP not installed) before a launch is attempted
 
 Goal:
 
@@ -376,7 +381,7 @@ Exit criteria:
 
 Open fronts, in no committed order:
 
-- cross-platform launcher follow-through (Linux, then macOS)
+- macOS launcher follow-through (Linux delivered 2026-07)
 - shared cross-category expiry dashboard on top of the delivered notification plumbing
 - App Configs module MVP 1 (see [app-config-module-spec.md](app-config-module-spec.md))
 - remaining security follow-ups: session-revocation controls, optional second factor for local-account login
