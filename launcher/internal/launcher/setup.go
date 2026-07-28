@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"access-workspace/launcher/internal/install"
 	"access-workspace/launcher/internal/launcherinfo"
@@ -53,7 +52,7 @@ func installRDPPublisherTrustPackage(thumbprint string, leafCertBase64 string, r
 }
 
 func fetchRDPSigningPublicConfig(workspaceBaseURL string) (rdpSigningPublicConfig, error) {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := workspaceHTTPClient()
 	response, err := client.Get(workspaceBaseURL + launcherinfo.RDPTrustPath)
 	if err != nil {
 		return rdpSigningPublicConfig{}, fmt.Errorf("fetch RDP publisher trust configuration: %w", err)

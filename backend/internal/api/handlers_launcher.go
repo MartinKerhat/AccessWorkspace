@@ -27,8 +27,18 @@ func (s *Server) requiredLauncherVersion(ctx context.Context) string {
 	if time.Now().Before(s.launcherVersionExpires) {
 		return s.launcherVersionCached
 	}
-	version := launcherinfo.RequiredVersion
-	if downloads, err := s.artifacts.LauncherDownloads(ctx); err == nil {
+	// Ticket resolution must answer inside the launcher's 15s client budget,
+	// so the artifact-store listing gets a hard short deadline of its own —
+	// a slow or unreachable store must never stall a launch. On failure keep
+	// the last known requirement (or the compiled fallback before first
+	// success) instead of blocking.
+	version := s.launcherVersionCached
+	if version == "" {
+		version = launcherinfo.RequiredVersion
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if downloads, err := s.artifacts.LauncherDownloads(lookupCtx); err == nil {
 		if newest := artifacts.NewestVersion(downloads); newest != "" {
 			version = newest
 		}

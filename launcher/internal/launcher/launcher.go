@@ -28,6 +28,24 @@ func ShowLaunchFailure(err error) {
 	showLauncherMessageBox("Access Workspace launch failed.\n\n"+err.Error()+"\n\n"+LauncherLogHint(), "Access Workspace Launcher")
 }
 
+// workspaceHTTPClient talks to the workspace backend with phase-scoped
+// timeouts, so a failure names the stage that stalled (dial vs TLS handshake
+// vs waiting for the response) instead of one opaque client timeout. The
+// explicit ProxyFromEnvironment matches DefaultTransport behavior: the
+// launcher follows http_proxy/https_proxy — which can differ from the
+// browser's own proxy settings on the same machine.
+func workspaceHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           (&net.Dialer{Timeout: 6 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   6 * time.Second,
+			ResponseHeaderTimeout: 12 * time.Second,
+		},
+	}
+}
+
 func Run(item payload.LaunchPayload) error {
 	Logf("launch requested: resource=%s type=%s target=%s method=%s", item.ResourceID, item.ResourceType, item.Target, item.Method)
 	resolved, err := resolveLaunchPayload(item)
@@ -62,15 +80,19 @@ func resolveLaunchPayload(item payload.LaunchPayload) (payload.LaunchPayload, er
 		return item, nil
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := workspaceHTTPClient()
 	request, err := http.NewRequest(http.MethodGet, resolveURL, nil)
 	if err != nil {
 		return payload.LaunchPayload{}, fmt.Errorf("build launcher ticket request: %w", err)
 	}
 	request.Header.Set("X-Access-Workspace-Launcher-Version", launcherinfo.Version)
+	started := time.Now()
 	response, err := client.Do(request)
 	if err != nil {
-		return payload.LaunchPayload{}, fmt.Errorf("resolve launcher ticket: %w", err)
+		Logf("resolve launcher ticket failed after %s: %v", time.Since(started).Round(time.Millisecond), err)
+		return payload.LaunchPayload{}, fmt.Errorf(
+			"resolve launcher ticket: %w — this machine could not get an answer from %s. The browser reaching the workspace does not guarantee the launcher can: check VPN connectivity and proxy settings (the launcher uses the http_proxy/https_proxy environment variables, which may differ from the browser's proxy configuration)",
+			err, request.URL.Host)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
