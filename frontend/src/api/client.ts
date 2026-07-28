@@ -109,6 +109,28 @@ export function isVaultLocked(error: unknown): boolean {
   return error instanceof ApiError && error.code === "vault_locked";
 }
 
+export const sessionExpiredMessage = "Your session has expired. Sign in again.";
+
+// Fired once per 401 on a workspace endpoint so the app can drop its local
+// session state and return to the login page instead of staying on a
+// stale "signed-in" screen where every action fails with "unauthenticated".
+let unauthenticatedHandler: (() => void) | null = null;
+
+export function setUnauthenticatedHandler(handler: (() => void) | null) {
+  unauthenticatedHandler = handler;
+}
+
+// Endpoints where a 401 is part of the normal sign-in/bootstrap flow (no
+// cookie yet, wrong password, expired invite) rather than an expired session.
+const authFlowPaths = new Set([
+  "/auth/bootstrap",
+  "/auth/login",
+  "/auth/me",
+  "/auth/invite/accept",
+  "/auth/session/cookie",
+  "/auth/logout"
+]);
+
 // The session rides in the httpOnly cookie; credentials mode makes the
 // browser attach it (needed in dev, where the SPA is a different origin).
 // `bearerToken` exists solely for the one-time localStorage migration.
@@ -125,6 +147,10 @@ async function request<T>(path: string, options: RequestInit = {}, bearerToken?:
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+    if (response.status === 401 && !authFlowPaths.has(path.split("?")[0])) {
+      unauthenticatedHandler?.();
+      throw new ApiError(sessionExpiredMessage, response.status, body?.code);
+    }
     throw new ApiError(body?.error ?? `Request failed with status ${response.status}`, response.status, body?.code);
   }
 
@@ -299,20 +325,36 @@ export const api = {
     });
   },
   async launcherLocalStatus(statusUrl: string) {
-    const response = await fetch(statusUrl);
+    // Without a deadline a wedged launcher leaves this fetch (and the busy UI
+    // state above it) hanging forever; /status is a local no-work endpoint,
+    // so a few seconds is plenty.
+    const response = await fetch(statusUrl, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) {
       throw new Error(`Launcher status failed with status ${response.status}`);
     }
     return response.json() as Promise<LauncherLocalStatus>;
   },
   async launcherLocalLaunch(launchUrl: string, payload: LaunchPayload) {
-    const response = await fetch(launchUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
+    // The launcher answers /launch only after the whole hand-off flow ran
+    // (ticket resolve, reachability preflight, credential store, profile
+    // signing, publisher-trust sync) — legitimately tens of seconds. The
+    // deadline exists for the pathological case where it never answers.
+    let response: Response;
+    try {
+      response = await fetch(launchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(60_000)
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "TimeoutError") {
+        throw new Error("The desktop launcher did not respond within 60 seconds. Check that it is running and try again.");
+      }
+      throw error;
+    }
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
       throw new Error(body?.error ?? `Launcher launch failed with status ${response.status}`);

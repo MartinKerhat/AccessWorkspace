@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "./api/client";
+import { api, ApiError, sessionExpiredMessage, setUnauthenticatedHandler } from "./api/client";
 import { ResourceFormModal } from "./modals/ResourceFormModal";
 import { AdminConfigModal } from "./modals/AdminConfigModal";
 import { ChangePasswordModal } from "./modals/ChangePasswordModal";
@@ -130,6 +130,7 @@ export default function App() {
     setReveal,
     launch,
     setLaunch,
+    launching,
     revealCopyMessage,
     handleReveal,
     handleRevealStoredPassword,
@@ -350,10 +351,10 @@ export default function App() {
     void loadWorkspaceData();
   }, [user]);
 
-  function signOut() {
-    if (session) {
-      void api.authLogout();
-    }
+  // Shared local teardown for every way a session ends (sign-out, expiry,
+  // forced sign-out after an access change). Does NOT touch the server —
+  // callers decide whether an authLogout call makes sense.
+  function clearWorkspaceState() {
     localStorage.removeItem(authTokenStorageKey);
     setBrowserExtensionManagerOpen(false);
     setLauncherDownloadsOpen(false);
@@ -378,10 +379,76 @@ export default function App() {
     resetAppRegistrationAdmin();
     setFilters(defaultFilters);
     setView("connections");
-    setMessage(undefined);
     setFormState(closedFormState);
     window.location.hash = "";
   }
+
+  function signOut() {
+    if (session) {
+      void api.authLogout();
+    }
+    clearWorkspaceState();
+    setMessage(undefined);
+  }
+
+  // Central reaction to a 401 on any workspace endpoint: the cookie session
+  // is gone (expiry, server restart), so drop the stale "signed-in" UI and
+  // land on the login page with an explanation instead of leaving the user
+  // on a screen where every decrypt/reveal fails with "unauthenticated".
+  function handleSessionExpired() {
+    if (!session) {
+      return;
+    }
+    clearWorkspaceState();
+    setMessage(sessionExpiredMessage);
+  }
+
+  // The API client keeps one handler across renders; route it through refs
+  // so it always sees the current session state.
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const sessionExpiredRef = useRef(handleSessionExpired);
+  sessionExpiredRef.current = handleSessionExpired;
+
+  useEffect(() => {
+    setUnauthenticatedHandler(() => sessionExpiredRef.current());
+    return () => setUnauthenticatedHandler(null);
+  }, []);
+
+  // After long inactivity the expiry should surface the moment the user comes
+  // back, not on their first click. authMe is exempt from the client's global
+  // 401 handling (a 401 there is normal while signed out), so check explicitly.
+  const lastAuthRecheckRef = useRef(0);
+  useEffect(() => {
+    async function recheckSession() {
+      if (document.visibilityState !== "visible" || !sessionRef.current) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastAuthRecheckRef.current < 60_000) {
+        return;
+      }
+      lastAuthRecheckRef.current = now;
+      try {
+        await api.authMe();
+      } catch (error) {
+        // Only a definite 401 ends the session — a network blip must not
+        // throw the user out of a working workspace.
+        if (error instanceof ApiError && error.status === 401) {
+          sessionExpiredRef.current();
+        }
+      }
+    }
+    function onReturnToApp() {
+      void recheckSession();
+    }
+    document.addEventListener("visibilitychange", onReturnToApp);
+    window.addEventListener("focus", onReturnToApp);
+    return () => {
+      document.removeEventListener("visibilitychange", onReturnToApp);
+      window.removeEventListener("focus", onReturnToApp);
+    };
+  }, []);
 
   async function loadWorkspaceData() {
     if (!session) {
@@ -490,22 +557,7 @@ export default function App() {
     // JS cannot drop the httpOnly cookie itself — invalidate the session
     // server-side, which also clears the cookie.
     void api.authLogout();
-    localStorage.removeItem(authTokenStorageKey);
-    setSession(null);
-    setAllResources([]);
-    setSelectedResourceId(undefined);
-    setSelectedResource(undefined);
-    resetResourceActions();
-    setActivity([]);
-    setAudit([]);
-    resetAdminConfig();
-    setArchivedResources([]);
-    resetKeyVaultAdmin();
-    resetAppRegistrationAdmin();
-    setFilters(defaultFilters);
-    setView("connections");
-    setFormState(closedFormState);
-    window.location.hash = "";
+    clearWorkspaceState();
     setMessage(failureMessage);
   }
 
@@ -736,6 +788,7 @@ export default function App() {
                   resource={selectedResource}
                   launch={launch}
                   loading={busy}
+                  launching={launching}
                   sharedUsers={directory.users}
                   canEdit={Boolean(
                     selectedResource &&

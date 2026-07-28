@@ -75,6 +75,11 @@ export function useResourceActions({
   const [connectionOverride, setConnectionOverride] = useState<ConnectionCredentialOverride | null>(null);
   const [reveal, setReveal] = useState<RevealResult | null>(null);
   const [launch, setLaunch] = useState<LaunchPayload | null>(null);
+  // Launch-scoped busy state: the desktop-launcher hand-off can legitimately
+  // take tens of seconds, and holding the global busy flag for that long
+  // disables every button in the app with no feedback. Only the launch
+  // buttons react to this.
+  const [launching, setLaunching] = useState(false);
   const [revealCopyMessage, setRevealCopyMessage] = useState<string>();
 
   useEffect(() => {
@@ -196,10 +201,10 @@ export function useResourceActions({
   }
 
   async function handleLaunch() {
-    if (!selectedResourceId || !session) {
+    if (!selectedResourceId || !session || launching) {
       return;
     }
-    setBusy(true);
+    setLaunching(true);
     try {
       const response = await api.launchResource(selectedResourceId);
       setLaunch(response);
@@ -257,7 +262,7 @@ export function useResourceActions({
       }
       setMessage(error instanceof Error ? error.message : "Launch failed");
     } finally {
-      setBusy(false);
+      setLaunching(false);
     }
   }
 
@@ -427,6 +432,7 @@ export function useResourceActions({
   function reset() {
     setReveal(null);
     setLaunch(null);
+    setLaunching(false);
     setRevealCopyMessage(undefined);
   }
 
@@ -437,6 +443,7 @@ export function useResourceActions({
     setReveal,
     launch,
     setLaunch,
+    launching,
     revealCopyMessage,
     handleReveal,
     handleRevealStoredPassword,

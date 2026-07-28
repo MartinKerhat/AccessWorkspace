@@ -39,6 +39,9 @@ type Props = {
   resource?: Resource;
   launch?: LaunchPayload | null;
   loading?: boolean;
+  // True while a launch hand-off is in flight; only the launch buttons react
+  // to it (the global loading flag intentionally stays out of the launch flow).
+  launching?: boolean;
   canEdit?: boolean;
   canRemove?: boolean;
   // Owners (and admins on shared objects) may reveal password objects even
@@ -62,15 +65,15 @@ type Props = {
   onClearConnectionOverride?: () => Promise<void>;
 };
 
-function launchActionLabel(resource: Resource) {
+function launchActionLabel(resource: Resource, launching?: boolean) {
   switch (resource.type) {
     case "rdp":
     case "ssh":
-      return "Connect";
+      return launching ? "Connecting…" : "Connect";
     case "web_portal":
-      return "Open target";
+      return launching ? "Opening…" : "Open target";
     default:
-      return "Launch";
+      return launching ? "Launching…" : "Launch";
   }
 }
 
@@ -86,6 +89,7 @@ export function ResourceDetailPage({
   resource,
   launch,
   loading,
+  launching,
   canEdit,
   canRemove,
   canOverrideRevealPolicy = false,
@@ -132,10 +136,17 @@ export function ResourceDetailPage({
     setSelectedPasswordOptionId(connectionOverride?.passwordResourceId ?? "");
   }, [connectionOverride?.passwordResourceId]);
 
+  // The cached revealed password must not survive a refetch of the resource:
+  // an edit-save keeps the same id but may change the stored password, and a
+  // stale cache would make Reveal silently copy the pre-edit value. Keyed on
+  // the object reference — every refetch produces a new object.
   useEffect(() => {
     setRevealedPassword("");
     setPasswordVisible(false);
     setPasswordCopyMessage("");
+  }, [resource]);
+
+  useEffect(() => {
     setOverrideExpanded(false);
     setOverridePickerOpen(false);
     setOverrideSearch("");
@@ -188,8 +199,8 @@ export function ResourceDetailPage({
         <div className="detail-header-actions">
           <span className={`resource-type ${resource.type}`}>{resourceTypeLabel(resource.type)}</span>
           {isConnection && showLaunchAction ? (
-            <button className="button primary" disabled={loading} onClick={() => void onLaunch()}>
-              {launchActionLabel(resource)}
+            <button className="button primary" disabled={loading || launching} onClick={() => void onLaunch()}>
+              {launchActionLabel(resource, launching)}
             </button>
           ) : null}
           {isConnection && launcherRuntime?.downloadUrl ? (
@@ -633,8 +644,8 @@ export function ResourceDetailPage({
       {resource.type !== "app_registration" && !isConnection && (showLaunchAction || showRevealAction) ? (
         <div className="action-row compact-actions">
           {showLaunchAction ? (
-            <button className="button primary" disabled={loading} onClick={() => void onLaunch()}>
-              {launchActionLabel(resource)}
+            <button className="button primary" disabled={loading || launching} onClick={() => void onLaunch()}>
+              {launchActionLabel(resource, launching)}
             </button>
           ) : null}
           {showRevealAction ? (
