@@ -1046,6 +1046,7 @@ export default function App() {
             passkeyCapable={passkeyCapable}
             hasPasskey={vaultPrompt.status.passkeys.length > 0}
             busy={busy}
+            message={message}
             onPasskey={submitVaultPasskey}
             onPassphrase={submitVaultPassphrase}
             onCancel={() => setVaultPrompt(null)}

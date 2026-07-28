@@ -64,6 +64,9 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
         const status = await api.vaultStatus();
         setVaultUnlocked(status.unlocked);
         if (!status.unlocked) {
+          // The unlock modal mirrors the global message; drop any stale
+          // banner text so it opens clean.
+          setMessage(undefined);
           setVaultPrompt({ status, retry: async () => {} });
         }
       } catch {
@@ -79,6 +82,7 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
     if (!isVaultLocked(error) || !session) {
       return false;
     }
+    setMessage(undefined);
     try {
       const status = await api.vaultStatus();
       setVaultPrompt({ status, retry });
@@ -139,6 +143,7 @@ export function useVault({ session, setBusy, setMessage }: UseVaultDeps) {
     }
     try {
       const status = await api.vaultStatus();
+      setMessage(undefined);
       setVaultPrompt({ status, retry: refreshVaultSettings });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Checking the vault failed");

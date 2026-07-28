@@ -8,12 +8,16 @@ type Props = {
   // hasPasskey: the vault has at least one registered passkey (unlock only).
   hasPasskey: boolean;
   busy: boolean;
+  // Global status/error message mirrored inside the modal — the main banner
+  // sits behind the scrim, so without this a failed passkey ceremony looks
+  // like the button silently did nothing.
+  message?: string;
   onPasskey: () => Promise<boolean>;
   onPassphrase: (passphrase: string) => Promise<boolean>;
   onCancel: () => void;
 };
 
-export function VaultUnlockModal({ hasVault, passkeyCapable, hasPasskey, busy, onPasskey, onPassphrase, onCancel }: Props) {
+export function VaultUnlockModal({ hasVault, passkeyCapable, hasPasskey, busy, message, onPasskey, onPassphrase, onCancel }: Props) {
   const setup = !hasVault;
   // Hello is offered for setup whenever the device supports it, and for
   // unlock only when a passkey is actually registered.
@@ -49,6 +53,8 @@ export function VaultUnlockModal({ hasVault, passkeyCapable, hasPasskey, busy, o
         ) : (
           <p className="section-copy">Confirm it's you to use your personal saved passwords this session.</p>
         )}
+
+        {message ? <div className="banner compact">{message}</div> : null}
 
         {offerPasskey ? (
           <div className="action-row">

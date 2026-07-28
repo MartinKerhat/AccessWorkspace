@@ -75,6 +75,33 @@ class PrfUnavailableError extends Error {
 
 export const isPrfUnavailable = (error: unknown): boolean => error instanceof PrfUnavailableError;
 
+// Browsers report every user-side failure of a WebAuthn ceremony (cancelled
+// Hello dialog, timeout, window losing focus) as a terse NotAllowedError whose
+// message — "The operation either timed out or was not allowed. See: https://
+// www.w3.org/TR/..." — is useless to an end user. Translate the DOMException
+// taxonomy into guidance that names the way forward (retry or passphrase).
+function friendlyWebAuthnError(error: unknown, ceremony: "setup" | "unlock"): Error {
+  if (error instanceof DOMException) {
+    switch (error.name) {
+      case "NotAllowedError":
+      case "AbortError":
+      case "TimeoutError":
+        return new Error(
+          ceremony === "setup"
+            ? "Passkey setup was cancelled or timed out before it finished. Try again and complete the fingerprint, face, or PIN prompt — or use a passphrase instead."
+            : "The passkey prompt was cancelled or timed out. Try again, or use a passphrase instead."
+        );
+      case "InvalidStateError":
+        return new Error("This device already has a passkey for this account. Try unlocking with it, or use a passphrase instead.");
+      case "SecurityError":
+        return new Error("Passkeys are blocked on this address — the app must be opened over HTTPS on its real domain. Use a passphrase instead.");
+      case "NotSupportedError":
+        return new PrfUnavailableError();
+    }
+  }
+  return error instanceof Error ? error : new Error("The passkey operation failed. Use a passphrase instead.");
+}
+
 function prfFirst(credential: PublicKeyCredential): ArrayBuffer | undefined {
   const results = credential.getClientExtensionResults() as {
     prf?: { results?: { first?: ArrayBuffer } };
@@ -87,20 +114,25 @@ function prfFirst(credential: PublicKeyCredential): ArrayBuffer | undefined {
 // then get() because not every platform returns PRF output during create().
 export async function registerPasskey(userId: string, userName: string): Promise<PasskeyRegistration> {
   const prfSalt = randomBytes(32);
-  const created = (await navigator.credentials.create({
-    publicKey: {
-      challenge: buf(randomBytes(32)),
-      rp: { id: window.location.hostname, name: RP_NAME },
-      user: { id: buf(new TextEncoder().encode(userId)), name: userName, displayName: userName },
-      pubKeyCredParams: [
-        { type: "public-key", alg: -7 },
-        { type: "public-key", alg: -257 }
-      ],
-      authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
-      timeout: 120000,
-      extensions: { prf: { eval: { first: buf(prfSalt) } } } as AuthenticationExtensionsClientInputs
-    }
-  })) as PublicKeyCredential | null;
+  let created: PublicKeyCredential | null;
+  try {
+    created = (await navigator.credentials.create({
+      publicKey: {
+        challenge: buf(randomBytes(32)),
+        rp: { id: window.location.hostname, name: RP_NAME },
+        user: { id: buf(new TextEncoder().encode(userId)), name: userName, displayName: userName },
+        pubKeyCredParams: [
+          { type: "public-key", alg: -7 },
+          { type: "public-key", alg: -257 }
+        ],
+        authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
+        timeout: 120000,
+        extensions: { prf: { eval: { first: buf(prfSalt) } } } as AuthenticationExtensionsClientInputs
+      }
+    })) as PublicKeyCredential | null;
+  } catch (error) {
+    throw friendlyWebAuthnError(error, "setup");
+  }
   if (!created) {
     throw new Error("Passkey setup was cancelled.");
   }
@@ -122,15 +154,20 @@ export async function registerPasskey(userId: string, userName: string): Promise
 }
 
 async function evaluatePrf(credentialId: ArrayBuffer, prfSalt: Uint8Array): Promise<ArrayBuffer | undefined> {
-  const assertion = (await navigator.credentials.get({
-    publicKey: {
-      challenge: buf(randomBytes(32)),
-      allowCredentials: [{ type: "public-key", id: credentialId }],
-      userVerification: "required",
-      timeout: 120000,
-      extensions: { prf: { eval: { first: buf(prfSalt) } } } as AuthenticationExtensionsClientInputs
-    }
-  })) as PublicKeyCredential | null;
+  let assertion: PublicKeyCredential | null;
+  try {
+    assertion = (await navigator.credentials.get({
+      publicKey: {
+        challenge: buf(randomBytes(32)),
+        allowCredentials: [{ type: "public-key", id: credentialId }],
+        userVerification: "required",
+        timeout: 120000,
+        extensions: { prf: { eval: { first: buf(prfSalt) } } } as AuthenticationExtensionsClientInputs
+      }
+    })) as PublicKeyCredential | null;
+  } catch (error) {
+    throw friendlyWebAuthnError(error, "unlock");
+  }
   if (!assertion) {
     return undefined;
   }
@@ -154,17 +191,22 @@ export async function unlockWithPasskey(
   // offer all credentials at once, but PRF eval needs one salt, so we key the
   // eval by the first and match the returned credential to its salt.
   const saltByCredential = new Map(descriptors.map((d) => [d.credentialId, d.prfSalt]));
-  const assertion = (await navigator.credentials.get({
-    publicKey: {
-      challenge: buf(randomBytes(32)),
-      allowCredentials: descriptors.map((d) => ({ type: "public-key" as const, id: buf(fromBase64Url(d.credentialId)) })),
-      userVerification: "required",
-      timeout: 120000,
-      extensions: {
-        prf: { eval: { first: buf(fromBase64Url(descriptors[0].prfSalt)) } }
-      } as AuthenticationExtensionsClientInputs
-    }
-  })) as PublicKeyCredential | null;
+  let assertion: PublicKeyCredential | null;
+  try {
+    assertion = (await navigator.credentials.get({
+      publicKey: {
+        challenge: buf(randomBytes(32)),
+        allowCredentials: descriptors.map((d) => ({ type: "public-key" as const, id: buf(fromBase64Url(d.credentialId)) })),
+        userVerification: "required",
+        timeout: 120000,
+        extensions: {
+          prf: { eval: { first: buf(fromBase64Url(descriptors[0].prfSalt)) } }
+        } as AuthenticationExtensionsClientInputs
+      }
+    })) as PublicKeyCredential | null;
+  } catch (error) {
+    throw friendlyWebAuthnError(error, "unlock");
+  }
   if (!assertion) {
     throw new Error("Unlock was cancelled.");
   }
