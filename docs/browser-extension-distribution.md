@@ -1,127 +1,86 @@
 # Browser Extension Distribution
 
-Current browser-extension packaging is split into three channels:
+The extension ships per browser from `browser-extension/{chrome,firefox}`,
+packaged into `artifacts/extensions/` (see `artifacts/README.md` for how the
+backend serves artifacts locally vs from Azure Blob in production).
 
-- Chrome / Edge:
-  - Package artifact: `frontend/public/downloads/access-workspace-browser-extension-chrome-v0.2.5.zip`
-  - Current repo-ready flow: package build plus optional private Chrome Web Store publishing script
-  - Production path: private Chrome Web Store listing or managed enterprise deployment
-- Firefox:
-  - Signed artifact currently bundled: `frontend/public/downloads/access-workspace-browser-extension-firefox-signed-v0.2.5.xpi`
-  - Unsigned repo-built artifact: `frontend/public/downloads/access-workspace-browser-extension-firefox-v0.2.5.xpi`
-  - Current repo-ready flow: Mozilla-approved signed XPI downloaded from Developer Hub and re-served by the app
-  - Production path: signed self-distributed XPI or later a listing URL
+- **Chrome / Edge / other Chromium**
+  - Package: `artifacts/extensions/chrome/access-workspace-browser-extension-chrome-v<version>.zip`
+  - Production path: **unlisted Chrome Web Store listing** — installable via
+    link from the app, not searchable. Direct ZIP download stays as the
+    developer fallback.
+- **Firefox**
+  - Release Firefox refuses unsigned XPIs, so builds are signed through
+    Mozilla (AMO unlisted channel) and self-distributed:
+    `artifacts/extensions/firefox/signed/…-signed-v<version>.xpi`
+  - The AMO add-on id is `browser-fill@access-workspace.local` and must not
+    change — it is the add-on's permanent identity from earlier signings.
+- **Safari**
+  - Not packaged yet; needs Apple's Web Extension wrapper app, signing, and
+    notarization.
 
-The repo-hosted current browser-extension build is now `0.2.5`, including the Mozilla-signed Firefox XPI.
-- Safari:
-  - Current repo-ready flow: not packaged yet
-  - Remaining production work: Safari Web Extension wrapper app, Apple signing, and notarization
+## How the app decides what to offer
 
-## What the app now supports
+The backend exposes per-browser package status; the web app's Browser
+Extensions modal shows a store install link when configured, otherwise the
+newest signed/zip artifact:
 
-- Browser-extension runtime metadata is exposed by the backend, including per-browser package status
-- Docker frontend builds validate the active download artifacts and remove older files before `public/downloads` is copied into the final static site
-- The web app has a browser-extension manager so users can:
-  - see which browser packages exist
-  - open a real store/listing install URL when configured
-  - fall back to package download when store/listing distribution is not configured yet
-  - connect the installed extension to the workspace
-- The extension itself now uses browser-neutral copy instead of Chrome-only wording
+- `CHROME_WEB_STORE_URL` — when set, Chromium browsers get
+  "Install from Chrome Web Store" as the primary action.
+- `FIREFOX_EXTENSION_URL` — optional override; otherwise the app serves the
+  newest locally hosted signed XPI.
 
-## Environment variables
+## Releasing a new version
 
-- `CHROME_WEB_STORE_URL`
-  - Optional install URL for the private or unlisted Chrome Web Store listing.
-  - When set, the app shows `Install from Chrome Web Store` instead of ZIP download for Chromium browsers.
-- `FIREFOX_EXTENSION_URL`
-  - Optional install URL for a signed Firefox add-on listing or signed self-distribution URL.
-  - When set, the app prefers that install URL. Otherwise it now falls back to the locally hosted signed XPI if present.
+This repository is the product, not any particular deployment — CI publishes
+only to neutral distribution points and never pushes into a deployment.
 
-## Chrome private Web Store steps
+Bump `version` in BOTH manifests (they must match) and merge to main —
+`.github/workflows/release-extension.yml` then builds the ZIP, uploads and
+submits it to the Chrome Web Store, signs the Firefox XPI through Mozilla,
+and attaches both files to a GitHub Release tagged `extension-v<version>`.
+Pushes that change extension code without a version bump release nothing
+(stores reject same-version re-uploads). Repository secrets:
+`CHROME_WEB_STORE_CLIENT_ID`, `CHROME_WEB_STORE_CLIENT_SECRET`,
+`CHROME_WEB_STORE_REFRESH_TOKEN`, `CHROME_WEB_STORE_EXTENSION_ID`,
+`FIREFOX_AMO_JWT_ISSUER`, `FIREFOX_AMO_JWT_SECRET` — missing secrets skip
+that publish step with a warning instead of failing.
 
-1. Create or use a Chrome Web Store developer account.
-2. Make sure the publisher Google account has 2-step verification enabled.
-3. Prepare the first listing in the Chrome Web Store developer dashboard:
-   - upload the extension package
-   - complete the listing tab
-   - complete the privacy tab
-   - set visibility to `Private`
-   - add trusted testers or Google Groups
-4. Copy the final Web Store listing URL into `CHROME_WEB_STORE_URL`.
-5. After the initial listing exists, future updates can use:
-   - `scripts/publish-chrome-webstore.ps1`
+## How deployments pick releases up
 
-Required environment variables for the publish script:
+Each deployment chooses its artifact source (`artifacts/README.md`):
 
-- `CHROME_WEB_STORE_CLIENT_ID`
-- `CHROME_WEB_STORE_CLIENT_SECRET`
-- `CHROME_WEB_STORE_REFRESH_TOKEN`
-- `CHROME_WEB_STORE_PUBLISHER_ID`
-- `CHROME_WEB_STORE_EXTENSION_ID`
+- `ARTIFACTS_SOURCE=github` + `ARTIFACTS_GITHUB_REPO=<owner>/<repo>` — the
+  backend lists this repo's GitHub Releases (cached, optional
+  `ARTIFACTS_GITHUB_TOKEN` for rate limits) and serves the newest published
+  builds automatically. No per-deployment steps when a new version ships.
+- `ARTIFACTS_SOURCE=blob` / `local` — operators copy the release assets into
+  their own store; the app picks up whatever is newest there.
 
-Example:
+Local fallback scripts (same result, run by hand):
 
 ```powershell
-.\scripts\publish-chrome-webstore.ps1 -Publish
+.\scripts\build-extension-icons.ps1   # regenerate the icon set (rarely needed)
+.\scripts\build-chrome-zip.ps1        # → artifacts/extensions/chrome/
+.\scripts\build-firefox-xpi.ps1       # → artifacts/extensions/firefox/unsigned/
+.\scripts\sign-firefox-addon.ps1      # Mozilla-sign (FIREFOX_AMO_JWT_ISSUER/SECRET)
+.\scripts\publish-chrome-webstore.ps1 # upload current ZIP; -Publish submits for review
 ```
 
-## Firefox signing steps
+## Store listing requirements
 
-Firefox release and beta require Mozilla signing. An unsigned XPI is expected to fail in normal Firefox even if the archive itself is structured correctly.
+- Privacy policy: `docs/browser-extension-privacy.md` (link its public URL in
+  the dashboard's privacy tab).
+- The manifest ships icons (`browser-extension/*/icons/`); the 128 px PNG
+  doubles as the store icon.
+- The extension's `<all_urls>` access exists because fillable portals are
+  defined per deployment at runtime; the single-purpose statement and
+  permission justifications are prepared in
+  `.dev-notes/browser-extension-store-plan.md`.
 
-Required environment variables for signing:
+## What still cannot be solved in this repo
 
-- `FIREFOX_AMO_JWT_ISSUER`
-- `FIREFOX_AMO_JWT_SECRET`
-
-Build a fresh XPI:
-
-```powershell
-.\scripts\build-chrome-zip.ps1
-.\scripts\build-firefox-xpi.ps1
-```
-
-Sign it through Mozilla:
-
-```powershell
-.\scripts\sign-firefox-addon.ps1
-```
-
-If you download the approved signed XPI from Mozilla Developer Hub, place that signed artifact into:
-
-- `frontend/public/downloads/`
-
-The current bundled signed Firefox artifact in this repo is:
-
-- `access-workspace-browser-extension-firefox-signed-v0.2.5.xpi`
-
-The new unsigned Firefox artifact that should be signed next is:
-
-- `access-workspace-browser-extension-firefox-v0.2.5.xpi`
-
-If later you receive a stable listing URL or update URL, set:
-
-- `FIREFOX_EXTENSION_URL`
-
-## What still cannot be solved only in this repo
-
-- The first Chrome Web Store listing still needs a real publisher account and dashboard completion
-- Firefox signing still needs real Mozilla API credentials
-- Trusted install in Safari still requires Apple’s native wrapper and signing flow
-
-## Active Docker Download Set
-
-The frontend Docker image should expose only these current distributables:
-
-- `access-workspace-browser-extension-chrome-v0.2.5.zip`
-- `access-workspace-browser-extension-firefox-v0.2.5.xpi`
-- `access-workspace-browser-extension-firefox-signed-v0.2.5.xpi`
-- `access-workspace-launcher-windows-amd64-v0.5.6.exe`
-
-If any of these files are missing, the frontend Docker build fails instead of producing broken download links.
-
-## Recommended production sequence
-
-1. Finish the first private Chrome Web Store listing and put its URL into `CHROME_WEB_STORE_URL`.
-2. Keep the Mozilla-signed Firefox XPI in app downloads, or set `FIREFOX_EXTENSION_URL` when you have a stable install URL.
-3. Build the Safari wrapper only after the browser-extension UX and backend contract settle.
+- The first Chrome Web Store listing needs a real publisher account and a
+  one-time manual dashboard submission.
+- Firefox signing needs Mozilla API credentials.
+- Safari needs Apple's native wrapper and signing flow.
