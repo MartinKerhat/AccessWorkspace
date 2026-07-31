@@ -38,6 +38,8 @@ type Config struct {
 	ArtifactsDir        string
 	ArtifactsBlobURL    string
 	ArtifactsBlobSAS    string
+	ArtifactsGitHubRepo string
+	ArtifactsGitHubTok  string
 	ChromeWebStoreURL   string
 	FirefoxExtensionURL string
 	EntraTenantID       string
@@ -72,6 +74,8 @@ func ConfigFromEnv() Config {
 		ArtifactsDir:        envOrDefault("ARTIFACTS_DIR", "/data/downloads"),
 		ArtifactsBlobURL:    strings.TrimSpace(os.Getenv("ARTIFACTS_BLOB_CONTAINER_URL")),
 		ArtifactsBlobSAS:    strings.TrimSpace(os.Getenv("ARTIFACTS_BLOB_SAS")),
+		ArtifactsGitHubRepo: strings.TrimSpace(os.Getenv("ARTIFACTS_GITHUB_REPO")),
+		ArtifactsGitHubTok:  strings.TrimSpace(os.Getenv("ARTIFACTS_GITHUB_TOKEN")),
 		ChromeWebStoreURL:   strings.TrimSpace(os.Getenv("CHROME_WEB_STORE_URL")),
 		FirefoxExtensionURL: strings.TrimSpace(os.Getenv("FIREFOX_EXTENSION_URL")),
 		EntraTenantID:       envOrDefault("ENTRA_TENANT_ID", ""),
@@ -126,8 +130,12 @@ func (c Config) Validate() error {
 		if c.ArtifactsBlobURL == "" {
 			return fmt.Errorf("ARTIFACTS_BLOB_CONTAINER_URL is required when ARTIFACTS_SOURCE=blob")
 		}
+	case "github":
+		if c.ArtifactsGitHubRepo == "" || !strings.Contains(c.ArtifactsGitHubRepo, "/") {
+			return fmt.Errorf("ARTIFACTS_GITHUB_REPO (owner/name) is required when ARTIFACTS_SOURCE=github")
+		}
 	default:
-		return fmt.Errorf("ARTIFACTS_SOURCE must be \"local\" or \"blob\", got %q", c.ArtifactsSource)
+		return fmt.Errorf("ARTIFACTS_SOURCE must be \"local\", \"blob\", or \"github\", got %q", c.ArtifactsSource)
 	}
 
 	if c.IsProduction() {

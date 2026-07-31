@@ -29,9 +29,15 @@ artifacts/
 - **Local (dev):** `ARTIFACTS_SOURCE=local`, `ARTIFACTS_DIR` points at this folder
   (mounted into both the backend and the frontend nginx container). The frontend
   serves the files at `/downloads/...`.
-- **Azure Blob (prod):** `ARTIFACTS_SOURCE=blob`, `ARTIFACTS_BLOB_CONTAINER_URL`
+- **Azure Blob:** `ARTIFACTS_SOURCE=blob`, `ARTIFACTS_BLOB_CONTAINER_URL`
   (+ optional `ARTIFACTS_BLOB_SAS`). Blobs use the same folder prefixes as keys;
   downloads point directly at the blob URLs.
+- **GitHub Releases (zero-maintenance prod):** `ARTIFACTS_SOURCE=github`,
+  `ARTIFACTS_GITHUB_REPO=<owner>/<repo>` (+ optional `ARTIFACTS_GITHUB_TOKEN`
+  for rate limits / private repos). The backend lists the repo's release
+  assets — matched by the artifact naming convention, cached a few minutes —
+  and proxies downloads, so every deployment automatically serves the newest
+  builds this project publishes. No per-deployment uploads.
 
 Once the extensions are published to the Chrome Web Store / Firefox Add-ons,
 set `CHROME_WEB_STORE_URL` / `FIREFOX_EXTENSION_URL` and the app makes the store

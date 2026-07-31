@@ -57,15 +57,19 @@ Each deployment chooses its artifact source (`artifacts/README.md`):
 - `ARTIFACTS_SOURCE=blob` / `local` — operators copy the release assets into
   their own store; the app picks up whatever is newest there.
 
-Local fallback scripts (same result, run by hand):
+The GitHub Actions workflow is the only release path — there are no local
+build/publish scripts for the extension. The two helper scripts that remain:
 
 ```powershell
-.\scripts\build-extension-icons.ps1   # regenerate the icon set (rarely needed)
-.\scripts\build-chrome-zip.ps1        # → artifacts/extensions/chrome/
-.\scripts\build-firefox-xpi.ps1       # → artifacts/extensions/firefox/unsigned/
-.\scripts\sign-firefox-addon.ps1      # Mozilla-sign (FIREFOX_AMO_JWT_ISSUER/SECRET)
-.\scripts\publish-chrome-webstore.ps1 # upload current ZIP; -Publish submits for review
+.\scripts\build-extension-icons.ps1              # regenerate the committed icon set
+.\scripts\get-chrome-webstore-refresh-token.ps1  # (re)issue the CI OAuth refresh token
 ```
+
+The desktop launcher releases the same way: bumping `Version` in
+`launcher/internal/launcherinfo/launcherinfo.go` on main triggers
+`.github/workflows/release-launcher.yml`, which builds the Windows and Linux
+binaries and attaches them to a `launcher-v<version>` GitHub Release
+(`launcher/build.ps1` stays as the local dev build).
 
 ## Store listing requirements
 

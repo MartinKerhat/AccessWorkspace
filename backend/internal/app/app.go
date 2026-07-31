@@ -212,11 +212,13 @@ func New(cfg Config) (*App, error) {
 	resourceService := resources.NewService(resourceRepo, auditService, keyVaultService, appRegistrationService, notificationService, secretCipher, rdpSigningProvider{store: adminStore}, authRepo)
 
 	artifactSource, err := artifacts.NewSource(artifacts.Config{
-		Source:  cfg.ArtifactsSource,
-		Dir:     cfg.ArtifactsDir,
-		BaseURL: cfg.FrontendURL,
-		BlobURL: cfg.ArtifactsBlobURL,
-		BlobSAS: cfg.ArtifactsBlobSAS,
+		Source:      cfg.ArtifactsSource,
+		Dir:         cfg.ArtifactsDir,
+		BaseURL:     cfg.FrontendURL,
+		BlobURL:     cfg.ArtifactsBlobURL,
+		BlobSAS:     cfg.ArtifactsBlobSAS,
+		GitHubRepo:  cfg.ArtifactsGitHubRepo,
+		GitHubToken: cfg.ArtifactsGitHubTok,
 	})
 	if err != nil {
 		pool.Close()

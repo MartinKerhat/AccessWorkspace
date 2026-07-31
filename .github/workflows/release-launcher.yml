@@ -1,0 +1,111 @@
+name: Release launcher
+
+# Publishes the desktop launcher when its compiled version changes on main
+# (launcher/internal/launcherinfo/launcherinfo.go, `Version = "x.y.z"`).
+# Builds Windows (.exe) and Linux (.tar.gz) binaries and attaches them to a
+# GitHub Release tagged launcher-v<version> — a neutral distribution point.
+# Deployments running ARTIFACTS_SOURCE=github serve the new build
+# automatically; nothing is ever pushed into a deployment from here.
+#
+# A push that touches launcher/** WITHOUT bumping the version publishes
+# nothing. Use workflow_dispatch with force=true to re-run manually.
+#
+# Local fallback: launcher/build.ps1 (writes into artifacts/launcher/).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "launcher/**"
+      - ".github/workflows/release-launcher.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Release even if the launcher version did not change in this push"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # create the launcher-v* release and upload assets
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine version and whether to release
+        id: check
+        run: |
+          set -euo pipefail
+          version_file="launcher/internal/launcherinfo/launcherinfo.go"
+          version="$(grep -oP 'Version\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' "$version_file")"
+          previous="$(git show "HEAD~1:$version_file" 2>/dev/null | grep -oP 'Version\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' || echo '<none>')"
+          release=false
+          if [ "$version" != "$previous" ]; then
+            release=true
+          fi
+          if [ "${{ inputs.force || false }}" = "true" ]; then
+            release=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "version=$version previous=$previous release=$release"
+
+  release:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: launcher/go.mod
+
+      - name: Build Windows launcher
+        run: |
+          set -euo pipefail
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -ldflags="-H=windowsgui" \
+            -o "access-workspace-launcher-windows-amd64-v${VERSION}.exe" \
+            ./cmd/access-workspace-launcher
+
+      - name: Build Linux launcher tarball
+        run: |
+          set -euo pipefail
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
+            -o access-workspace-launcher \
+            ./cmd/access-workspace-launcher
+          go run ./scripts/package_linux_tar.go \
+            -binary access-workspace-launcher \
+            -name access-workspace-launcher \
+            -out "access-workspace-launcher-linux-amd64-v${VERSION}.tar.gz"
+          rm access-workspace-launcher
+
+      - name: Create GitHub Release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="launcher-v${VERSION}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "Launcher ${VERSION}" \
+              --notes "Desktop launcher ${VERSION} (Windows + Linux). Deployments running ARTIFACTS_SOURCE=github serve these files automatically."
+          fi
+          gh release upload "$tag" \
+            "access-workspace-launcher-windows-amd64-v${VERSION}.exe" \
+            "access-workspace-launcher-linux-amd64-v${VERSION}.tar.gz" \
+            --clobber
+          echo "Release $tag updated."

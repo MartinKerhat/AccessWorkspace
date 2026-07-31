@@ -28,6 +28,11 @@ type Category struct {
 	Variant  string   // "", "signed", or "unsigned"
 	Platform string   // "", "windows", ...
 	Exts     []string // allowed file extensions (lowercase, with dot)
+	// Flat-namespace matching for sources without folders (GitHub release
+	// assets): a filename belongs to the category when it starts with
+	// AssetPrefix, does not contain AssetExclude, and passes AllowsExt.
+	AssetPrefix  string
+	AssetExclude string
 }
 
 // AllowsExt reports whether name has an extension this category accepts.
@@ -39,6 +44,19 @@ func (c Category) AllowsExt(name string) bool {
 		}
 	}
 	return false
+}
+
+// MatchesAsset reports whether a flat asset filename (no folder path, e.g. a
+// GitHub release asset) belongs to this category.
+func (c Category) MatchesAsset(name string) bool {
+	lower := strings.ToLower(name)
+	if c.AssetPrefix == "" || !strings.HasPrefix(lower, c.AssetPrefix) {
+		return false
+	}
+	if c.AssetExclude != "" && strings.Contains(lower, c.AssetExclude) {
+		return false
+	}
+	return c.AllowsExt(lower)
 }
 
 // Artifact is a single downloadable file discovered by a Source.
@@ -95,22 +113,27 @@ var (
 	CategoryLauncherWindows = Category{
 		Key: "launcher-windows", Prefix: "launcher/windows",
 		Kind: "launcher", Platform: "windows", Exts: []string{".exe"},
+		AssetPrefix: "access-workspace-launcher-windows",
 	}
 	CategoryLauncherLinux = Category{
 		Key: "launcher-linux", Prefix: "launcher/linux",
 		Kind: "launcher", Platform: "linux", Exts: []string{".tar.gz"},
+		AssetPrefix: "access-workspace-launcher-linux",
 	}
 	CategoryExtensionChrome = Category{
 		Key: "extension-chrome", Prefix: "extensions/chrome",
 		Kind: "extension", Browser: "chrome", Exts: []string{".zip"},
+		AssetPrefix: "access-workspace-browser-extension-chrome",
 	}
 	CategoryExtensionFirefoxSigned = Category{
 		Key: "extension-firefox-signed", Prefix: "extensions/firefox/signed",
 		Kind: "extension", Browser: "firefox", Variant: "signed", Exts: []string{".xpi"},
+		AssetPrefix: "access-workspace-browser-extension-firefox-signed",
 	}
 	CategoryExtensionFirefoxUnsigned = Category{
 		Key: "extension-firefox-unsigned", Prefix: "extensions/firefox/unsigned",
 		Kind: "extension", Browser: "firefox", Variant: "unsigned", Exts: []string{".xpi"},
+		AssetPrefix: "access-workspace-browser-extension-firefox", AssetExclude: "-signed-",
 	}
 )
 

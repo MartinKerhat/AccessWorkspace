@@ -2,7 +2,13 @@
   "manifest_version": 3,
   "name": "Access Workspace Browser Fill",
   "description": "Suggest and fill approved portal credentials from Access Workspace.",
-  "version": "0.2.8",
+  "version": "0.2.10",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": [
     "storage"
   ],
@@ -26,6 +32,11 @@
   ],
   "action": {
     "default_title": "Access Workspace",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
   }
 }

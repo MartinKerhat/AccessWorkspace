@@ -1,0 +1,183 @@
+name: Release browser extension
+
+# Publishes the browser extension when its manifest version changes on main.
+# This repo is the product, not any particular deployment — CI publishes only
+# to NEUTRAL distribution points:
+#   - Chrome Web Store (existing unlisted item; first listing was created
+#     manually in the dashboard)
+#   - a GitHub Release on this repo (tag extension-v<version>) carrying the
+#     Chrome ZIP and the Mozilla-signed Firefox XPI
+# Deployments consume the release automatically by running the backend with
+# ARTIFACTS_SOURCE=github + ARTIFACTS_GITHUB_REPO=<owner>/<repo>; nothing is
+# ever pushed into a deployment from here.
+#
+# A push that touches browser-extension/** WITHOUT bumping the manifest
+# version publishes nothing (stores reject re-uploads of the same version).
+# Use workflow_dispatch with force=true to re-run a release manually.
+# This workflow is the only release path — there are no local publish scripts.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "browser-extension/**"
+      - ".github/workflows/release-extension.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Release even if the manifest version did not change in this push"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # create the extension-v* release and upload assets
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine version and whether to release
+        id: check
+        run: |
+          set -euo pipefail
+          version="$(jq -r .version browser-extension/chrome/manifest.json)"
+          firefox_version="$(jq -r .version browser-extension/firefox/manifest.json)"
+          if [ "$version" != "$firefox_version" ]; then
+            echo "::error::Manifest versions differ: chrome=$version firefox=$firefox_version — bump both together."
+            exit 1
+          fi
+          previous="$(git show HEAD~1:browser-extension/chrome/manifest.json 2>/dev/null | jq -r .version || echo '<none>')"
+          release=false
+          if [ "$version" != "$previous" ]; then
+            release=true
+          fi
+          if [ "${{ inputs.force || false }}" = "true" ]; then
+            release=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "version=$version previous=$previous release=$release"
+
+  release:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Chrome ZIP
+        run: |
+          set -euo pipefail
+          zip_name="access-workspace-browser-extension-chrome-v${VERSION}.zip"
+          (cd browser-extension/chrome && zip -r "../../${zip_name}" .)
+          echo "ZIP_NAME=${zip_name}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sign Firefox XPI through Mozilla (AMO unlisted channel)
+        env:
+          AMO_ISSUER: ${{ secrets.FIREFOX_AMO_JWT_ISSUER }}
+          AMO_SECRET: ${{ secrets.FIREFOX_AMO_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AMO_ISSUER" ]; then
+            echo "::warning::AMO secrets not configured — skipping Firefox signing."
+            exit 0
+          fi
+          npx --yes web-ext@8 sign \
+            --source-dir browser-extension/firefox \
+            --channel unlisted \
+            --api-key "$AMO_ISSUER" \
+            --api-secret "$AMO_SECRET" \
+            --artifacts-dir web-ext-artifacts \
+            --timeout 900000
+          signed="$(ls web-ext-artifacts/*.xpi | head -1)"
+          xpi_name="access-workspace-browser-extension-firefox-signed-v${VERSION}.xpi"
+          mv "$signed" "$xpi_name"
+          echo "XPI_NAME=${xpi_name}" >> "$GITHUB_ENV"
+
+      - name: Publish to Chrome Web Store
+        env:
+          CLIENT_ID: ${{ secrets.CHROME_WEB_STORE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_WEB_STORE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_WEB_STORE_REFRESH_TOKEN }}
+          EXTENSION_ID: ${{ secrets.CHROME_WEB_STORE_EXTENSION_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$EXTENSION_ID" ]; then
+            echo "::warning::Chrome Web Store secrets not configured — skipping store publish."
+            exit 0
+          fi
+          token="$(curl -sf https://oauth2.googleapis.com/token \
+            -d client_id="$CLIENT_ID" \
+            -d client_secret="$CLIENT_SECRET" \
+            -d refresh_token="$REFRESH_TOKEN" \
+            -d grant_type=refresh_token | jq -r .access_token)"
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "::error::Could not obtain Chrome Web Store access token."
+            exit 1
+          fi
+          upload="$(curl -s -X PUT \
+            -H "Authorization: Bearer $token" \
+            -H "x-goog-api-version: 2" \
+            -T "$ZIP_NAME" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${EXTENSION_ID}")"
+          echo "upload response: $upload"
+          state="$(echo "$upload" | jq -r .uploadState)"
+          if [ "$state" = "FAILURE" ]; then
+            codes="$(echo "$upload" | jq -r '[.itemError[]?.error_code] | join(",")')"
+            case "$codes" in
+              *ITEM_PENDING_REVIEW*|*PKG_INVALID_VERSION_NUMBER*)
+                # This version (or a newer one) is already uploaded or sitting
+                # in review — e.g. the first submission was made manually in
+                # the dashboard. Nothing to do for the store this run.
+                echo "::warning::Store already has this or a pending version ($codes) — skipping store publish."
+                exit 0
+                ;;
+              *)
+                echo "::error::Chrome Web Store upload failed: $upload"
+                exit 1
+                ;;
+            esac
+          fi
+          if [ "$state" != "SUCCESS" ] && [ "$state" != "IN_PROGRESS" ]; then
+            echo "::error::Chrome Web Store upload failed: $upload"
+            exit 1
+          fi
+          publish="$(curl -s -X POST \
+            -H "Authorization: Bearer $token" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/${EXTENSION_ID}/publish")"
+          echo "publish response: $publish"
+          # Typical statuses: OK, ITEM_PENDING_REVIEW — both mean the version
+          # is submitted; review runs store-side before it goes live.
+
+      - name: Create GitHub Release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="extension-v${VERSION}"
+          assets=("$ZIP_NAME")
+          if [ -n "${XPI_NAME:-}" ]; then
+            assets+=("$XPI_NAME")
+          fi
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "Browser extension ${VERSION}" \
+              --notes "Browser extension ${VERSION}. Deployments running ARTIFACTS_SOURCE=github serve these files automatically."
+          fi
+          gh release upload "$tag" "${assets[@]}" --clobber
+          echo "Release $tag updated with: ${assets[*]}"
