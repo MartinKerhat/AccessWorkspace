@@ -31,6 +31,8 @@ type ResourceService interface {
 	Archive(ctx context.Context, user auth.User, id string) error
 	Restore(ctx context.Context, user auth.User, id string) error
 	ListPasswordOptions(ctx context.Context, user auth.User) ([]resources.ResourceSummary, error)
+	ListMentionCandidates(ctx context.Context, user auth.User, query string) ([]resources.MentionCandidate, error)
+	ResolveMentions(ctx context.Context, user auth.User, ids []string) ([]resources.MentionTarget, error)
 	ListPortalCredentialMatches(ctx context.Context, user auth.User, rawURL string) ([]resources.PortalCredentialMatch, error)
 	FillPortalCredential(ctx context.Context, user auth.User, resourceID string, rawURL string) (resources.PortalCredentialFillResult, error)
 	GetConnectionCredentialOverride(ctx context.Context, user auth.User, connectionID string) (resources.ConnectionCredentialOverride, error)
@@ -330,6 +332,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handlePasswordOptions(w, r, user)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/mentions/candidates":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleMentionCandidates(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/mentions/resolve":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleResolveMentions(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/browser-extension/portal-match":
 		if !requireAuth(w, user, authErr) {
 			return

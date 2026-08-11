@@ -46,6 +46,37 @@ func (s *Server) handlePasswordOptions(w http.ResponseWriter, r *http.Request, u
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// handleMentionCandidates backs the "@" picker in notes. Scoped to the caller's
+// own visibility, so an admin sees many candidates and a non-admin colleague
+// editing the same note sees only theirs.
+func (s *Server) handleMentionCandidates(w http.ResponseWriter, r *http.Request, user auth.User) {
+	items, err := s.resources.ListMentionCandidates(r.Context(), user, r.URL.Query().Get("q"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// handleResolveMentions is the per-viewer enforcement point for mentions already
+// stored in a note. POST because a note can reference many objects and the ids
+// belong in a body rather than a query string.
+func (s *Server) handleResolveMentions(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var body struct {
+		ResourceIDs []string `json:"resourceIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	items, err := s.resources.ResolveMentions(r.Context(), user, body.ResourceIDs)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (s *Server) handleResourceRoutes(w http.ResponseWriter, r *http.Request, user auth.User) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/resources/")
 	parts := strings.Split(path, "/")

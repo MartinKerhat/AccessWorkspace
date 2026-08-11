@@ -26,6 +26,8 @@ import type {
   BrowserExtensionRuntime,
   BrowserExtensionConnectToken,
   ConnectionCredentialOverride,
+  MentionCandidate,
+  MentionTarget,
   CreateUserInput,
   Directory,
   UserInvite,
@@ -253,6 +255,20 @@ export const api = {
   archiveResource(id: string) {
     return request<{ status: string }>(`/resources/${id}/archive`, {
       method: "POST"
+    });
+  },
+  // Notes "@" picker. Scoped to the caller's own visibility by the backend, so
+  // an admin gets many candidates and a colleague gets only theirs.
+  listMentionCandidates(query: string) {
+    const search = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+    return request<{ items: MentionCandidate[] }>(`/mentions/candidates${search}`);
+  },
+  // Per-viewer resolution of mentions already stored in a note — the single
+  // enforcement point. POST because a note can reference many objects.
+  resolveMentions(resourceIds: string[]) {
+    return request<{ items: MentionTarget[] }>("/mentions/resolve", {
+      method: "POST",
+      body: JSON.stringify({ resourceIds })
     });
   },
   revealResource(id: string) {

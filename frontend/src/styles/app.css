@@ -1527,6 +1527,14 @@ dt {
   width: 100%;
 }
 
+/* Occupies the icon-button column so a row with one button lines its input up
+   with a row that has two (input + Copy + eye). */
+.password-visibility-spacer {
+  display: inline-block;
+  width: 48px;
+  min-width: 48px;
+}
+
 .checkbox {
   grid-template-columns: auto 1fr;
   align-items: center;
@@ -1703,6 +1711,34 @@ textarea {
 
 .override-name.is-default {
   font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* An object mentioned inline in notes. Reads as a link inside the prose rather
+   than as a button, because that is what it is. */
+.mention-chip {
+  display: inline;
+  padding: 1px 5px;
+  margin: 0 1px;
+  border: 1px solid rgba(159, 204, 255, 0.28);
+  border-radius: 7px;
+  background: rgba(159, 204, 255, 0.12);
+  color: #d8ebff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mention-chip:hover {
+  border-color: rgba(159, 204, 255, 0.5);
+  background: rgba(159, 204, 255, 0.2);
+}
+
+/* Mentioned but not readable by this viewer: still shown, because knowing the
+   credential exists is useful, but visibly not the same as one you can open. */
+.mention-chip.denied {
+  border-style: dashed;
+  border-color: rgba(178, 207, 255, 0.22);
+  background: transparent;
   color: var(--text-muted);
 }
 

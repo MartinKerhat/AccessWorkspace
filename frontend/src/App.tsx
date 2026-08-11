@@ -37,6 +37,7 @@ import { ConnectionsAdminSection } from "./pages/ConnectionsAdminSection";
 import { DiagnosticsAdminSection } from "./pages/DiagnosticsAdminSection";
 import { LauncherDownloadsModal } from "./modals/LauncherDownloadsModal";
 import { BrowserExtensionManagerModal } from "./modals/BrowserExtensionManagerModal";
+import { MentionObjectModal } from "./modals/MentionObjectModal";
 import { BrowserExtensionConnectModal } from "./modals/BrowserExtensionConnectModal";
 import { RevealSecretModal } from "./modals/RevealSecretModal";
 import "./styles/app.css";
@@ -44,6 +45,7 @@ import type {
   ArchivedResourceSummary,
   AuditEvent,
   Directory,
+  MentionTarget,
   Resource,
   ResourceForm,
   ResourceSummary
@@ -80,6 +82,12 @@ const AUDIT_PAGE_SIZE = 100;
 export default function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
+  // The object mention whose read-only quick view is open, if any.
+  const [openMention, setOpenMention] = useState<MentionTarget | null>(null);
+  // A mentioned Key Vault secret reuses the Key Vault module's own reveal modal
+  // rather than a bespoke view — one popup per kind of object, everywhere.
+  const [mentionReveal, setMentionReveal] = useState<{ title: string; value: string } | null>(null);
+  const [mentionRevealCopyMessage, setMentionRevealCopyMessage] = useState<string>();
   const {
     loginOptions,
     setLoginOptions,
@@ -135,6 +143,8 @@ export default function App() {
     handleReveal,
     handleRevealStoredPassword,
     handleRevealOverridePassword,
+    handleRevealMentionedObject,
+    mentionTargets,
     handleCopyRevealSecret,
     handleLaunch,
     handleSaveConnectionOverride,
@@ -715,6 +725,35 @@ export default function App() {
         selectedResource.copyAllowed)
   );
 
+  // A mentioned Key Vault secret opens the same reveal modal the Key Vault module
+  // uses — it holds no username and no stored value, so the saved-password view
+  // would be describing something it is not. Saved passwords, and anything the
+  // viewer may not open, use the quick view.
+  async function handleOpenMention(target: MentionTarget) {
+    if (target.category === "keyvault" && target.state === "accessible") {
+      const value = await handleRevealMentionedObject(target.resourceId);
+      if (!value) {
+        return;
+      }
+      setMentionRevealCopyMessage(undefined);
+      setMentionReveal({ title: target.name ?? "Revealed secret", value });
+      return;
+    }
+    setOpenMention(target);
+  }
+
+  async function handleCopyMentionReveal() {
+    if (!mentionReveal) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(mentionReveal.value);
+      setMentionRevealCopyMessage("Secret copied to clipboard");
+    } catch {
+      setMentionRevealCopyMessage("Copying the secret failed");
+    }
+  }
+
   return (
     <div className="workspace-shell">
       <WorkspaceSidebar view={view} visibleCategories={visibleCategories} capabilities={session.capabilities} />
@@ -866,6 +905,8 @@ export default function App() {
                       ? handleRevealStoredPassword
                       : undefined
                   }
+                  mentionTargets={mentionTargets}
+                  onOpenMention={(target) => void handleOpenMention(target)}
                   onLaunch={handleLaunch}
                   onSaveConnectionOverride={handleSaveConnectionOverride}
                   onClearConnectionOverride={handleClearConnectionOverride}
@@ -1157,6 +1198,28 @@ export default function App() {
 
         {launcherDownloadsOpen && launcherRuntime ? (
           <LauncherDownloadsModal runtime={launcherRuntime} onClose={() => setLauncherDownloadsOpen(false)} />
+        ) : null}
+
+        {openMention ? (
+          <MentionObjectModal
+            target={openMention}
+            busy={busy}
+            onReveal={handleRevealMentionedObject}
+            onClose={() => setOpenMention(null)}
+          />
+        ) : null}
+
+        {mentionReveal ? (
+          <RevealSecretModal
+            title={mentionReveal.title}
+            secretValue={mentionReveal.value}
+            copyMessage={mentionRevealCopyMessage}
+            onClose={() => {
+              setMentionReveal(null);
+              setMentionRevealCopyMessage(undefined);
+            }}
+            onCopy={() => void handleCopyMentionReveal()}
+          />
         ) : null}
 
         {browserExtensionManagerOpen && browserExtensionRuntime ? (

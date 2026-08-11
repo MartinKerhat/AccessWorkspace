@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { BrowserExtensionRuntime, ConnectionCredentialOverride, DirectoryUser, LaunchPayload, LauncherRuntime, Resource, ResourceSummary } from "../types";
+import type { BrowserExtensionRuntime, ConnectionCredentialOverride, DirectoryUser, LaunchPayload, LauncherRuntime, MentionTarget, Resource, ResourceSummary } from "../types";
 import { resourceTypeLabel, resourceTypeSummary } from "../resourceMeta";
+import { MentionNotes } from "../components/MentionNotes";
 
 function formatDateTime(value?: string) {
   if (!value) {
@@ -62,6 +63,8 @@ type Props = {
   onReveal: () => Promise<string | undefined>;
   onRevealOverridePassword?: () => Promise<string | undefined>;
   onRevealConnectionPassword?: () => Promise<string | undefined>;
+  mentionTargets?: MentionTarget[];
+  onOpenMention?: (target: MentionTarget) => void;
   onLaunch: () => Promise<void>;
   onSaveConnectionOverride?: (passwordResourceId: string) => Promise<void>;
   onClearConnectionOverride?: () => Promise<void>;
@@ -220,6 +223,8 @@ export function ResourceDetailPage({
   onReveal,
   onRevealOverridePassword,
   onRevealConnectionPassword,
+  mentionTargets = [],
+  onOpenMention,
   onLaunch,
   onSaveConnectionOverride,
   onClearConnectionOverride
@@ -474,7 +479,7 @@ export function ResourceDetailPage({
         <div className="detail-section">
           <p className="eyebrow">Notes</p>
           <div className="connection-notes-card">
-            <p className="connection-notes-copy">{resource.notes || "n/a"}</p>
+            <MentionNotes notes={resource.notes} targets={mentionTargets} onOpenMention={onOpenMention ?? (() => {})} />
           </div>
         </div>
         </>
@@ -699,7 +704,7 @@ export function ResourceDetailPage({
           <div className="detail-section">
             <p className="eyebrow">Notes</p>
             <div className="connection-notes-card">
-              <p className="connection-notes-copy">{resource.notes || "n/a"}</p>
+              <MentionNotes notes={resource.notes} targets={mentionTargets} onOpenMention={onOpenMention ?? (() => {})} />
             </div>
           </div>
         </>

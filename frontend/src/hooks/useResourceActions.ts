@@ -1,11 +1,13 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { api } from "../api/client";
+import { mentionIdsIn } from "../mentions";
 import type {
   ArchivedResourceSummary,
   ConnectionCredentialOverride,
   LaunchPayload,
   LauncherLocalStatus,
   LauncherRuntime,
+  MentionTarget,
   Resource,
   ResourceForm,
   ResourceSummary,
@@ -73,6 +75,7 @@ export function useResourceActions({
 }: UseResourceActionsDeps) {
   const [passwordOptions, setPasswordOptions] = useState<ResourceSummary[]>([]);
   const [connectionOverride, setConnectionOverride] = useState<ConnectionCredentialOverride | null>(null);
+  const [mentionTargets, setMentionTargets] = useState<MentionTarget[]>([]);
   const [reveal, setReveal] = useState<RevealResult | null>(null);
   const [launch, setLaunch] = useState<LaunchPayload | null>(null);
   // Launch-scoped busy state: the desktop-launcher hand-off can legitimately
@@ -137,6 +140,34 @@ export function useResourceActions({
     }
   }, [reveal]);
 
+  // Mentions are resolved per viewer on every read — a verdict cached at write
+  // time would drift as sharing changes. Failure is silent: an unresolved
+  // mention renders as plain text, which is the safe direction.
+  useEffect(() => {
+    const notes = selectedResource?.notes ?? "";
+    const ids = mentionIdsIn(notes);
+    if (!session || ids.length === 0) {
+      setMentionTargets([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await api.resolveMentions(ids);
+        if (!cancelled) {
+          setMentionTargets(response.items);
+        }
+      } catch {
+        if (!cancelled) {
+          setMentionTargets([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedResource?.id, selectedResource?.notes, session]);
+
   async function refreshAfterSensitiveAction() {
     if (!session) {
       return;
@@ -194,6 +225,30 @@ export function useResourceActions({
   // in the Passwords module — without this the user has to leave Connections,
   // find the object and reveal it there. Personal passwords are sealed to the
   // session vault key, so ErrVaultLocked has to run the unlock flow first.
+  // Reveals an object mentioned in the selected resource's notes. Any id is
+  // acceptable here because the API enforces per-viewer access on the target
+  // itself — a denied mention never reaches this call, and if it did it would be
+  // refused server-side.
+  async function handleRevealMentionedObject(resourceID: string) {
+    if (!resourceID || !session) {
+      return undefined;
+    }
+    setBusy(true);
+    try {
+      const response = await api.revealResource(resourceID);
+      await refreshAfterSensitiveAction();
+      return response.secretValue;
+    } catch (error) {
+      if (await guardVaultLocked(error, () => handleRevealMentionedObject(resourceID).then(() => undefined))) {
+        return undefined;
+      }
+      setMessage(error instanceof Error ? error.message : "Reveal failed");
+      return undefined;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleRevealOverridePassword() {
     const passwordResourceId = connectionOverride?.passwordResourceId;
     if (!passwordResourceId || !session) {
@@ -475,6 +530,8 @@ export function useResourceActions({
     handleReveal,
     handleRevealStoredPassword,
     handleRevealOverridePassword,
+    handleRevealMentionedObject,
+    mentionTargets,
     handleCopyRevealSecret,
     handleLaunch,
     handleSaveConnectionOverride,

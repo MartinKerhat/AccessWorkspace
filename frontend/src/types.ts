@@ -661,3 +661,30 @@ export type ConnectionCredentialOverride = {
   personal: boolean;
   updatedAt?: string;
 };
+
+// Object mentions in notes. The stored form is a token inside the plain-text
+// notes column; these types cover the "@" picker and the per-viewer resolution
+// of tokens already stored. See .dev-notes/rdp-credential-handoff-plan.md §5.3.
+export type MentionCandidate = {
+  resourceId: string;
+  category: string;
+  type: ResourceType;
+  name: string;
+  username?: string;
+  folderPath?: string;
+};
+
+// accessible — openable, name and username returned.
+// denied      — not openable; the NAME is disclosed on purpose so the note stays
+//               coherent for a wider audience than the credential itself.
+// hidden      — nothing disclosed, not even the name (personal, archived, gone).
+export type MentionState = "accessible" | "denied" | "hidden";
+
+export type MentionTarget = {
+  resourceId: string;
+  category?: string;
+  state: MentionState;
+  name?: string;
+  username?: string;
+  type?: ResourceType;
+};

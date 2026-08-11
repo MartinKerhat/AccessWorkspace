@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { DirectoryUser, Resource, ResourceForm, UserSummary } from "../types";
+import { MentionNotesField } from "./MentionNotesField";
 
 const defaultForm: ResourceForm = {
   name: "",
@@ -684,7 +685,7 @@ export function ResourceFormCard({
         </label>
         <label className="wide">
           <span>Notes</span>
-          <textarea value={form.notes} onChange={(event) => update("notes", event.target.value)} rows={3} />
+          <MentionNotesField value={form.notes} rows={3} disabled={coreLocked} onChange={(next) => update("notes", next)} />
         </label>
         <label className="wide">
           <span>Shared with</span>
