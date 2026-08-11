@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   busy: boolean;
@@ -16,7 +17,7 @@ export function ChangePasswordModal({ busy, onSave, onClose }: Props) {
   const ready = currentPassword !== "" && newPassword.length >= 8 && newPassword === confirmPassword;
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

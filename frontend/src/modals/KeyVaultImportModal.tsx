@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { KeyVaultDiscoverResult, KeyVaultImportForm, LocalGroup, UserSummary } from "../types";
 import { getSelectedKeyVaultItems } from "../keyVault";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   discoveries: KeyVaultDiscoverResult;
@@ -116,7 +117,7 @@ export function KeyVaultImportModal({
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card keyvault-import-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

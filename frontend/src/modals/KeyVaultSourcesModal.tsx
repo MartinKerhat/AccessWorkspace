@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { KeyVaultSource, LocalGroup, UserSummary } from "../types";
 import { emptyKeyVaultSource } from "../keyVault";
+import { scrimDismissProps } from "./scrim";
 
 type PickerState = { index: number; kind: "owner" | "ownerTeam" | "group" } | null;
 
@@ -85,7 +86,7 @@ export function KeyVaultSourcesModal({ sources, setSources, knownUsers, localGro
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

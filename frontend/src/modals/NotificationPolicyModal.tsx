@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { NotificationPolicyModalState } from "../types";
+import { scrimDismissProps } from "./scrim";
 
 type ResourceState = Extract<NotificationPolicyModalState, { mode: "resource" }>;
 
@@ -25,7 +26,7 @@ export function NotificationPolicyModal({ state, setState, busy, onSave, onClose
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

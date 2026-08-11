@@ -1,5 +1,6 @@
 import { ResourceFormCard } from "../components/ResourceForm";
 import type { DirectoryUser, Resource, ResourceForm, UserSummary } from "../types";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   mode: "create" | "edit";
@@ -42,7 +43,7 @@ export function ResourceFormModal({
   onClose
 }: Props) {
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

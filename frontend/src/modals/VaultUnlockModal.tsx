@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   // hasVault false = first-time setup; true = unlock an existing vault.
@@ -32,7 +33,7 @@ export function VaultUnlockModal({ hasVault, passkeyCapable, hasPasskey, busy, m
   const ready = setup ? passphrase.length >= 8 && passphrase === confirm : passphrase !== "";
 
   return (
-    <div className="modal-scrim" onClick={onCancel}>
+    <div className="modal-scrim" {...scrimDismissProps(onCancel)}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

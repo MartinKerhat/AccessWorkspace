@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { MentionTarget } from "../types";
+import { scrimDismissProps } from "./scrim";
 
 
 type Props = {
@@ -77,7 +78,7 @@ export function MentionObjectModal({ target, busy, onReveal, onClose }: Props) {
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card reveal-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

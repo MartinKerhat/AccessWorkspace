@@ -1,6 +1,7 @@
 import type { LauncherRuntime } from "../types";
 import { formatArtifactMeta } from "../format";
 import { detectClientLauncherPlatform, matchesLauncherPlatform } from "../platform";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   runtime: LauncherRuntime;
@@ -17,7 +18,7 @@ export function LauncherDownloadsModal({ runtime, onClose }: Props) {
     return aMatch - bMatch;
   });
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card browser-extension-manager-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

@@ -1,4 +1,5 @@
 import type { BrowserExtensionConnectState } from "../types";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   connectState: BrowserExtensionConnectState;
@@ -10,7 +11,7 @@ type Props = {
 
 export function BrowserExtensionConnectModal({ connectState, hasRuntime, onClose, onOpenManager, onRetry }: Props) {
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card reveal-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

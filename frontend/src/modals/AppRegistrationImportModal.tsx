@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { AppRegistrationDiscoverResult, AppRegistrationImportForm, LocalGroup, UserSummary } from "../types";
 import { getSelectedAppRegistrationItems, nextDiscoveredCredential, discoveredCredentialSummary } from "../appRegistration";
 import { formatShortDate } from "../format";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   discoveries: AppRegistrationDiscoverResult;
@@ -115,7 +116,7 @@ export function AppRegistrationImportModal({
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card keyvault-import-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

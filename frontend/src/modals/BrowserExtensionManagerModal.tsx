@@ -1,6 +1,7 @@
 import type { BrowserExtensionPackage } from "../types";
 import { formatArtifactMeta } from "../format";
 import { browserExtensionStatusLabel } from "../browserExtension";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   visiblePackages: BrowserExtensionPackage[];
@@ -12,7 +13,7 @@ type Props = {
 
 export function BrowserExtensionManagerModal({ visiblePackages, currentPackage, busy, onClose, onConnect }: Props) {
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card browser-extension-manager-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

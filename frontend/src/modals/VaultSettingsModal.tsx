@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { VaultMethodDetail, VaultStatus } from "../types";
 import { suggestPasskeyNickname } from "../hooks/useVault";
+import { scrimDismissProps } from "./scrim";
 
 type Props = {
   status: VaultStatus;
@@ -106,7 +107,7 @@ export function VaultSettingsModal({
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card vault-settings-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
