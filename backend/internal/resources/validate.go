@@ -76,18 +76,23 @@ func normalizeInput(input CreateResourceInput) CreateResourceInput {
 		input.AllowedGroups = []string{}
 		input.AllowedUsers = []string{}
 	}
-	// Saved passwords have a single usage flag (copyAllowed); reveal and
-	// launch are meaningless for them and must not linger in storage where a
-	// future check could pick them up.
+	// Launching a saved password is meaningless and must not linger in storage
+	// where a future check could pick it up.
 	if input.Type == TypeSharedSecret {
-		input.RevealAllowed = false
 		input.LaunchAllowed = false
 	}
-	// Passwordless portals (SSO / emailed code) have no secret, so a reveal
-	// right would be meaningless and must not linger in storage.
+	// Copy and reveal are ONE permission (maintainer ruling 2026-08-11), so the
+	// two columns are written in step and no object can end up half-allowed.
+	// Both are kept rather than collapsed to one column so no schema migration
+	// is needed and rows written before the ruling still read correctly.
+	usage := input.RevealAllowed || input.CopyAllowed
+	// Nothing to copy or reveal when nothing is stored: passwordless portals
+	// (SSO / emailed code) have no secret at all.
 	if input.Type == TypeWebPortal && input.SecretMode == SecretModeNone {
-		input.RevealAllowed = false
+		usage = false
 	}
+	input.RevealAllowed = usage
+	input.CopyAllowed = usage
 	return input
 }
 

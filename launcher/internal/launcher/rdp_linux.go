@@ -38,7 +38,7 @@ func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewa
 
 	username := strings.TrimSpace(payload.MetadataString(item.Metadata, "username"))
 	domain := strings.TrimSpace(payload.MetadataString(item.Metadata, "connectionDomain"))
-	secret := payload.MetadataString(item.Metadata, "secretValue")
+	secret := payload.MetadataSecret(item.Metadata, "secretValue")
 
 	args := []string{fmt.Sprintf("/v:%s:%s", host, port)}
 	if username != "" {

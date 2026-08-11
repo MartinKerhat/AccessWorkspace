@@ -103,6 +103,22 @@ func MetadataString(metadata map[string]interface{}, key string) string {
 	return strings.TrimSpace(text)
 }
 
+// MetadataSecret returns a metadata value verbatim. Unlike MetadataString it
+// must never trim: a password may legitimately begin or end with whitespace
+// (and a Key Vault secret often carries a trailing newline), so trimming turns
+// a correct credential into a failed logon that looks like a wrong password.
+func MetadataSecret(metadata map[string]interface{}, key string) string {
+	value, ok := metadata[key]
+	if !ok {
+		return ""
+	}
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return text
+}
+
 func MetadataBool(metadata map[string]interface{}, key string) bool {
 	value, ok := metadata[key]
 	if !ok {

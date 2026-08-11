@@ -134,6 +134,7 @@ export default function App() {
     revealCopyMessage,
     handleReveal,
     handleRevealStoredPassword,
+    handleRevealOverridePassword,
     handleCopyRevealSecret,
     handleLaunch,
     handleSaveConnectionOverride,
@@ -700,6 +701,20 @@ export default function App() {
 
   const currentUser = session.user;
 
+  // Mirrors the backend's canRevealConnectionSecret: owners and admins always,
+  // everyone else only when the connection opts in. Copy and reveal are one
+  // permission, so either field counts. Kept in step with the backend so the UI
+  // never offers a reveal the API will refuse.
+  const canRevealSelectedConnectionSecret = Boolean(
+    selectedResource &&
+      selectedResource.category === "connections" &&
+      session.capabilities.categories.connections?.reveal &&
+      (selectedResource.ownerUserId === session.user.id ||
+        (!selectedResource.personal && session.user.isAdmin) ||
+        selectedResource.revealAllowed ||
+        selectedResource.copyAllowed)
+  );
+
   return (
     <div className="workspace-shell">
       <WorkspaceSidebar view={view} visibleCategories={visibleCategories} capabilities={session.capabilities} />
@@ -841,6 +856,16 @@ export default function App() {
                   onOpenBrowserExtensions={() => setBrowserExtensionManagerOpen(true)}
                   onOpenLauncherDownloads={() => setLauncherDownloadsOpen(true)}
                   onReveal={handleReveal}
+                  onRevealOverridePassword={handleRevealOverridePassword}
+                  onRevealConnectionPassword={
+                    selectedResource &&
+                    selectedResource.category === "connections" &&
+                    selectedResource.secret.mode !== "none" &&
+                    selectedResource.secret.mode !== "prompt_on_launch" &&
+                    canRevealSelectedConnectionSecret
+                      ? handleRevealStoredPassword
+                      : undefined
+                  }
                   onLaunch={handleLaunch}
                   onSaveConnectionOverride={handleSaveConnectionOverride}
                   onClearConnectionOverride={handleClearConnectionOverride}
@@ -1002,9 +1027,10 @@ export default function App() {
             onRevealStoredPassword={
               formState.mode === "edit" &&
               selectedResource &&
-              selectedResource.category === "passwords" &&
-              ((!selectedResource.personal && session.user.isAdmin) ||
-                selectedResource.ownerUserId === session.user.id)
+              ((selectedResource.category === "passwords" &&
+                ((!selectedResource.personal && session.user.isAdmin) ||
+                  selectedResource.ownerUserId === session.user.id)) ||
+                (selectedResource.category === "connections" && canRevealSelectedConnectionSecret))
                 ? handleRevealStoredPassword
                 : undefined
             }

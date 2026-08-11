@@ -40,7 +40,10 @@ func TestCreateAllowsSharedPasswordForNonAdminAndForcesOwnership(t *testing.T) {
 	}
 }
 
-func TestCreateSharedSecretClearsRevealAndLaunchFlags(t *testing.T) {
+// Launch stays meaningless for a saved password. Copy and reveal are one
+// permission now, so they must come out of normalization equal to each other
+// rather than reveal being cleared (maintainer ruling 2026-08-11).
+func TestCreateSharedSecretClearsLaunchAndUnifiesUsageFlags(t *testing.T) {
 	store := &personalPasswordStore{}
 	service := NewService(store, &captureAuditLogger{}, fakeKeyVaultResolver{}, nil, nil)
 	user := auth.User{ID: "martin", Name: "Martin Kerhat", Rights: []string{"passwords.edit"}}
@@ -57,11 +60,32 @@ func TestCreateSharedSecretClearsRevealAndLaunchFlags(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("expected create to succeed, got %v", err)
 	}
-	if store.createdInput.RevealAllowed || store.createdInput.LaunchAllowed {
-		t.Fatalf("expected reveal/launch flags to be cleared for saved passwords, got reveal=%v launch=%v", store.createdInput.RevealAllowed, store.createdInput.LaunchAllowed)
+	if store.createdInput.LaunchAllowed {
+		t.Fatal("expected the launch flag to be cleared for a saved password")
 	}
-	if !store.createdInput.CopyAllowed {
-		t.Fatalf("expected copy flag to be preserved")
+	if !store.createdInput.RevealAllowed || !store.createdInput.CopyAllowed {
+		t.Fatalf("expected copy and reveal to be allowed together, got reveal=%v copy=%v",
+			store.createdInput.RevealAllowed, store.createdInput.CopyAllowed)
+	}
+}
+
+// Setting either half of the pair means the object is usable; normalization
+// stores both so nothing ends up half-allowed.
+func TestNormalizeUnifiesCopyAndRevealFlags(t *testing.T) {
+	copyOnly := normalizeInput(CreateResourceInput{Type: TypeSharedSecret, CopyAllowed: true})
+	if !copyOnly.RevealAllowed || !copyOnly.CopyAllowed {
+		t.Fatalf("expected copyAllowed to imply revealAllowed, got reveal=%v copy=%v", copyOnly.RevealAllowed, copyOnly.CopyAllowed)
+	}
+
+	neither := normalizeInput(CreateResourceInput{Type: TypeSharedSecret})
+	if neither.RevealAllowed || neither.CopyAllowed {
+		t.Fatalf("expected both flags to stay off, got reveal=%v copy=%v", neither.RevealAllowed, neither.CopyAllowed)
+	}
+
+	// A portal with no stored secret has nothing to copy or reveal.
+	passwordless := normalizeInput(CreateResourceInput{Type: TypeWebPortal, SecretMode: SecretModeNone, CopyAllowed: true, RevealAllowed: true})
+	if passwordless.RevealAllowed || passwordless.CopyAllowed {
+		t.Fatalf("expected a passwordless portal to allow neither, got reveal=%v copy=%v", passwordless.RevealAllowed, passwordless.CopyAllowed)
 	}
 }
 
@@ -229,7 +253,61 @@ func TestRestoreRefusesPersonalResources(t *testing.T) {
 	}
 }
 
-func TestRevealSharedSecretIgnoresRevealAllowedForNonOwner(t *testing.T) {
+// A connection whose target forces its own credential prompt is unusable
+// unless the people it is shared with can read the password and type it, so
+// revealAllowed opens the connection secret to them. Owners and admins never
+// need the flag.
+func TestRevealConnectionSecretRespectsRevealAllowed(t *testing.T) {
+	newStore := func(revealAllowed bool) *browserExtensionStore {
+		return &browserExtensionStore{
+			items: map[string]Resource{
+				"rdp-1": {
+					ID:            "rdp-1",
+					Name:          "Finance Jump Host",
+					Type:          TypeRDP,
+					Category:      "connections",
+					Owner:         "Alice",
+					OwnerUserID:   "alice",
+					Username:      "finops-user",
+					RevealAllowed: revealAllowed,
+					AllowedGroups: []string{"support"},
+					Secret:        Secret{Mode: SecretModeInline, Value: "jump-secret"},
+				},
+			},
+		}
+	}
+	shared := auth.User{ID: "rita", Name: "Rita Reader", Rights: []string{"connections.read"}, LocalGroups: []string{"support"}}
+	owner := auth.User{ID: "alice", Name: "Alice", Rights: []string{"connections.read"}}
+
+	service := NewService(newStore(false), &captureAuditLogger{}, fakeKeyVaultResolver{}, nil, nil)
+	if _, err := service.Reveal(context.Background(), shared, "rdp-1"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected reveal to be denied for a shared user when revealAllowed is off, got %v", err)
+	}
+	result, err := service.Reveal(context.Background(), owner, "rdp-1")
+	if err != nil {
+		t.Fatalf("expected the owner to reveal without the flag, got %v", err)
+	}
+	if result.SecretValue != "jump-secret" {
+		t.Fatalf("expected the stored connection password, got %#v", result)
+	}
+
+	service = NewService(newStore(true), &captureAuditLogger{}, fakeKeyVaultResolver{}, nil, nil)
+	result, err = service.Reveal(context.Background(), shared, "rdp-1")
+	if err != nil {
+		t.Fatalf("expected reveal via revealAllowed to succeed for a shared user, got %v", err)
+	}
+	if result.SecretValue != "jump-secret" {
+		t.Fatalf("expected the stored connection password, got %#v", result)
+	}
+}
+
+// Replaces TestRevealSharedSecretIgnoresRevealAllowedForNonOwner, which asserted
+// the old split (revealAllowed alone did NOT grant reveal on a saved password —
+// only copyAllowed did). That deny was deliberate under the two-flag model and
+// is deliberately gone under the one-flag ruling of 2026-08-11: either half of
+// the pair now means the shared user may use the secret. What still matters is
+// that a non-owner with NEITHER flag is refused.
+func TestRevealSharedSecretRequiresAUsageFlagForNonOwner(t *testing.T) {
 	store := &browserExtensionStore{
 		items: map[string]Resource{
 			"pwd-1": {
@@ -240,7 +318,7 @@ func TestRevealSharedSecretIgnoresRevealAllowedForNonOwner(t *testing.T) {
 				Owner:         "Alice",
 				OwnerUserID:   "alice",
 				Username:      "svc",
-				RevealAllowed: true,
+				RevealAllowed: false,
 				CopyAllowed:   false,
 				Secret:        Secret{Mode: SecretModeInline, Value: "topsecret"},
 			},
@@ -250,17 +328,21 @@ func TestRevealSharedSecretIgnoresRevealAllowedForNonOwner(t *testing.T) {
 	reader := auth.User{ID: "rita", Name: "Rita Reader", Rights: []string{"passwords.read"}}
 
 	if _, err := service.Reveal(context.Background(), reader, "pwd-1"); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("expected reveal to be denied when only revealAllowed is set on a saved password, got %v", err)
+		t.Fatalf("expected reveal to be denied with neither usage flag set, got %v", err)
 	}
 
-	item := store.items["pwd-1"]
-	item.CopyAllowed = true
-	store.items["pwd-1"] = item
-	result, err := service.Reveal(context.Background(), reader, "pwd-1")
-	if err != nil {
-		t.Fatalf("expected reveal via copyAllowed to succeed, got %v", err)
-	}
-	if result.SecretValue != "topsecret" {
-		t.Fatalf("expected stored password, got %#v", result)
+	// Either flag alone is enough — legacy rows may carry only one of them.
+	for _, flag := range []string{"reveal", "copy"} {
+		item := store.items["pwd-1"]
+		item.RevealAllowed = flag == "reveal"
+		item.CopyAllowed = flag == "copy"
+		store.items["pwd-1"] = item
+		result, err := service.Reveal(context.Background(), reader, "pwd-1")
+		if err != nil {
+			t.Fatalf("expected reveal via %sAllowed to succeed, got %v", flag, err)
+		}
+		if result.SecretValue != "topsecret" {
+			t.Fatalf("expected stored password via %sAllowed, got %#v", flag, result)
+		}
 	}
 }

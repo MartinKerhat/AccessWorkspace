@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"access-workspace/launcher/internal/launcherinfo"
 	"access-workspace/launcher/internal/payload"
@@ -264,9 +266,9 @@ func writeRDPProfile(item payload.LaunchPayload, host string, port string, metad
 	lines := buildRDPProfileLines(host, port, metadata, username, domain)
 	content := strings.Join(lines, "\r\n") + "\r\n"
 
-	if existing, err := os.ReadFile(profilePath); err == nil {
-		if rdpProfileMatches(content, string(existing)) {
-			signRequired := !rdpProfileHasSignature(string(existing))
+	if existing, err := readRDPProfileText(profilePath); err == nil {
+		if rdpProfileMatches(content, existing) {
+			signRequired := !rdpProfileHasSignature(existing)
 			if !signRequired {
 				signRequired = rdpProfileSignerChanged(profilePath, metadata)
 			}
@@ -355,6 +357,36 @@ func rdpProfileHasSignature(content string) bool {
 		}
 	}
 	return false
+}
+
+// readRDPProfileText reads a stored profile as text whatever encoding it is in.
+// rdpsign.exe rewrites the file as UTF-16LE with a BOM, so the bytes read back
+// are not the UTF-8 that was written: comparing them raw never matched, the
+// cached profile was therefore rewritten and re-signed on every single launch,
+// and rdpProfileHasSignature could never find the signature it had just added.
+func readRDPProfileText(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case len(raw) >= 2 && raw[0] == 0xFF && raw[1] == 0xFE:
+		return decodeUTF16(raw[2:], binary.LittleEndian), nil
+	case len(raw) >= 2 && raw[0] == 0xFE && raw[1] == 0xFF:
+		return decodeUTF16(raw[2:], binary.BigEndian), nil
+	case len(raw) >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF:
+		return string(raw[3:]), nil
+	default:
+		return string(raw), nil
+	}
+}
+
+func decodeUTF16(raw []byte, order binary.ByteOrder) string {
+	units := make([]uint16, 0, len(raw)/2)
+	for index := 0; index+1 < len(raw); index += 2 {
+		units = append(units, order.Uint16(raw[index:index+2]))
+	}
+	return string(utf16.Decode(units))
 }
 
 func normalizeRDPProfileLines(content string) []string {

@@ -40,7 +40,7 @@ func runSSHPlatform(item payload.LaunchPayload) error {
 		port = raw
 	}
 
-	secret := payload.MetadataString(item.Metadata, "secretValue")
+	secret := payload.MetadataSecret(item.Metadata, "secretValue")
 	if strings.TrimSpace(secret) == "" {
 		return startNativeSSHWindows(username, host, port)
 	}
@@ -85,7 +85,7 @@ func RunSSHSession(item payload.LaunchPayload) error {
 		port = "22"
 	}
 
-	secret := payload.MetadataString(item.Metadata, "secretValue")
+	secret := payload.MetadataSecret(item.Metadata, "secretValue")
 	if strings.TrimSpace(secret) == "" {
 		return startNativeSSHInCurrentConsole(username, host, port)
 	}

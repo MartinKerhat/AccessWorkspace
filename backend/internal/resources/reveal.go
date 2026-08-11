@@ -23,8 +23,8 @@ func (s *Service) Reveal(ctx context.Context, user auth.User, id string) (Reveal
 	// category split, a stray revealAllowed=true on a saved password would
 	// grant readers a reveal the UI can neither show nor manage.
 	generalRevealAllowed := CategoryForType(resource.Type) != "passwords" &&
-		canRevealResource(user, resource) && resource.RevealAllowed
-	if !generalRevealAllowed && !canRevealStoredPassword(user, resource) {
+		canRevealResource(user, resource) && secretUsageAllowed(resource)
+	if !generalRevealAllowed && !canRevealStoredPassword(user, resource) && !canRevealConnectionSecret(user, resource) {
 		return RevealResult{}, accessDenied(user, resource.Summary())
 	}
 	_ = s.audit.Log(ctx, audit.LogParams{
@@ -69,6 +69,19 @@ func (s *Service) resolveRevealValue(ctx context.Context, user auth.User, resour
 		}
 		return value, nil
 	}
+	// A connection can hold its secret as an external reference rather than
+	// inline (secret mode "External reference"). Without this branch reveal
+	// returns an empty string for those objects while launch resolves them
+	// correctly — the same lookup resolveLaunchSecret performs.
+	if resource.Secret.Mode == SecretModeExternal && s.keyVault != nil {
+		reference := strings.TrimSpace(resource.Secret.Reference)
+		if reference == "" {
+			reference = strings.TrimSpace(resource.LinkedSecretRef)
+		}
+		if reference != "" {
+			return s.keyVault.RevealSecret(ctx, reference)
+		}
+	}
 	if resource.Secret.Mode == SecretModeInline && s.cipher != nil {
 		return s.decryptStoredSecret(ctx, user, resource.Secret.Value)
 	}
@@ -83,8 +96,12 @@ func (s *Service) prepareSecretForStorage(ctx context.Context, user auth.User, i
 		input.SecretValue = ""
 		return nil
 	}
-	value := strings.TrimSpace(input.SecretValue)
-	if value == "" {
+	// Blank (or whitespace-only) means "keep the stored secret" — that check is
+	// the only thing trimming is for here. The secret itself is stored exactly
+	// as entered: a password may legitimately begin or end with a space, and
+	// trimming it silently stores a credential that will never work.
+	trimmed := strings.TrimSpace(input.SecretValue)
+	if trimmed == "" {
 		return nil
 	}
 
@@ -93,18 +110,19 @@ func (s *Service) prepareSecretForStorage(ctx context.Context, user auth.User, i
 	// stored, switch classes — a re-wrap of the same secret, not a re-type.
 	// personal→shared needs the owner's unlocked session to read the personal
 	// envelope; shared→personal the server can do (it holds the org key and
-	// the owner's public key).
-	if IsEncryptedForStorage(value) {
-		if IsPersonalEnvelope(value) == input.Personal {
-			input.SecretValue = value
+	// the owner's public key). Storage envelopes never carry surrounding
+	// whitespace, so the trimmed form is the right one to inspect and re-store.
+	if IsEncryptedForStorage(trimmed) {
+		if IsPersonalEnvelope(trimmed) == input.Personal {
+			input.SecretValue = trimmed
 			return nil
 		}
 		var plain string
 		var err error
-		if IsPersonalEnvelope(value) {
-			plain, err = s.cipher.DecryptPersonalFromStorage(ctx, value, user.VaultPrivateKey)
+		if IsPersonalEnvelope(trimmed) {
+			plain, err = s.cipher.DecryptPersonalFromStorage(ctx, trimmed, user.VaultPrivateKey)
 		} else {
-			plain, err = s.cipher.DecryptFromStorage(ctx, value)
+			plain, err = s.cipher.DecryptFromStorage(ctx, trimmed)
 		}
 		if err != nil {
 			return err
@@ -112,7 +130,7 @@ func (s *Service) prepareSecretForStorage(ctx context.Context, user auth.User, i
 		return s.encryptForScope(ctx, input, plain)
 	}
 
-	return s.encryptForScope(ctx, input, value)
+	return s.encryptForScope(ctx, input, input.SecretValue)
 }
 
 // encryptForScope seals plaintext into the class matching input.Personal:

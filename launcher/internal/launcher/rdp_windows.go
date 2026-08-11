@@ -20,7 +20,7 @@ func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewa
 		payload.MetadataString(item.Metadata, "connectionDomain"),
 		payload.MetadataString(item.Metadata, "username"),
 	)
-	secret := payload.MetadataString(item.Metadata, "secretValue")
+	secret := payload.MetadataSecret(item.Metadata, "secretValue")
 	cmdkeyTargets := []string{}
 	if login != "" && secret != "" {
 		cmdkeyTargets = buildRDPStoredCredentialTargets(host, port)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BrowserExtensionRuntime, ConnectionCredentialOverride, DirectoryUser, LaunchPayload, LauncherRuntime, Resource, ResourceSummary } from "../types";
 import { resourceTypeLabel, resourceTypeSummary } from "../resourceMeta";
 
@@ -60,6 +60,8 @@ type Props = {
   onOpenBrowserExtensions?: () => void;
   onOpenLauncherDownloads?: () => void;
   onReveal: () => Promise<string | undefined>;
+  onRevealOverridePassword?: () => Promise<string | undefined>;
+  onRevealConnectionPassword?: () => Promise<string | undefined>;
   onLaunch: () => Promise<void>;
   onSaveConnectionOverride?: (passwordResourceId: string) => Promise<void>;
   onClearConnectionOverride?: () => Promise<void>;
@@ -82,7 +84,118 @@ function showDetailLaunchAction(resource: Resource) {
 }
 
 function showDetailRevealAction(resource: Resource) {
-  return resource.type === "key_vault_secret" && resource.revealAllowed;
+  return resource.type === "key_vault_secret" && secretUsagePolicy(resource);
+}
+
+// Copy and reveal are one permission; the two fields are written together and
+// either being set means the secret may be used. Mirrors the backend's
+// secretUsageAllowed, including the OR that covers pre-unification rows.
+function secretUsagePolicy(resource: Resource) {
+  return resource.revealAllowed || resource.copyAllowed;
+}
+
+// Fetches a secret only when the user asks for it and caches it until resetKey
+// changes, so the reveal is audited once per selection rather than once per
+// click. resetKey should be a value whose identity changes whenever the
+// underlying secret might have (the refetched resource, the override object).
+function useLazySecret(reveal: (() => Promise<string | undefined>) | undefined, resetKey: unknown) {
+  const [value, setValue] = useState("");
+  const [visible, setVisible] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setValue("");
+    setVisible(false);
+    setMessage("");
+  }, [resetKey]);
+
+  async function resolve() {
+    if (value) {
+      return value;
+    }
+    const next = await reveal?.();
+    if (!next) {
+      return "";
+    }
+    setValue(next);
+    return next;
+  }
+
+  return {
+    value,
+    visible,
+    message,
+    async copy() {
+      const next = await resolve();
+      if (!next) {
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(next);
+        setMessage("Password copied to clipboard");
+      } catch {
+        setMessage("Copying the password failed");
+      }
+    },
+    async toggle() {
+      if (visible) {
+        setVisible(false);
+        return;
+      }
+      if (!(await resolve())) {
+        return;
+      }
+      setVisible(true);
+    }
+  };
+}
+
+// Same eye icon as the edit form's password field — one reveal affordance
+// across the app, not a "Show" button here and an icon there.
+function PasswordRevealRow({
+  secret,
+  disabled,
+  ariaLabel
+}: {
+  secret: ReturnType<typeof useLazySecret>;
+  disabled: boolean;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="password-detail-row">
+      <input
+        className="password-detail-input"
+        type={secret.visible ? "text" : "password"}
+        value={secret.visible && secret.value ? secret.value : "••••••••••••"}
+        readOnly
+        aria-label={ariaLabel}
+      />
+      <button className="button ghost" disabled={disabled} onClick={() => void secret.copy()}>
+        Copy password
+      </button>
+      <button
+        type="button"
+        className="password-visibility-button"
+        disabled={disabled}
+        onClick={() => void secret.toggle()}
+        aria-label={secret.visible ? "Hide password" : "Show password"}
+        title={secret.visible ? "Hide password" : "Show password"}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M2 12c2.4-4 5.8-6 10-6s7.6 2 10 6c-2.4 4-5.8 6-10 6s-7.6-2-10-6Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          {!secret.visible ? <path d="M4 20 20 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /> : null}
+        </svg>
+      </button>
+    </div>
+  );
 }
 
 export function ResourceDetailPage({
@@ -105,6 +218,8 @@ export function ResourceDetailPage({
   onOpenBrowserExtensions,
   onOpenLauncherDownloads,
   onReveal,
+  onRevealOverridePassword,
+  onRevealConnectionPassword,
   onLaunch,
   onSaveConnectionOverride,
   onClearConnectionOverride
@@ -121,6 +236,18 @@ export function ResourceDetailPage({
   const [overrideExpanded, setOverrideExpanded] = useState(false);
   const [overridePickerOpen, setOverridePickerOpen] = useState(false);
   const [overrideSearch, setOverrideSearch] = useState("");
+  const overrideSecret = useLazySecret(onRevealOverridePassword, connectionOverride);
+  const connectionSecret = useLazySecret(onRevealConnectionPassword, resource);
+  const overrideActive = Boolean(connectionOverride?.passwordResourceId);
+  const overridePickerRef = useRef<HTMLDivElement | null>(null);
+
+  // The picker is in-flow inside a scrolling panel, so opening it can leave the
+  // options below the fold. Bring them into view instead of making the user hunt.
+  useEffect(() => {
+    if (overridePickerOpen) {
+      overridePickerRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [overridePickerOpen]);
 
   const overrideOptions = passwordOptions.filter((item) => item.personal && item.type === "shared_secret");
   const filteredOverrideOptions = overrideOptions.filter((item) => {
@@ -187,6 +314,7 @@ export function ResourceDetailPage({
       setPasswordCopyMessage("Copying the password failed");
     }
   }
+
 
   return (
     <section className="panel detail-panel">
@@ -331,6 +459,18 @@ export function ResourceDetailPage({
             <dd>{resource.connectionDomain || "n/a"}</dd>
           </div>
         </dl>
+        {onRevealConnectionPassword ? (
+          <div className="detail-section">
+            <p className="eyebrow">Connection password</p>
+            <PasswordRevealRow secret={connectionSecret} disabled={Boolean(loading)} ariaLabel="Connection password" />
+            <p className="detail-description">
+              {resource.username
+                ? `Sign in as ${resource.username}. Some servers enforce their own credential prompt and ignore the password the launcher passes — copy it here and paste it into that prompt.`
+                : "Some servers enforce their own credential prompt and ignore the password the launcher passes — copy it here and paste it into that prompt."}
+            </p>
+            {connectionSecret.message ? <p className="detail-description">{connectionSecret.message}</p> : null}
+          </div>
+        ) : null}
         <div className="detail-section">
           <p className="eyebrow">Notes</p>
           <div className="connection-notes-card">
@@ -341,27 +481,38 @@ export function ResourceDetailPage({
       ) : null}
 
       {isConnection ? (
-        <div className="detail-section">
+        <div className={`detail-section override-section${overrideActive ? " is-active" : ""}`}>
           <div className="override-summary-row">
             <div>
               <p className="eyebrow">My credential override</p>
-              <p className="detail-description">
-                {connectionOverride?.passwordResourceId
-                  ? `${connectionOverride.passwordResourceName || "Saved password"}${connectionOverride.username ? ` (${connectionOverride.username})` : ""}`
-                  : "Shared connection default"}
-              </p>
+              {overrideActive ? (
+                <p className="override-name">{connectionOverride?.passwordResourceName || "Saved password"}</p>
+              ) : (
+                <p className="override-name is-default">Shared connection default</p>
+              )}
             </div>
             <button className="button ghost" onClick={() => setOverrideExpanded((expanded) => !expanded)}>
               {overrideExpanded ? "Hide" : "Change"}
             </button>
           </div>
+          {overrideActive && onRevealOverridePassword ? (
+            <>
+              <PasswordRevealRow secret={overrideSecret} disabled={Boolean(loading)} ariaLabel="Override password" />
+              <p className="detail-description">
+                {connectionOverride?.username
+                  ? `The launcher uses this override instead of the connection's own password, signing in as ${connectionOverride.username}.`
+                  : "The launcher uses this override instead of the connection's own password."}
+              </p>
+              {overrideSecret.message ? <p className="detail-description">{overrideSecret.message}</p> : null}
+            </>
+          ) : null}
           {overrideExpanded ? (
             <>
               <p className="detail-description">
                 Keep the shared connection default, or pick one of your personal saved passwords to use your own username and
                 password for this connection.
               </p>
-              <div className="picker-shell">
+              <div className="picker-shell picker-shell-inline" ref={overridePickerRef}>
                 <button
                   type="button"
                   className="single-picker-trigger"
@@ -465,12 +616,8 @@ export function ResourceDetailPage({
               </dd>
             </div>
             <div>
-              <dt>Reveal policy</dt>
-              <dd>{resource.secret.mode === "none" ? "n/a" : resource.revealAllowed ? "allowed" : "disabled"}</dd>
-            </div>
-            <div>
-              <dt>Browser fill policy</dt>
-              <dd>{resource.copyAllowed ? "allowed" : "disabled"}</dd>
+              <dt>Copy / reveal / fill</dt>
+              <dd>{resource.secret.mode === "none" ? "n/a" : secretUsagePolicy(resource) ? "allowed" : "disabled"}</dd>
             </div>
             <div>
               <dt>Open target policy</dt>
@@ -497,7 +644,7 @@ export function ResourceDetailPage({
                 />
                 <button
                   className="button ghost"
-                  disabled={loading || (!resource.revealAllowed && !canOverrideRevealPolicy)}
+                  disabled={loading || (!secretUsagePolicy(resource) && !canOverrideRevealPolicy)}
                   onClick={() => void handleCopyPassword()}
                 >
                   Reveal
@@ -525,8 +672,8 @@ export function ResourceDetailPage({
               <dd>{resource.targetSystem || "n/a"}</dd>
             </div>
             <div>
-              <dt>Copy policy</dt>
-              <dd>{resource.copyAllowed ? "allowed" : "disabled"}</dd>
+              <dt>Copy / reveal</dt>
+              <dd>{secretUsagePolicy(resource) ? "allowed" : "disabled"}</dd>
             </div>
           </dl>
           <div className="detail-section">
@@ -541,7 +688,7 @@ export function ResourceDetailPage({
               />
               <button
                 className="button ghost"
-                disabled={loading || (!resource.copyAllowed && !canOverrideRevealPolicy)}
+                disabled={loading || (!secretUsagePolicy(resource) && !canOverrideRevealPolicy)}
                 onClick={() => void handleCopyPassword()}
               >
                 Reveal

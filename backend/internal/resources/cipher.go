@@ -193,7 +193,11 @@ func (c *SecretCipher) EncryptForStorage(ctx context.Context, value string, clas
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
 	}
-	sealed := gcm.Seal(nonce, nonce, []byte(trimmed), nil)
+	// Seal the value as given, not the trimmed copy: trimming is only how this
+	// decides "nothing to store" and "already an envelope". A password may
+	// legitimately begin or end with whitespace, and sealing a trimmed copy
+	// stores a credential that can never authenticate.
+	sealed := gcm.Seal(nonce, nonce, []byte(value), nil)
 
 	wrapped, err := c.kek.WrapDEK(ctx, dek)
 	if err != nil {
@@ -240,7 +244,8 @@ func (c *SecretCipher) EncryptPersonalForStorage(ctx context.Context, value stri
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
 	}
-	sealed := gcm.Seal(nonce, nonce, []byte(trimmed), nil)
+	// Sealed as given, not trimmed — see EncryptForStorage.
+	sealed := gcm.Seal(nonce, nonce, []byte(value), nil)
 
 	var pub [32]byte
 	copy(pub[:], ownerPublicKey)

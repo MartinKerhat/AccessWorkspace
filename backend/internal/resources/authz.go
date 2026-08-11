@@ -54,9 +54,19 @@ func canLaunchResource(user auth.User, resource Resource) bool {
 	return auth.CapabilitiesForUser(user).Categories[resource.Category].Launch && CanAccess(devViewer(user), resource.Summary())
 }
 
+// secretUsageAllowed is the single "may the people this is shared with use the
+// secret" permission. copyAllowed and revealAllowed are one flag by maintainer
+// ruling (2026-08-11: *"i allow copy and reveal or i dont"*) — splitting them
+// bought nothing, because anyone who can put a secret on the clipboard can read
+// it. Normalization keeps both columns in step on write; the OR here covers
+// rows saved before they were unified.
+func secretUsageAllowed(resource Resource) bool {
+	return resource.RevealAllowed || resource.CopyAllowed
+}
+
 func canFillPasswordResource(user auth.User, resource Resource) bool {
 	return auth.CapabilitiesForUser(user).Categories[resource.Category].Reveal &&
-		resource.CopyAllowed &&
+		secretUsageAllowed(resource) &&
 		CanAccess(devViewer(user), resource.Summary())
 }
 
@@ -72,13 +82,28 @@ func canRevealStoredPassword(user auth.User, resource Resource) bool {
 	if resource.OwnerUserID == user.ID || (user.IsAdmin && !resource.Personal) {
 		return true
 	}
-	// Web portals separate seeing the password (revealAllowed) from letting the
-	// browser extension fill it (copyAllowed), so shared portal credentials can
-	// be usable without being readable. Saved passwords keep one copy flag.
-	if resource.Type == TypeWebPortal {
-		return resource.RevealAllowed
+	return secretUsageAllowed(resource)
+}
+
+// canRevealConnectionSecret governs reading the password stored on an ssh/rdp
+// connection. It exists because a shared connection can be impossible to use
+// otherwise: a target with "always prompt for password" set (fPromptForPassword)
+// discards the credential the launcher passes, so whoever the connection is
+// shared with must be able to read the password and type it themselves. Same
+// shape as canRevealStoredPassword — owners and admins always, everyone else
+// only when the object opts in.
+func canRevealConnectionSecret(user auth.User, resource Resource) bool {
+	if CategoryForType(resource.Type) != "connections" {
+		return false
 	}
-	return resource.CopyAllowed
+	if !auth.CapabilitiesForUser(user).Categories[resource.Category].Reveal ||
+		!CanAccess(devViewer(user), resource.Summary()) {
+		return false
+	}
+	if resource.OwnerUserID == user.ID || (user.IsAdmin && !resource.Personal) {
+		return true
+	}
+	return secretUsageAllowed(resource)
 }
 
 func explainVisibleResourcesForUser(user auth.User, items []ResourceSummary) []VisibleResourceSummary {

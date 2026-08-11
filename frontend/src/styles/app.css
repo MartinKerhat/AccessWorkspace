@@ -1665,6 +1665,47 @@ textarea {
   gap: 12px;
 }
 
+/* The override is the user's own setting layered on top of a shared object, not
+   another row of connection facts, so it gets its own frame. The amber accent
+   means "active" here for the same reason it does on a selected card, which
+   also makes "I have a personal override on this one" scannable at a glance. */
+.override-section {
+  border: 1px solid var(--border);
+}
+
+.override-section.is-active {
+  border-color: var(--border-strong);
+  background: rgba(248, 180, 102, 0.06);
+}
+
+/* A picker inside the detail panel cannot be absolutely positioned: the panel is
+   a scroll container (overflow-y: auto), which clips it, and the override sits
+   near the bottom where it was cut off completely. In-flow instead — the section
+   grows and the panel scrolls. */
+.picker-shell-inline .group-picker-dropdown {
+  position: static;
+  top: auto;
+  margin-top: 8px;
+  max-height: 260px;
+}
+
+/* Which password is in use is the key fact in this section — a value, not prose. */
+.override-name {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #edf4ff;
+}
+
+.override-name.is-default {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
 .compact-actions .button {
   padding: 10px 14px;
 }

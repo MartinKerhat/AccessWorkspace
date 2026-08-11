@@ -131,7 +131,7 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 	if user.IsAdmin {
 		return WorkspaceCapabilities{
 			Categories: map[string]CategoryCapabilities{
-				"connections":      {View: true, Create: true, Edit: true, Launch: true},
+				"connections":      {View: true, Create: true, Edit: true, Reveal: true, Launch: true},
 				"keyvault":         {View: true, Import: true, Edit: true, Reveal: true},
 				"appregistrations": {View: true, Import: true, Edit: true},
 				"passwords":        {View: true, Create: true, Edit: true, Reveal: true, Launch: true},
@@ -151,6 +151,12 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 			View:   has("connections.read") || has("connections.edit") || has("connections.create"),
 			Create: has("connections.create"),
 			Edit:   has("connections.edit"),
+			// Reveal follows read access because a shared connection is unusable
+			// without it: servers that force their own credential prompt ignore
+			// the password the launcher passes, so the user has to type it. Which
+			// connections actually expose their secret is decided per object by
+			// revealAllowed — see canRevealConnectionSecret.
+			Reveal: has("connections.read") || has("connections.edit") || has("connections.create"),
 			Launch: has("connections.read") || has("connections.edit") || has("connections.create"),
 		},
 		"keyvault": {

@@ -39,7 +39,7 @@ func RunSSHSession(item payload.LaunchPayload) error {
 		port = "22"
 	}
 
-	secret := payload.MetadataString(item.Metadata, "secretValue")
+	secret := payload.MetadataSecret(item.Metadata, "secretValue")
 	if strings.TrimSpace(secret) == "" {
 		// No stored password: hand over to the native ssh client in this
 		// terminal (key-based setups, agent auth, interactive prompts).

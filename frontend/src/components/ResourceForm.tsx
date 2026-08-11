@@ -42,8 +42,11 @@ const defaultForm: ResourceForm = {
   displayNameExternal: "",
   linkedSecretRef: "",
   launchAllowed: true,
-  revealAllowed: false,
-  copyAllowed: false,
+  // Sharing an object means the people it is shared with can use it, which
+  // includes reading and copying its secret. Defaults only — the creator can
+  // turn either off, and existing objects keep whatever they were saved with.
+  revealAllowed: true,
+  copyAllowed: true,
   allowedGroups: [],
   allowedUsers: [],
   secretMode: "inline",
@@ -76,6 +79,75 @@ function fromDateTimeInputValue(value: string) {
     return undefined;
   }
   return date.toISOString();
+}
+
+// One field for every stored secret in this form. It used to be duplicated per
+// object category, which is how connections ended up without the reveal icon
+// and with different placeholder behaviour from passwords. autoComplete is
+// "new-password" so the browser's own password manager does not autofill a
+// credential field and get it saved over the real secret on submit.
+function SecretField({
+  label,
+  value,
+  placeholder,
+  disabled,
+  visible,
+  revealAvailable,
+  revealLoading,
+  wide,
+  onChange,
+  onToggleVisibility
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  disabled: boolean;
+  visible: boolean;
+  revealAvailable: boolean;
+  revealLoading: boolean;
+  wide?: boolean;
+  onChange: (value: string) => void;
+  onToggleVisibility: () => void;
+}) {
+  return (
+    <label className={wide ? "wide" : undefined}>
+      <span>{label}</span>
+      <div className={revealAvailable ? "password-field-row" : undefined}>
+        <input
+          disabled={disabled}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          type={visible ? "text" : "password"}
+          placeholder={placeholder}
+          autoComplete="new-password"
+          spellCheck={false}
+        />
+        {revealAvailable ? (
+          <button
+            type="button"
+            className="password-visibility-button"
+            disabled={revealLoading}
+            onClick={onToggleVisibility}
+            aria-label={visible ? "Hide stored password" : "Show stored password"}
+            title={visible ? "Hide stored password" : "Show stored password"}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M2 12c2.4-4 5.8-6 10-6s7.6 2 10 6c-2.4 4-5.8 6-10 6s-7.6-2-10-6Z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              {!visible ? <path d="M4 20 20 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /> : null}
+            </svg>
+          </button>
+        ) : null}
+      </div>
+    </label>
+  );
 }
 
 type Props = {
@@ -221,6 +293,15 @@ export function ResourceFormCard({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  // Copy and reveal are one permission — anyone who can put a secret on the
+  // clipboard can read it, so splitting them protected nothing. The two fields
+  // stay in the API for compatibility and are always written together.
+  const secretUsageAllowed = form.revealAllowed || form.copyAllowed;
+
+  function setSecretUsageAllowed(allowed: boolean) {
+    setForm((current) => ({ ...current, revealAllowed: allowed, copyAllowed: allowed }));
+  }
+
   function toggleAllowedGroup(group: string) {
     update(
       "allowedGroups",
@@ -244,9 +325,6 @@ export function ResourceFormCard({
   }
 
   async function handlePasswordVisibilityToggle() {
-    if (!isPasswordResource) {
-      return;
-    }
     if (passwordVisible) {
       setPasswordVisible(false);
       return;
@@ -301,7 +379,10 @@ export function ResourceFormCard({
   // The secret value is never sent to the browser, so the field is always blank
   // on edit. This flag lets us show that a password IS stored (leave blank to
   // keep it) instead of the field looking empty/unset.
-  const storedSecretPresent = Boolean(resource?.secret?.hasValue);
+  // An external-reference secret has no inline value, so hasValue is false for
+  // it — but a secret IS configured and blank still keeps it. Without the
+  // reference clause the hint appeared on some objects and not others.
+  const storedSecretPresent = Boolean(resource?.secret?.hasValue) || Boolean(resource?.secret?.reference);
   const storedSecretPlaceholder = storedSecretPresent ? "•••••••••• — stored, leave blank to keep" : "";
   const isPasswordResource = form.type === "web_portal" || form.type === "shared_secret";
   const isSharedPassword = form.type === "shared_secret";
@@ -724,30 +805,19 @@ export function ResourceFormCard({
               />
               <span>Launch allowed</span>
             </label>
-            {/* Connections have no reveal/copy path — their secret is only ever
-                used by the launcher — so those flags are hidden for them. */}
-            {!isConnectionResource ? (
-              <>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    disabled={isImportedAppRegistration || coreLocked}
-                    checked={form.revealAllowed}
-                    onChange={(event) => update("revealAllowed", event.target.checked)}
-                  />
-                  <span>Reveal allowed</span>
-                </label>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    disabled={isImportedAppRegistration || coreLocked}
-                    checked={form.copyAllowed}
-                    onChange={(event) => update("copyAllowed", event.target.checked)}
-                  />
-                  <span>Copy allowed</span>
-                </label>
-              </>
-            ) : null}
+            {/* Connections need this too: a target that forces its own
+                credential prompt ignores the password the launcher passes, so
+                whoever the connection is shared with has to be able to read it
+                and type it. Owners and admins can always reveal regardless. */}
+            <label className="checkbox wide">
+              <input
+                type="checkbox"
+                disabled={isImportedAppRegistration || coreLocked}
+                checked={secretUsageAllowed}
+                onChange={(event) => setSecretUsageAllowed(event.target.checked)}
+              />
+              <span>Copy and reveal allowed</span>
+            </label>
           </>
         ) : null}
         {isPasswordResource ? (
@@ -763,24 +833,15 @@ export function ResourceFormCard({
                 <span>Open target allowed</span>
               </label>
             ) : null}
-            <label className={`checkbox${isWebPortalPassword ? "" : " wide"}`}>
-              <input
-                type="checkbox"
-                disabled={coreLocked}
-                checked={form.copyAllowed}
-                onChange={(event) => update("copyAllowed", event.target.checked)}
-              />
-              <span>{isWebPortalPassword ? "Browser fill allowed" : "Copy allowed"}</span>
-            </label>
-            {isWebPortalPassword && !isPasswordlessPortal ? (
-              <label className="checkbox">
+            {!isPasswordlessPortal ? (
+              <label className={`checkbox${isWebPortalPassword ? "" : " wide"}`}>
                 <input
                   type="checkbox"
                   disabled={coreLocked}
-                  checked={form.revealAllowed}
-                  onChange={(event) => update("revealAllowed", event.target.checked)}
+                  checked={secretUsageAllowed}
+                  onChange={(event) => setSecretUsageAllowed(event.target.checked)}
                 />
-                <span>Reveal / copy allowed</span>
+                <span>{isWebPortalPassword ? "Copy, reveal and browser fill allowed" : "Copy and reveal allowed"}</span>
               </label>
             ) : null}
           </>
@@ -811,16 +872,17 @@ export function ResourceFormCard({
                 <span>Username</span>
                 <input disabled={coreLocked} value={form.username} onChange={(event) => update("username", event.target.value)} />
               </label>
-              <label>
-                <span>Password / passphrase</span>
-                <input
-                  disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
-                  value={form.secretValue}
-                  onChange={(event) => update("secretValue", event.target.value)}
-                  type="password"
-                  placeholder={storedSecretPlaceholder}
-                />
-              </label>
+              <SecretField
+                label="Password / passphrase"
+                value={form.secretValue}
+                placeholder={storedSecretPlaceholder}
+                disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
+                visible={passwordVisible}
+                revealAvailable={Boolean(resource && onRevealStoredPassword)}
+                revealLoading={loading || passwordRevealLoading}
+                onChange={(next) => update("secretValue", next)}
+                onToggleVisibility={() => void handlePasswordVisibilityToggle()}
+              />
             </div>
             <label>
               <span>Launch mode</span>
@@ -977,41 +1039,17 @@ export function ResourceFormCard({
         ) : null}
 
         {!isConnectionResource && !isPasswordlessPortal ? (
-        <label>
-          <span>{isPasswordResource ? "Password" : "Secret value"}</span>
-          <div className={isPasswordResource && resource && onRevealStoredPassword ? "password-field-row" : undefined}>
-            <input
-              disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
-              value={form.secretValue}
-              onChange={(event) => update("secretValue", event.target.value)}
-              type={isPasswordResource && passwordVisible ? "text" : "password"}
-              placeholder={storedSecretPlaceholder}
-            />
-            {isPasswordResource && resource && onRevealStoredPassword ? (
-              <button
-                type="button"
-                className="password-visibility-button"
-                disabled={loading || passwordRevealLoading}
-                onClick={() => void handlePasswordVisibilityToggle()}
-                aria-label={passwordVisible ? "Hide stored password" : "Show stored password"}
-                title={passwordVisible ? "Hide stored password" : "Show stored password"}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M2 12c2.4-4 5.8-6 10-6s7.6 2 10 6c-2.4 4-5.8 6-10 6s-7.6-2-10-6Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
-                  {!passwordVisible ? <path d="M4 20 20 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /> : null}
-                </svg>
-              </button>
-            ) : null}
-          </div>
-        </label>
+          <SecretField
+            label={isPasswordResource ? "Password" : "Secret value"}
+            value={form.secretValue}
+            placeholder={storedSecretPlaceholder}
+            disabled={isManagedExternalSource || form.secretMode === "prompt_on_launch" || coreLocked}
+            visible={passwordVisible}
+            revealAvailable={Boolean(resource && onRevealStoredPassword)}
+            revealLoading={loading || passwordRevealLoading}
+            onChange={(next) => update("secretValue", next)}
+            onToggleVisibility={() => void handlePasswordVisibilityToggle()}
+          />
         ) : null}
         {!isPasswordResource ? (
           <>
@@ -1091,18 +1129,15 @@ export function ResourceFormCard({
                 sourceKind: "manual" as const,
                 sourceObjectId: "",
                 launchAllowed: isWebPortalPassword ? form.launchAllowed : false,
-                revealAllowed: isWebPortalPassword && !isPasswordlessPortal ? form.revealAllowed : false,
+                // One usage permission, written to both fields. The backend
+                // normalizes the same way, so neither side can drift.
+                revealAllowed: isPasswordlessPortal ? false : secretUsageAllowed,
+                copyAllowed: isPasswordlessPortal ? false : secretUsageAllowed,
                 secretMode: isPasswordlessPortal ? ("none" as const) : ("inline" as const),
                 secretValue: isPasswordlessPortal ? "" : form.secretValue,
                 secretReference: ""
               }
-            : isConnectionResource
-              ? {
-                  ...form,
-                  revealAllowed: false,
-                  copyAllowed: false
-                }
-              : form;
+            : form;
           void onSubmit(prepared);
         }}
       >

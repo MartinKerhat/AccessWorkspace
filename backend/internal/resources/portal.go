@@ -27,7 +27,9 @@ func (s *Service) ListPortalCredentialMatches(ctx context.Context, user auth.Use
 	visible := explainVisibleResourcesForUser(user, items)
 	matches := make([]PortalCredentialMatch, 0, len(visible))
 	for _, item := range visible {
-		if item.Type != TypeWebPortal || !item.CopyAllowed {
+		// copyAllowed/revealAllowed are one permission — see secretUsageAllowed.
+		// This reads the summary type, so it ORs the pair directly.
+		if item.Type != TypeWebPortal || !(item.CopyAllowed || item.RevealAllowed) {
 			continue
 		}
 		if !portalURLMatches(item.TargetURL, currentURL) {

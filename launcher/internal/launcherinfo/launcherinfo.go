@@ -1,7 +1,7 @@
 package launcherinfo
 
 const (
-	Version   = "0.6.2"
+	Version   = "0.6.3"
 	ListenURL = "127.0.0.1:47654"
 
 	// RDPTrustPath is the workspace API path exposing the public RDP publisher

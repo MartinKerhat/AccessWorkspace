@@ -188,6 +188,33 @@ export function useResourceActions({
     }
   }
 
+  // Reveals the saved password behind a connection's personal credential
+  // override. Servers that force their own credential prompt
+  // (fPromptForPassword) make manual entry unavoidable, and the password lives
+  // in the Passwords module — without this the user has to leave Connections,
+  // find the object and reveal it there. Personal passwords are sealed to the
+  // session vault key, so ErrVaultLocked has to run the unlock flow first.
+  async function handleRevealOverridePassword() {
+    const passwordResourceId = connectionOverride?.passwordResourceId;
+    if (!passwordResourceId || !session) {
+      return undefined;
+    }
+    setBusy(true);
+    try {
+      const response = await api.revealResource(passwordResourceId);
+      await refreshAfterSensitiveAction();
+      return response.secretValue;
+    } catch (error) {
+      if (await guardVaultLocked(error, () => handleRevealOverridePassword().then(() => undefined))) {
+        return undefined;
+      }
+      setMessage(error instanceof Error ? error.message : "Reveal failed");
+      return undefined;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleCopyRevealSecret() {
     if (!reveal?.secretValue) {
       return;
@@ -447,6 +474,7 @@ export function useResourceActions({
     revealCopyMessage,
     handleReveal,
     handleRevealStoredPassword,
+    handleRevealOverridePassword,
     handleCopyRevealSecret,
     handleLaunch,
     handleSaveConnectionOverride,
