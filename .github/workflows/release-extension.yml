@@ -11,8 +11,10 @@ name: Release browser extension
 # ARTIFACTS_SOURCE=github + ARTIFACTS_GITHUB_REPO=<owner>/<repo>; nothing is
 # ever pushed into a deployment from here.
 #
-# A push that touches browser-extension/** WITHOUT bumping the manifest
-# version publishes nothing (stores reject re-uploads of the same version).
+# A push that touches browser-extension/** without bumping the manifest version
+# publishes nothing, because that version is already released (and the stores
+# reject re-uploads of the same version anyway). The check asks the release list,
+# so it does not matter which commit of a push carries the bump.
 # Use workflow_dispatch with force=true to re-run a release manually.
 # This workflow is the only release path — there are no local publish scripts.
 
@@ -40,11 +42,11 @@ jobs:
       release: ${{ steps.check.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Determine version and whether to release
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version="$(jq -r .version browser-extension/chrome/manifest.json)"
@@ -53,9 +55,16 @@ jobs:
             echo "::error::Manifest versions differ: chrome=$version firefox=$firefox_version — bump both together."
             exit 1
           fi
-          previous="$(git show HEAD~1:browser-extension/chrome/manifest.json 2>/dev/null | jq -r .version || echo '<none>')"
+          # Release when this version has NOT been published yet — not when it
+          # changed in the last commit. The old HEAD~1 comparison silently
+          # published nothing whenever a push's final commit did not itself carry
+          # the bump (bump in commit A, more work in commit B, pushed together:
+          # the run sees A as "previous" and calls it unchanged). This bit the
+          # launcher workflow on 2026-08-11; same gate, same fix.
           release=false
-          if [ "$version" != "$previous" ]; then
+          if gh release view "extension-v${version}" >/dev/null 2>&1; then
+            echo "extension-v${version} is already published — nothing to do."
+          else
             release=true
           fi
           if [ "${{ inputs.force || false }}" = "true" ]; then
@@ -63,7 +72,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "version=$version previous=$previous release=$release"
+          echo "version=$version release=$release"
 
   release:
     needs: version

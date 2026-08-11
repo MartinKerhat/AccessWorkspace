@@ -7,8 +7,10 @@ name: Release launcher
 # Deployments running ARTIFACTS_SOURCE=github serve the new build
 # automatically; nothing is ever pushed into a deployment from here.
 #
-# A push that touches launcher/** WITHOUT bumping the version publishes
-# nothing. Use workflow_dispatch with force=true to re-run manually.
+# A push that touches launcher/** without bumping the version publishes nothing,
+# because that version is already released. The check asks the release list, so
+# it does not matter which commit of a push carries the bump. Use
+# workflow_dispatch with force=true to rebuild and re-upload an existing version.
 #
 # Local fallback: launcher/build.ps1 (writes into artifacts/launcher/).
 
@@ -36,18 +38,25 @@ jobs:
       release: ${{ steps.check.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Determine version and whether to release
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version_file="launcher/internal/launcherinfo/launcherinfo.go"
           version="$(grep -oP 'Version\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' "$version_file")"
-          previous="$(git show "HEAD~1:$version_file" 2>/dev/null | grep -oP 'Version\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' || echo '<none>')"
+          # Release when this version has NOT been published yet — not when it
+          # changed in the last commit. The old HEAD~1 comparison silently
+          # published nothing whenever a push's final commit did not itself carry
+          # the bump (e.g. bump in commit A, more work in commit B, pushed
+          # together: the run sees A as "previous" and calls it unchanged).
+          # Asking the release list is also idempotent, so re-runs are harmless.
           release=false
-          if [ "$version" != "$previous" ]; then
+          if gh release view "launcher-v${version}" >/dev/null 2>&1; then
+            echo "launcher-v${version} is already published — nothing to do."
+          else
             release=true
           fi
           if [ "${{ inputs.force || false }}" = "true" ]; then
@@ -55,7 +64,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "version=$version previous=$previous release=$release"
+          echo "version=$version release=$release"
 
   release:
     needs: version
