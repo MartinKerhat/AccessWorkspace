@@ -6,7 +6,6 @@ import type { MentionCandidate } from "../types";
 type Props = {
   value: string;
   rows?: number;
-  disabled?: boolean;
   onChange: (value: string) => void;
 };
 
@@ -16,7 +15,7 @@ type Props = {
 // is that the raw token is visible while editing — if that reads badly, the next
 // step is a contenteditable version where it is hidden. See §5.3 of
 // .dev-notes/rdp-credential-handoff-plan.md.
-export function MentionNotesField({ value, rows = 3, disabled, onChange }: Props) {
+export function MentionNotesField({ value, rows = 3, onChange }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [fragment, setFragment] = useState<{ start: number; query: string } | null>(null);
   const [candidates, setCandidates] = useState<MentionCandidate[]>([]);
@@ -81,7 +80,6 @@ export function MentionNotesField({ value, rows = 3, disabled, onChange }: Props
         ref={textareaRef}
         value={value}
         rows={rows}
-        disabled={disabled}
         onChange={(event) => {
           onChange(event.target.value);
           syncFragment(event.target.value, event.target.selectionStart ?? 0);

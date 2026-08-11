@@ -685,7 +685,10 @@ export function ResourceFormCard({
         </label>
         <label className="wide">
           <span>Notes</span>
-          <MentionNotesField value={form.notes} rows={3} disabled={coreLocked} onChange={(next) => update("notes", next)} />
+          {/* NOT gated on coreLocked: notes are one of the four fields a
+              non-owner editor of a shared object is explicitly allowed to
+              change (see the banner above and restrictToSharedMetadata). */}
+          <MentionNotesField value={form.notes} rows={3} onChange={(next) => update("notes", next)} />
         </label>
         <label className="wide">
           <span>Shared with</span>
