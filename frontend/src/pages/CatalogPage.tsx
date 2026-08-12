@@ -130,6 +130,29 @@ function matchesFolder(item: ResourceSummary, selectedFolder: string) {
   return item.folderPath === selectedFolder || item.folderPath.startsWith(`${selectedFolder}/`);
 }
 
+// Expiry rank reuses the status the backend already writes ("expired" /
+// "expiring"), the same value the card badge renders — no second notion of
+// urgency to keep in step with the reminder policy.
+const expiryRank: Record<string, number> = { expired: 0, expiring: 1 };
+
+// Only the two categories that actually expire get reordered, and only in the
+// browser: the list query is ordered by folder path and name for the
+// Connections tree, which must not be disturbed, and it returns every row so
+// there is no paging to fight with.
+function sortByExpiryUrgency(category: WorkspaceCategory, items: ResourceSummary[]) {
+  if (category !== "keyvault" && category !== "appregistrations") {
+    return items;
+  }
+  return [...items].sort((left, right) => {
+    const leftRank = expiryRank[left.status] ?? 2;
+    const rightRank = expiryRank[right.status] ?? 2;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
 function renderResourceCard(
   category: WorkspaceCategory,
   item: ResourceSummary,
@@ -277,7 +300,10 @@ export function CatalogPage({
     setSelectedFolder((current) => (availableKeys.has(current) ? current : allFoldersKey));
   }, [category, connectionCategory, folderNodes]);
 
-  const visibleItems = connectionCategory ? items.filter((item) => matchesFolder(item, selectedFolder)) : items;
+  const visibleItems = sortByExpiryUrgency(
+    category,
+    connectionCategory ? items.filter((item) => matchesFolder(item, selectedFolder)) : items
+  );
 
   return (
     <section className="catalog-layout">

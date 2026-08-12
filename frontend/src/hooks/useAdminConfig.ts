@@ -4,7 +4,7 @@ import { emptyKeyVaultSource } from "../keyVault";
 import type {
   AdminConfig,
   AdminForm,
-  AppRegistrationNotificationPolicy,
+  ExpiryNotificationPolicy,
   NotificationAdminForm,
   NotificationDeliveryRecord,
   Session
@@ -28,7 +28,7 @@ export function toAdminForm(config: AdminConfig | null): AdminForm {
   };
 }
 
-export function defaultAppRegistrationNotificationPolicy(): AppRegistrationNotificationPolicy {
+export function defaultAppRegistrationNotificationPolicy(): ExpiryNotificationPolicy {
   return {
     enabled: true,
     reminderDays: [30, 14, 7, 3, 1, 0],
@@ -36,9 +36,21 @@ export function defaultAppRegistrationNotificationPolicy(): AppRegistrationNotif
   };
 }
 
+// Quieter than the app registration default on purpose — mirrors the backend
+// default in admin.go. Most Key Vault secrets carry no expiry at all, and the
+// ones that do are rotated on a longer horizon than a client secret.
+export function defaultKeyVaultNotificationPolicy(): ExpiryNotificationPolicy {
+  return {
+    enabled: true,
+    reminderDays: [30, 7, 1, 0],
+    channels: ["in_app"]
+  };
+}
+
 export function toNotificationAdminForm(config: AdminConfig | null): NotificationAdminForm {
   return {
     appRegistrationNotificationPolicy: config?.appRegistrationNotificationPolicy ?? defaultAppRegistrationNotificationPolicy(),
+    keyVaultNotificationPolicy: config?.keyVaultNotificationPolicy ?? defaultKeyVaultNotificationPolicy(),
     notificationEmailEnabled: config?.notificationEmailEnabled ?? false,
     notificationEmailHost: config?.notificationEmailHost ?? "",
     notificationEmailPort: config?.notificationEmailPort ?? 587,
@@ -141,6 +153,7 @@ export function useAdminConfig({ session, setBusy, setMessage, onEntraHint }: Us
           rdpSigningEnabled: adminConfig?.rdpSigning.enabled ?? adminForm.rdpSigningEnabled,
           keyVaultSources: adminConfig?.keyVaultSources ?? adminForm.keyVaultSources,
           appRegistrationNotificationPolicy: notificationAdminForm.appRegistrationNotificationPolicy,
+          keyVaultNotificationPolicy: notificationAdminForm.keyVaultNotificationPolicy,
           notificationEmailEnabled: notificationAdminForm.notificationEmailEnabled,
           notificationEmailHost: notificationAdminForm.notificationEmailHost,
           notificationEmailPort: notificationAdminForm.notificationEmailPort,

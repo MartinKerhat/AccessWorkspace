@@ -343,6 +343,27 @@ func applyAppRegistrationCredentialSummary(credentialType *string, credentialExp
 	*credentialExpiresAt = next.EndDateTime
 }
 
+// ExpiryWarningWindow is how far ahead an expiry counts as "expiring" for the
+// status badge. It is shared by app registrations and Key Vault secrets so the
+// two categories cannot disagree about what "expiring" means in the catalog.
+const ExpiryWarningWindow = 30 * 24 * time.Hour
+
+// expiryStatus maps a single expiry date onto the shared status vocabulary.
+// A nil date is "active", not "expiring": most Key Vault secrets carry no
+// expiry at all, and flagging them would drown the ones that do.
+func expiryStatus(expiresAt *time.Time, now time.Time) string {
+	if expiresAt == nil {
+		return "active"
+	}
+	if !expiresAt.After(now) {
+		return "expired"
+	}
+	if !expiresAt.After(now.Add(ExpiryWarningWindow)) {
+		return "expiring"
+	}
+	return "active"
+}
+
 func appRegistrationStatus(credentials []appregistrations.CredentialItem, now time.Time) string {
 	if len(credentials) == 0 {
 		return "no_credentials"
@@ -356,10 +377,7 @@ func appRegistrationStatus(credentials []appregistrations.CredentialItem, now ti
 		}
 		return "expired"
 	}
-	if !next.After(now.Add(30 * 24 * time.Hour)) {
-		return "expiring"
-	}
-	return "active"
+	return expiryStatus(next, now)
 }
 
 func nextAppRegistrationCredential(credentials []appregistrations.CredentialItem, now time.Time) *appregistrations.CredentialItem {

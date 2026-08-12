@@ -23,12 +23,13 @@ export type NotificationPolicyModalState =
       mode: "resource";
       resource: Resource;
       useResourceOverride: boolean;
-      draft: AppRegistrationNotificationPolicy;
+      draft: ExpiryNotificationPolicy;
       credentialDrafts: AppRegistrationCredentialPolicyInput[];
     };
 
 export type NotificationAdminForm = {
-  appRegistrationNotificationPolicy: AppRegistrationNotificationPolicy;
+  appRegistrationNotificationPolicy: ExpiryNotificationPolicy;
+  keyVaultNotificationPolicy: ExpiryNotificationPolicy;
   notificationEmailEnabled: boolean;
   notificationEmailHost: string;
   notificationEmailPort: number;
@@ -171,7 +172,8 @@ export type AdminConfig = {
   keyVaultSourceCount: number;
   localGroupCount: number;
   directRightsRuleCount: number;
-  appRegistrationNotificationPolicy: AppRegistrationNotificationPolicy;
+  appRegistrationNotificationPolicy: ExpiryNotificationPolicy;
+  keyVaultNotificationPolicy: ExpiryNotificationPolicy;
   notificationEmailEnabled: boolean;
   notificationEmailHost: string;
   notificationEmailPort: number;
@@ -290,7 +292,7 @@ export type AppRegistrationCredential = {
   hint: string;
   usage: string;
   lastSyncedAt?: string;
-  notificationPolicyOverride?: AppRegistrationNotificationPolicy;
+  notificationPolicyOverride?: ExpiryNotificationPolicy;
 };
 
 export type AppRegistrationOwner = {
@@ -455,14 +457,14 @@ export type Resource = ResourceSummary & {
   connectionScreenMode: string;
   connectionMacAddress: string;
   connectionGatewayHost: string;
-  appNotificationPolicyOverride?: AppRegistrationNotificationPolicy;
+  appNotificationPolicyOverride?: ExpiryNotificationPolicy;
   appCredentials?: AppRegistrationCredential[];
   appOwners?: AppRegistrationOwner[];
 };
 
 export type NotificationChannel = "in_app" | "email";
 
-export type AppRegistrationNotificationPolicy = {
+export type ExpiryNotificationPolicy = {
   enabled: boolean;
   reminderDays: number[];
   channels: NotificationChannel[];
@@ -470,7 +472,7 @@ export type AppRegistrationNotificationPolicy = {
 
 export type AppRegistrationCredentialPolicyInput = {
   keyId: string;
-  policy?: AppRegistrationNotificationPolicy;
+  policy?: ExpiryNotificationPolicy;
 };
 
 export type UserNotification = {

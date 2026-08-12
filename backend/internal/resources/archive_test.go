@@ -91,7 +91,7 @@ func (s *archiveTestStore) ReplaceAppRegistrationSnapshot(context.Context, strin
 	return nil
 }
 
-func (s *archiveTestStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *AppRegistrationNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
+func (s *archiveTestStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *ExpiryNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
 	return nil
 }
 

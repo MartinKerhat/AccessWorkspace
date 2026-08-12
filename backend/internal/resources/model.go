@@ -40,7 +40,7 @@ const (
 	NotificationChannelEmail NotificationChannel = "email"
 )
 
-type AppRegistrationNotificationPolicy struct {
+type ExpiryNotificationPolicy struct {
 	Enabled      bool                  `json:"enabled"`
 	ReminderDays []int                 `json:"reminderDays"`
 	Channels     []NotificationChannel `json:"channels"`
@@ -57,76 +57,76 @@ type Secret struct {
 }
 
 type Resource struct {
-	ID                            string                             `json:"id"`
-	Name                          string                             `json:"name"`
-	Type                          ResourceType                       `json:"type"`
-	Category                      string                             `json:"category"`
-	Personal                      bool                               `json:"personal"`
-	Description                   string                             `json:"description"`
-	Owner                         string                             `json:"owner"`
-	OwnerUserID                   string                             `json:"ownerUserId"`
-	OwnerTeam                     string                             `json:"ownerTeam"`
-	Environment                   string                             `json:"environment"`
-	Status                        string                             `json:"status"`
-	FolderPath                    string                             `json:"folderPath"`
-	LaunchMode                    string                             `json:"launchMode"`
-	SourceKind                    SourceKind                         `json:"sourceKind"`
-	SourceObjectID                string                             `json:"sourceObjectId"`
-	LastSyncedAt                  *time.Time                         `json:"lastSyncedAt,omitempty"`
-	Notes                         string                             `json:"notes"`
-	TargetHost                    string                             `json:"targetHost"`
-	TargetPort                    *int                               `json:"targetPort,omitempty"`
-	TargetURL                     string                             `json:"targetUrl"`
-	TargetSystem                  string                             `json:"targetSystem"`
-	Username                      string                             `json:"username"`
-	ConnectionDomain              string                             `json:"connectionDomain"`
-	ConnectionAdminSession        bool                               `json:"connectionAdminSession"`
-	ConnectionAutomaticLogon      bool                               `json:"connectionAutomaticLogon"`
-	ConnectionWindowMode          string                             `json:"connectionWindowMode"`
-	ConnectionUseMultipleMonitors bool                               `json:"connectionUseMultipleMonitors"`
-	ConnectionShowConnectionBar   bool                               `json:"connectionShowConnectionBar"`
-	ConnectionScreenMode          string                             `json:"connectionScreenMode"`
-	ConnectionMacAddress          string                             `json:"connectionMacAddress"`
-	ConnectionGatewayHost         string                             `json:"connectionGatewayHost"`
-	VaultName                     string                             `json:"vaultName"`
-	ObjectName                    string                             `json:"objectName"`
-	ObjectType                    string                             `json:"objectType"`
-	ObjectVersion                 string                             `json:"objectVersion"`
-	ContentType                   string                             `json:"contentType"`
-	ExpiresAt                     *time.Time                         `json:"expiresAt,omitempty"`
-	Provider                      string                             `json:"provider"`
-	ApplicationID                 string                             `json:"applicationId"`
-	TenantID                      string                             `json:"tenantId"`
-	ClientID                      string                             `json:"clientId"`
-	CredentialType                string                             `json:"credentialType"`
-	CredentialExpiresAt           *time.Time                         `json:"credentialExpiresAt,omitempty"`
-	DisplayNameExternal           string                             `json:"displayNameExternal"`
-	LinkedSecretRef               string                             `json:"linkedSecretRef"`
-	LaunchAllowed                 bool                               `json:"launchAllowed"`
-	RevealAllowed                 bool                               `json:"revealAllowed"`
-	CopyAllowed                   bool                               `json:"copyAllowed"`
-	AllowedGroups                 []string                           `json:"allowedGroups"`
-	AllowedUsers                  []string                           `json:"allowedUsers"`
-	Secret                        Secret                             `json:"secret"`
-	AppNotificationPolicyOverride *AppRegistrationNotificationPolicy `json:"appNotificationPolicyOverride,omitempty"`
-	AppCredentials                []AppRegistrationCredential        `json:"appCredentials,omitempty"`
-	AppOwners                     []AppRegistrationOwner             `json:"appOwners,omitempty"`
-	CreatedAt                     time.Time                          `json:"createdAt"`
-	UpdatedAt                     time.Time                          `json:"updatedAt"`
-	ArchivedAt                    *time.Time                         `json:"archivedAt,omitempty"`
+	ID                            string                      `json:"id"`
+	Name                          string                      `json:"name"`
+	Type                          ResourceType                `json:"type"`
+	Category                      string                      `json:"category"`
+	Personal                      bool                        `json:"personal"`
+	Description                   string                      `json:"description"`
+	Owner                         string                      `json:"owner"`
+	OwnerUserID                   string                      `json:"ownerUserId"`
+	OwnerTeam                     string                      `json:"ownerTeam"`
+	Environment                   string                      `json:"environment"`
+	Status                        string                      `json:"status"`
+	FolderPath                    string                      `json:"folderPath"`
+	LaunchMode                    string                      `json:"launchMode"`
+	SourceKind                    SourceKind                  `json:"sourceKind"`
+	SourceObjectID                string                      `json:"sourceObjectId"`
+	LastSyncedAt                  *time.Time                  `json:"lastSyncedAt,omitempty"`
+	Notes                         string                      `json:"notes"`
+	TargetHost                    string                      `json:"targetHost"`
+	TargetPort                    *int                        `json:"targetPort,omitempty"`
+	TargetURL                     string                      `json:"targetUrl"`
+	TargetSystem                  string                      `json:"targetSystem"`
+	Username                      string                      `json:"username"`
+	ConnectionDomain              string                      `json:"connectionDomain"`
+	ConnectionAdminSession        bool                        `json:"connectionAdminSession"`
+	ConnectionAutomaticLogon      bool                        `json:"connectionAutomaticLogon"`
+	ConnectionWindowMode          string                      `json:"connectionWindowMode"`
+	ConnectionUseMultipleMonitors bool                        `json:"connectionUseMultipleMonitors"`
+	ConnectionShowConnectionBar   bool                        `json:"connectionShowConnectionBar"`
+	ConnectionScreenMode          string                      `json:"connectionScreenMode"`
+	ConnectionMacAddress          string                      `json:"connectionMacAddress"`
+	ConnectionGatewayHost         string                      `json:"connectionGatewayHost"`
+	VaultName                     string                      `json:"vaultName"`
+	ObjectName                    string                      `json:"objectName"`
+	ObjectType                    string                      `json:"objectType"`
+	ObjectVersion                 string                      `json:"objectVersion"`
+	ContentType                   string                      `json:"contentType"`
+	ExpiresAt                     *time.Time                  `json:"expiresAt,omitempty"`
+	Provider                      string                      `json:"provider"`
+	ApplicationID                 string                      `json:"applicationId"`
+	TenantID                      string                      `json:"tenantId"`
+	ClientID                      string                      `json:"clientId"`
+	CredentialType                string                      `json:"credentialType"`
+	CredentialExpiresAt           *time.Time                  `json:"credentialExpiresAt,omitempty"`
+	DisplayNameExternal           string                      `json:"displayNameExternal"`
+	LinkedSecretRef               string                      `json:"linkedSecretRef"`
+	LaunchAllowed                 bool                        `json:"launchAllowed"`
+	RevealAllowed                 bool                        `json:"revealAllowed"`
+	CopyAllowed                   bool                        `json:"copyAllowed"`
+	AllowedGroups                 []string                    `json:"allowedGroups"`
+	AllowedUsers                  []string                    `json:"allowedUsers"`
+	Secret                        Secret                      `json:"secret"`
+	AppNotificationPolicyOverride *ExpiryNotificationPolicy   `json:"appNotificationPolicyOverride,omitempty"`
+	AppCredentials                []AppRegistrationCredential `json:"appCredentials,omitempty"`
+	AppOwners                     []AppRegistrationOwner      `json:"appOwners,omitempty"`
+	CreatedAt                     time.Time                   `json:"createdAt"`
+	UpdatedAt                     time.Time                   `json:"updatedAt"`
+	ArchivedAt                    *time.Time                  `json:"archivedAt,omitempty"`
 }
 
 type AppRegistrationCredential struct {
-	ResourceID                 string                             `json:"-"`
-	KeyID                      string                             `json:"keyId"`
-	CredentialType             string                             `json:"credentialType"`
-	DisplayName                string                             `json:"displayName"`
-	StartDateTime              *time.Time                         `json:"startDateTime,omitempty"`
-	EndDateTime                *time.Time                         `json:"endDateTime,omitempty"`
-	Hint                       string                             `json:"hint"`
-	Usage                      string                             `json:"usage"`
-	LastSyncedAt               *time.Time                         `json:"lastSyncedAt,omitempty"`
-	NotificationPolicyOverride *AppRegistrationNotificationPolicy `json:"notificationPolicyOverride,omitempty"`
+	ResourceID                 string                    `json:"-"`
+	KeyID                      string                    `json:"keyId"`
+	CredentialType             string                    `json:"credentialType"`
+	DisplayName                string                    `json:"displayName"`
+	StartDateTime              *time.Time                `json:"startDateTime,omitempty"`
+	EndDateTime                *time.Time                `json:"endDateTime,omitempty"`
+	Hint                       string                    `json:"hint"`
+	Usage                      string                    `json:"usage"`
+	LastSyncedAt               *time.Time                `json:"lastSyncedAt,omitempty"`
+	NotificationPolicyOverride *ExpiryNotificationPolicy `json:"notificationPolicyOverride,omitempty"`
 }
 
 type AppRegistrationOwner struct {
@@ -278,12 +278,12 @@ type PortalCredentialFillResult struct {
 }
 
 type AppRegistrationCredentialPolicyInput struct {
-	KeyID  string                             `json:"keyId"`
-	Policy *AppRegistrationNotificationPolicy `json:"policy,omitempty"`
+	KeyID  string                    `json:"keyId"`
+	Policy *ExpiryNotificationPolicy `json:"policy,omitempty"`
 }
 
 type AppRegistrationNotificationPolicyUpdateInput struct {
-	ResourcePolicy     *AppRegistrationNotificationPolicy     `json:"resourcePolicy,omitempty"`
+	ResourcePolicy     *ExpiryNotificationPolicy              `json:"resourcePolicy,omitempty"`
 	CredentialPolicies []AppRegistrationCredentialPolicyInput `json:"credentialPolicies"`
 }
 

@@ -34,7 +34,7 @@ type ResourceStore interface {
 	UpsertConnectionUserPasswordOverride(ctx context.Context, connectionID string, userID string, passwordResourceID string) error
 	DeleteConnectionUserPasswordOverride(ctx context.Context, connectionID string, userID string) error
 	ReplaceAppRegistrationSnapshot(ctx context.Context, resourceID string, credentials []AppRegistrationCredential, owners []AppRegistrationOwner) error
-	ReplaceAppRegistrationNotificationPolicies(ctx context.Context, resourceID string, resourcePolicy *AppRegistrationNotificationPolicy, credentialPolicies []AppRegistrationCredentialPolicyInput) error
+	ReplaceAppRegistrationNotificationPolicies(ctx context.Context, resourceID string, resourcePolicy *ExpiryNotificationPolicy, credentialPolicies []AppRegistrationCredentialPolicyInput) error
 }
 
 type AuditLogger interface {
@@ -52,8 +52,16 @@ type AppRegistrationResolver interface {
 	CurrentApplication(ctx context.Context, identifier string) (appregistrations.ApplicationItem, error)
 }
 
-type AppRegistrationNotificationEvaluator interface {
+type ExpiryNotificationEvaluator interface {
 	EvaluateResource(ctx context.Context, resourceID string) error
+}
+
+// notifiableExpiryType lists the types that can produce expiry reminders. Key
+// Vault secrets qualify because they carry the Azure `exp` attribute; the ones
+// without it simply never have a date to remind about, so evaluating them is a
+// cheap no-op rather than noise.
+func notifiableExpiryType(resourceType ResourceType) bool {
+	return resourceType == TypeAppRegistration || resourceType == TypeKeyVaultSecret
 }
 
 type RDPSigningConfigProvider interface {
@@ -83,7 +91,7 @@ type Service struct {
 	audit            AuditLogger
 	keyVault         KeyVaultSecretResolver
 	appRegistrations AppRegistrationResolver
-	notifications    AppRegistrationNotificationEvaluator
+	notifications    ExpiryNotificationEvaluator
 	cipher           *SecretCipher
 	vaults           VaultPublicKeyResolver
 	launchTickets    *launchTicketStore
@@ -91,7 +99,7 @@ type Service struct {
 	syncMu           sync.Mutex
 }
 
-func NewService(repo ResourceStore, audit AuditLogger, keyVault KeyVaultSecretResolver, appRegistrations AppRegistrationResolver, notifications AppRegistrationNotificationEvaluator, cipherOrProviders ...any) *Service {
+func NewService(repo ResourceStore, audit AuditLogger, keyVault KeyVaultSecretResolver, appRegistrations AppRegistrationResolver, notifications ExpiryNotificationEvaluator, cipherOrProviders ...any) *Service {
 	var selectedCipher *SecretCipher
 	var rdpSigning RDPSigningConfigProvider
 	var vaults VaultPublicKeyResolver
@@ -188,7 +196,7 @@ func (s *Service) Create(ctx context.Context, user auth.User, input CreateResour
 		ResourceName: &resource.Name,
 		Metadata:     map[string]any{"type": resource.Type},
 	})
-	if resource.Type == TypeAppRegistration && s.notifications != nil {
+	if notifiableExpiryType(resource.Type) && s.notifications != nil {
 		_ = s.notifications.EvaluateResource(ctx, resource.ID)
 	}
 	return resource, nil
@@ -241,7 +249,7 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 		ResourceName: &resource.Name,
 		Metadata:     map[string]any{"type": resource.Type},
 	})
-	if resource.Type == TypeAppRegistration && s.notifications != nil {
+	if notifiableExpiryType(resource.Type) && s.notifications != nil {
 		_ = s.notifications.EvaluateResource(ctx, resource.ID)
 	}
 	return resource, nil
@@ -336,7 +344,7 @@ func isPasswordOverrideCandidateSummary(resource ResourceSummary) bool {
 	return resource.Type == TypeSharedSecret || resource.Type == TypeWebPortal
 }
 
-func normalizeOptionalNotificationPolicy(policy *AppRegistrationNotificationPolicy) *AppRegistrationNotificationPolicy {
+func normalizeOptionalNotificationPolicy(policy *ExpiryNotificationPolicy) *ExpiryNotificationPolicy {
 	if policy == nil {
 		return nil
 	}

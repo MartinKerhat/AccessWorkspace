@@ -61,7 +61,7 @@ func (s *listTestStore) Update(context.Context, string, UpdateResourceInput) (Re
 }
 func (s *listTestStore) Archive(context.Context, string) error { return nil }
 
-func (s *listTestStore) Delete(context.Context, string) error { return nil }
+func (s *listTestStore) Delete(context.Context, string) error  { return nil }
 func (s *listTestStore) Restore(context.Context, string) error { return nil }
 func (s *listTestStore) GetConnectionUserPasswordOverride(context.Context, string, string) (ConnectionCredentialOverride, error) {
 	return ConnectionCredentialOverride{}, ErrNotFound
@@ -75,7 +75,7 @@ func (s *listTestStore) DeleteConnectionUserPasswordOverride(context.Context, st
 func (s *listTestStore) ReplaceAppRegistrationSnapshot(context.Context, string, []AppRegistrationCredential, []AppRegistrationOwner) error {
 	return nil
 }
-func (s *listTestStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *AppRegistrationNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
+func (s *listTestStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *ExpiryNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
 	return nil
 }
 

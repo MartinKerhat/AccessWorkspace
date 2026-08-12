@@ -61,15 +61,15 @@ func (s *personalPasswordStore) Create(_ context.Context, input CreateResourceIn
 func (s *personalPasswordStore) Update(_ context.Context, _ string, input UpdateResourceInput) (Resource, error) {
 	s.updatedInput = input
 	s.resource = Resource{
-		ID:          "pwd-1",
-		Name:        input.Name,
-		Type:        input.Type,
-		Category:    CategoryForType(input.Type),
-		Personal:    input.Personal,
-		Owner:       input.Owner,
-		OwnerUserID: input.OwnerUserID,
-		OwnerTeam:   input.OwnerTeam,
-		Username:    input.Username,
+		ID:            "pwd-1",
+		Name:          input.Name,
+		Type:          input.Type,
+		Category:      CategoryForType(input.Type),
+		Personal:      input.Personal,
+		Owner:         input.Owner,
+		OwnerUserID:   input.OwnerUserID,
+		OwnerTeam:     input.OwnerTeam,
+		Username:      input.Username,
 		AllowedGroups: append([]string{}, input.AllowedGroups...),
 		Secret: Secret{
 			Mode:      input.SecretMode,
@@ -82,7 +82,7 @@ func (s *personalPasswordStore) Update(_ context.Context, _ string, input Update
 
 func (s *personalPasswordStore) Archive(context.Context, string) error { return nil }
 
-func (s *personalPasswordStore) Delete(context.Context, string) error { return nil }
+func (s *personalPasswordStore) Delete(context.Context, string) error  { return nil }
 func (s *personalPasswordStore) Restore(context.Context, string) error { return nil }
 func (s *personalPasswordStore) GetConnectionUserPasswordOverride(context.Context, string, string) (ConnectionCredentialOverride, error) {
 	return ConnectionCredentialOverride{}, ErrNotFound
@@ -96,7 +96,7 @@ func (s *personalPasswordStore) DeleteConnectionUserPasswordOverride(context.Con
 func (s *personalPasswordStore) ReplaceAppRegistrationSnapshot(context.Context, string, []AppRegistrationCredential, []AppRegistrationOwner) error {
 	return nil
 }
-func (s *personalPasswordStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *AppRegistrationNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
+func (s *personalPasswordStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *ExpiryNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
 	return nil
 }
 

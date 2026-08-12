@@ -22,7 +22,7 @@ import type {
   ResourceSummary,
   RevealResult,
   AppRegistrationCredentialPolicyInput,
-  AppRegistrationNotificationPolicy,
+  ExpiryNotificationPolicy,
   BrowserExtensionRuntime,
   BrowserExtensionConnectToken,
   ConnectionCredentialOverride,
@@ -402,6 +402,7 @@ export const api = {
     azureReaderUseAmbientIdentity?: boolean;
     keyVaultSources?: AdminConfig["keyVaultSources"];
     appRegistrationNotificationPolicy?: AdminConfig["appRegistrationNotificationPolicy"];
+    keyVaultNotificationPolicy?: AdminConfig["keyVaultNotificationPolicy"];
     notificationEmailEnabled?: boolean;
     notificationEmailHost?: string;
     notificationEmailPort?: number;
@@ -527,7 +528,7 @@ export const api = {
   },
   updateAppRegistrationNotificationPolicies(
     id: string,
-    input: { resourcePolicy?: AppRegistrationNotificationPolicy; credentialPolicies: AppRegistrationCredentialPolicyInput[] }
+    input: { resourcePolicy?: ExpiryNotificationPolicy; credentialPolicies: AppRegistrationCredentialPolicyInput[] }
   ) {
     return request<Resource>(`/resources/${encodeURIComponent(id)}/app-registration-notifications`, {
       method: "PUT",

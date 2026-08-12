@@ -15,35 +15,36 @@ import (
 )
 
 type AdminConfigView struct {
-	AuthMode                           string                                      `json:"authMode"`
-	EntraTenantID                      string                                      `json:"entraTenantId"`
-	EntraClientID                      string                                      `json:"entraClientId"`
-	EntraAuthority                     string                                      `json:"entraAuthority"`
-	EntraRedirectURI                   string                                      `json:"entraRedirectUri"`
-	EntraGroupSource                   string                                      `json:"entraGroupSource"`
-	EntraClientSecretSet               bool                                        `json:"entraClientSecretSet"`
-	EntraConfigured                    bool                                        `json:"entraConfigured"`
-	EntraEnabled                       bool                                        `json:"entraEnabled"`
-	AzureReaderUseAmbientIdentity      bool                                        `json:"azureReaderUseAmbientIdentity"`
-	KeyVaultSources                    []KeyVaultSource                            `json:"keyVaultSources"`
-	KeyVaultSourceCount                int                                         `json:"keyVaultSourceCount"`
-	LocalGroupCount                    int                                         `json:"localGroupCount"`
-	DirectRightsRuleCount              int                                         `json:"directRightsRuleCount"`
-	AppRegistrationNotificationPolicy  resources.AppRegistrationNotificationPolicy `json:"appRegistrationNotificationPolicy"`
-	NotificationEmailEnabled           bool                                        `json:"notificationEmailEnabled"`
-	NotificationEmailHost              string                                      `json:"notificationEmailHost"`
-	NotificationEmailPort              int                                         `json:"notificationEmailPort"`
-	NotificationEmailUsername          string                                      `json:"notificationEmailUsername"`
-	NotificationEmailPasswordSet       bool                                        `json:"notificationEmailPasswordSet"`
-	NotificationEmailFrom              string                                      `json:"notificationEmailFrom"`
-	NotificationEmailConfigured        bool                                        `json:"notificationEmailConfigured"`
-	AppRegistrationAutoSyncEnabled     bool                                        `json:"appRegistrationAutoSyncEnabled"`
-	AppRegistrationSyncIntervalMinutes int                                         `json:"appRegistrationSyncIntervalMinutes"`
-	AppRegistrationLastSyncedAt        *time.Time                                  `json:"appRegistrationLastSyncedAt,omitempty"`
-	AppRegistrationLastSyncStatus      string                                      `json:"appRegistrationLastSyncStatus"`
-	AppRegistrationLastSyncError       string                                      `json:"appRegistrationLastSyncError"`
-	AppRegistrationLastSyncSummary     string                                      `json:"appRegistrationLastSyncSummary"`
-	RDPSigning                         RDPSigningConfigView                        `json:"rdpSigning"`
+	AuthMode                           string                             `json:"authMode"`
+	EntraTenantID                      string                             `json:"entraTenantId"`
+	EntraClientID                      string                             `json:"entraClientId"`
+	EntraAuthority                     string                             `json:"entraAuthority"`
+	EntraRedirectURI                   string                             `json:"entraRedirectUri"`
+	EntraGroupSource                   string                             `json:"entraGroupSource"`
+	EntraClientSecretSet               bool                               `json:"entraClientSecretSet"`
+	EntraConfigured                    bool                               `json:"entraConfigured"`
+	EntraEnabled                       bool                               `json:"entraEnabled"`
+	AzureReaderUseAmbientIdentity      bool                               `json:"azureReaderUseAmbientIdentity"`
+	KeyVaultSources                    []KeyVaultSource                   `json:"keyVaultSources"`
+	KeyVaultSourceCount                int                                `json:"keyVaultSourceCount"`
+	LocalGroupCount                    int                                `json:"localGroupCount"`
+	DirectRightsRuleCount              int                                `json:"directRightsRuleCount"`
+	AppRegistrationNotificationPolicy  resources.ExpiryNotificationPolicy `json:"appRegistrationNotificationPolicy"`
+	KeyVaultNotificationPolicy         resources.ExpiryNotificationPolicy `json:"keyVaultNotificationPolicy"`
+	NotificationEmailEnabled           bool                               `json:"notificationEmailEnabled"`
+	NotificationEmailHost              string                             `json:"notificationEmailHost"`
+	NotificationEmailPort              int                                `json:"notificationEmailPort"`
+	NotificationEmailUsername          string                             `json:"notificationEmailUsername"`
+	NotificationEmailPasswordSet       bool                               `json:"notificationEmailPasswordSet"`
+	NotificationEmailFrom              string                             `json:"notificationEmailFrom"`
+	NotificationEmailConfigured        bool                               `json:"notificationEmailConfigured"`
+	AppRegistrationAutoSyncEnabled     bool                               `json:"appRegistrationAutoSyncEnabled"`
+	AppRegistrationSyncIntervalMinutes int                                `json:"appRegistrationSyncIntervalMinutes"`
+	AppRegistrationLastSyncedAt        *time.Time                         `json:"appRegistrationLastSyncedAt,omitempty"`
+	AppRegistrationLastSyncStatus      string                             `json:"appRegistrationLastSyncStatus"`
+	AppRegistrationLastSyncError       string                             `json:"appRegistrationLastSyncError"`
+	AppRegistrationLastSyncSummary     string                             `json:"appRegistrationLastSyncSummary"`
+	RDPSigning                         RDPSigningConfigView               `json:"rdpSigning"`
 }
 
 type KeyVaultSource struct {
@@ -65,24 +66,25 @@ type KeyVaultSource struct {
 }
 
 type UpdateAdminConfigInput struct {
-	EntraTenantID                      string                                      `json:"entraTenantId"`
-	EntraClientID                      string                                      `json:"entraClientId"`
-	EntraAuthority                     string                                      `json:"entraAuthority"`
-	EntraRedirectURI                   string                                      `json:"entraRedirectUri"`
-	EntraGroupSource                   string                                      `json:"entraGroupSource"`
-	EntraClientSecret                  string                                      `json:"entraClientSecret"`
-	EntraEnabled                       bool                                        `json:"entraEnabled"`
-	KeyVaultSources                    []KeyVaultSource                            `json:"keyVaultSources"`
-	AppRegistrationNotificationPolicy  resources.AppRegistrationNotificationPolicy `json:"appRegistrationNotificationPolicy"`
-	NotificationEmailEnabled           bool                                        `json:"notificationEmailEnabled"`
-	NotificationEmailHost              string                                      `json:"notificationEmailHost"`
-	NotificationEmailPort              int                                         `json:"notificationEmailPort"`
-	NotificationEmailUsername          string                                      `json:"notificationEmailUsername"`
-	NotificationEmailPassword          string                                      `json:"notificationEmailPassword"`
-	NotificationEmailFrom              string                                      `json:"notificationEmailFrom"`
-	AppRegistrationAutoSyncEnabled     bool                                        `json:"appRegistrationAutoSyncEnabled"`
-	AppRegistrationSyncIntervalMinutes int                                         `json:"appRegistrationSyncIntervalMinutes"`
-	RDPSigningEnabled                  bool                                        `json:"rdpSigningEnabled"`
+	EntraTenantID                      string                             `json:"entraTenantId"`
+	EntraClientID                      string                             `json:"entraClientId"`
+	EntraAuthority                     string                             `json:"entraAuthority"`
+	EntraRedirectURI                   string                             `json:"entraRedirectUri"`
+	EntraGroupSource                   string                             `json:"entraGroupSource"`
+	EntraClientSecret                  string                             `json:"entraClientSecret"`
+	EntraEnabled                       bool                               `json:"entraEnabled"`
+	KeyVaultSources                    []KeyVaultSource                   `json:"keyVaultSources"`
+	AppRegistrationNotificationPolicy  resources.ExpiryNotificationPolicy `json:"appRegistrationNotificationPolicy"`
+	KeyVaultNotificationPolicy         resources.ExpiryNotificationPolicy `json:"keyVaultNotificationPolicy"`
+	NotificationEmailEnabled           bool                               `json:"notificationEmailEnabled"`
+	NotificationEmailHost              string                             `json:"notificationEmailHost"`
+	NotificationEmailPort              int                                `json:"notificationEmailPort"`
+	NotificationEmailUsername          string                             `json:"notificationEmailUsername"`
+	NotificationEmailPassword          string                             `json:"notificationEmailPassword"`
+	NotificationEmailFrom              string                             `json:"notificationEmailFrom"`
+	AppRegistrationAutoSyncEnabled     bool                               `json:"appRegistrationAutoSyncEnabled"`
+	AppRegistrationSyncIntervalMinutes int                                `json:"appRegistrationSyncIntervalMinutes"`
+	RDPSigningEnabled                  bool                               `json:"rdpSigningEnabled"`
 }
 
 type KeyVaultSyncState struct {
@@ -155,6 +157,7 @@ func (c Config) AdminView() AdminConfigView {
 		EntraEnabled:                       false,
 		KeyVaultSources:                    []KeyVaultSource{},
 		AppRegistrationNotificationPolicy:  defaultAppRegistrationNotificationPolicy(),
+		KeyVaultNotificationPolicy:         defaultKeyVaultNotificationPolicy(),
 		NotificationEmailPort:              587,
 		AppRegistrationAutoSyncEnabled:     true,
 		AppRegistrationSyncIntervalMinutes: 60,
@@ -324,7 +327,8 @@ func (s *AdminConfigStore) Get(ctx context.Context) (any, error) {
 		parseKeyVaultSources(settings["keyvault_sources_json"]),
 		parseKeyVaultSyncStates(settings["keyvault_sync_state_json"]),
 	)
-	view.AppRegistrationNotificationPolicy = parseNotificationPolicy(settings["app_registration_notification_policy_json"])
+	view.AppRegistrationNotificationPolicy = parseNotificationPolicy(settings["app_registration_notification_policy_json"], defaultAppRegistrationNotificationPolicy())
+	view.KeyVaultNotificationPolicy = parseNotificationPolicy(settings["key_vault_notification_policy_json"], defaultKeyVaultNotificationPolicy())
 	if value := strings.TrimSpace(settings["notification_email_host"]); value != "" {
 		view.NotificationEmailHost = value
 	}
@@ -430,12 +434,24 @@ func (s *AdminConfigStore) GetNotificationEmailRuntime(ctx context.Context) (not
 	return config, nil
 }
 
-func (s *AdminConfigStore) GetAppRegistrationNotificationPolicy(ctx context.Context) (resources.AppRegistrationNotificationPolicy, error) {
+func (s *AdminConfigStore) GetAppRegistrationNotificationPolicy(ctx context.Context) (resources.ExpiryNotificationPolicy, error) {
 	settings, err := s.loadSettings(ctx)
 	if err != nil {
-		return resources.AppRegistrationNotificationPolicy{}, err
+		return resources.ExpiryNotificationPolicy{}, err
 	}
-	return parseNotificationPolicy(settings["app_registration_notification_policy_json"]), nil
+	return parseNotificationPolicy(settings["app_registration_notification_policy_json"], defaultAppRegistrationNotificationPolicy()), nil
+}
+
+// GetKeyVaultNotificationPolicy is deliberately a separate global default from
+// the app registration one: Key Vault secrets expire far less often here (most
+// carry no expiry at all), so their reminder cadence should be tunable without
+// disturbing app registration reminders.
+func (s *AdminConfigStore) GetKeyVaultNotificationPolicy(ctx context.Context) (resources.ExpiryNotificationPolicy, error) {
+	settings, err := s.loadSettings(ctx)
+	if err != nil {
+		return resources.ExpiryNotificationPolicy{}, err
+	}
+	return parseNotificationPolicy(settings["key_vault_notification_policy_json"], defaultKeyVaultNotificationPolicy()), nil
 }
 
 func (s *AdminConfigStore) GetEntraRuntime(ctx context.Context) (EntraRuntimeConfig, error) {
@@ -589,11 +605,18 @@ func (s *AdminConfigStore) Update(ctx context.Context, payload any) (any, error)
 			items["keyvault_sources_json"] = string(encoded)
 		}
 		if value, ok := values["appRegistrationNotificationPolicy"].(map[string]any); ok {
-			encoded, err := json.Marshal(normalizeNotificationPolicy(notificationPolicyFromAny(value)))
+			encoded, err := json.Marshal(notificationPolicyFromAny(value, defaultAppRegistrationNotificationPolicy()))
 			if err != nil {
 				return AdminConfigView{}, err
 			}
 			items["app_registration_notification_policy_json"] = string(encoded)
+		}
+		if value, ok := values["keyVaultNotificationPolicy"].(map[string]any); ok {
+			encoded, err := json.Marshal(notificationPolicyFromAny(value, defaultKeyVaultNotificationPolicy()))
+			if err != nil {
+				return AdminConfigView{}, err
+			}
+			items["key_vault_notification_policy_json"] = string(encoded)
 		}
 		if value, ok := values["notificationEmailEnabled"].(bool); ok {
 			input.NotificationEmailEnabled = value
@@ -687,27 +710,39 @@ func (s *AdminConfigStore) Update(ctx context.Context, payload any) (any, error)
 	return s.Get(ctx)
 }
 
-func defaultAppRegistrationNotificationPolicy() resources.AppRegistrationNotificationPolicy {
-	return resources.AppRegistrationNotificationPolicy{
+func defaultAppRegistrationNotificationPolicy() resources.ExpiryNotificationPolicy {
+	return resources.ExpiryNotificationPolicy{
 		Enabled:      true,
 		ReminderDays: []int{30, 14, 7, 3, 1, 0},
 		Channels:     []resources.NotificationChannel{resources.NotificationChannelInApp},
 	}
 }
 
-func parseNotificationPolicy(raw string) resources.AppRegistrationNotificationPolicy {
-	if strings.TrimSpace(raw) == "" {
-		return defaultAppRegistrationNotificationPolicy()
+// defaultKeyVaultNotificationPolicy is quieter than the app registration
+// default on purpose: a Key Vault secret that carries an expiry at all is the
+// exception here, and the ones that do are rotated on a longer horizon than a
+// client secret, so a daily countdown in the final week is noise.
+func defaultKeyVaultNotificationPolicy() resources.ExpiryNotificationPolicy {
+	return resources.ExpiryNotificationPolicy{
+		Enabled:      true,
+		ReminderDays: []int{30, 7, 1, 0},
+		Channels:     []resources.NotificationChannel{resources.NotificationChannelInApp},
 	}
-	var parsed resources.AppRegistrationNotificationPolicy
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		return defaultAppRegistrationNotificationPolicy()
-	}
-	return normalizeNotificationPolicy(parsed)
 }
 
-func notificationPolicyFromAny(value map[string]any) resources.AppRegistrationNotificationPolicy {
-	policy := defaultAppRegistrationNotificationPolicy()
+func parseNotificationPolicy(raw string, fallback resources.ExpiryNotificationPolicy) resources.ExpiryNotificationPolicy {
+	if strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+	var parsed resources.ExpiryNotificationPolicy
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return fallback
+	}
+	return normalizeNotificationPolicy(parsed, fallback)
+}
+
+func notificationPolicyFromAny(value map[string]any, fallback resources.ExpiryNotificationPolicy) resources.ExpiryNotificationPolicy {
+	policy := fallback
 	if enabled, ok := value["enabled"].(bool); ok {
 		policy.Enabled = enabled
 	}
@@ -729,12 +764,12 @@ func notificationPolicyFromAny(value map[string]any) resources.AppRegistrationNo
 			policy.Channels = append(policy.Channels, resources.NotificationChannel(strings.TrimSpace(channel)))
 		}
 	}
-	return normalizeNotificationPolicy(policy)
+	return normalizeNotificationPolicy(policy, fallback)
 }
 
-func normalizeNotificationPolicy(policy resources.AppRegistrationNotificationPolicy) resources.AppRegistrationNotificationPolicy {
+func normalizeNotificationPolicy(policy resources.ExpiryNotificationPolicy, fallback resources.ExpiryNotificationPolicy) resources.ExpiryNotificationPolicy {
 	if len(policy.ReminderDays) == 0 {
-		policy.ReminderDays = defaultAppRegistrationNotificationPolicy().ReminderDays
+		policy.ReminderDays = fallback.ReminderDays
 	}
 	seenDays := map[int]struct{}{}
 	normalizedDays := make([]int, 0, len(policy.ReminderDays))

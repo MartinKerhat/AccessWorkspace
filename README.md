@@ -9,7 +9,7 @@ Secrets are protected with envelope encryption: every stored secret has its own 
 - `backend`: Go API, PostgreSQL migrations, seed command, and tests
 - `frontend`: React + TypeScript UI
 - `deploy`: Dockerfiles and deployment-oriented assets
-- `docs`: product, architecture, and roadmap docs
+- `docs`: product, architecture, and module specification docs
 
 ## Documentation
 
@@ -18,7 +18,6 @@ Secrets are protected with envelope encryption: every stored secret has its own 
 - [App Config Module Spec](docs/app-config-module-spec.md)
 - [Domain Model](docs/domain-model.md)
 - [Object Model Spec](docs/object-model-spec.md)
-- [Roadmap](docs/roadmap.md)
 - [Browser Extension Distribution](docs/browser-extension-distribution.md)
 
 ## What's included
@@ -31,8 +30,9 @@ Secrets are protected with envelope encryption: every stored secret has its own 
 - Admin resource create, update, archive, and restore flows
 - Azure Key Vault discovery, batch import, manual sync, automatic background sync, and optional auto-import defaults
 - Azure app registration discovery, batch import, manual sync, automatic background sync, owner snapshots, and secret/certificate expiry metadata
-- App registration expiry notification policies with global defaults plus per-app and per-credential overrides
-- In-app notification center for app registration credential reminders
+- Expiry reminders for app registration credentials and for Key Vault secrets that carry an expiry date, delivered in-app and by email to the owner, the owner team, and admins
+- Expiry notification policies with separate global defaults per category, plus per-app and per-credential overrides for app registrations
+- In-app notification center, with reminders superseded automatically when a credential or secret is rotated
 - Administration user directory with effective-access inspection, direct group assignment, workspace blocking, local user creation, invite links, and admin-forced password reset
 - Personal passwords: a per-user encrypted vault, unlocked by a passkey (Windows Hello / Touch ID / security key) or a passphrase, that administrators and database operators cannot read
 - Self-service password change that preserves personal secrets, and switching a saved password between personal and shared
@@ -315,8 +315,10 @@ locally. A typical production flow:
 - App registration sync stores credential expiry metadata and owner snapshots, but never stores client secret values.
 - App registration records summarize the next credential expiry on the resource while retaining the full synced secret/certificate snapshot for detail views and future notifications.
 - App registration discovery uses the Azure / Entra admin connection. The configured backend app registration must have Microsoft Graph application permission `Application.Read.All` with admin consent.
-- App registration reminder recipients are resolved from the local owner user and the local owner team members, not from Azure owners.
-- Global app registration notification defaults are managed in Administration and can be overridden per app registration or per synced credential.
+- Reminder recipients are resolved from the local owner user, the local owner team members, and all workspace admins — not from Azure owners. Admins are always included so a record with no owner set still reaches someone; blocked users are never notified.
+- Key Vault secrets participate in expiry reminders through the same pipeline. Only the version the workspace record points at is considered: a versionless reference tracks the current version, a version-pinned reference tracks that one. Secrets with no expiry date never generate a reminder.
+- Global notification defaults are managed in Administration per category (app registrations and Key Vault have independent reminder schedules) and can be overridden per app registration or per synced credential.
+- When a credential or secret is rotated, reminders written for the previous expiry date are marked read automatically, so the notification center never keeps warning about a date that no longer applies.
 - Email reminders use SMTP settings from Administration. In-app reminders are always stored in PostgreSQL for the workspace notification center.
 - Administration now also shows a recent email delivery log for app registration reminders, including failed SMTP attempts and their error text.
 - App registration automatic sync is configured separately in Administration and controls how often imported app registrations are rechecked for expiry changes and reminder generation.

@@ -54,7 +54,7 @@ func (s *launchTestStore) Update(context.Context, string, UpdateResourceInput) (
 
 func (s *launchTestStore) Archive(context.Context, string) error { return nil }
 
-func (s *launchTestStore) Delete(context.Context, string) error { return nil }
+func (s *launchTestStore) Delete(context.Context, string) error  { return nil }
 func (s *launchTestStore) Restore(context.Context, string) error { return nil }
 func (s *launchTestStore) GetConnectionUserPasswordOverride(_ context.Context, connectionID string, _ string) (ConnectionCredentialOverride, error) {
 	if s.overridePasswordID == "" || s.resource.ID != connectionID {
@@ -71,7 +71,7 @@ func (s *launchTestStore) DeleteConnectionUserPasswordOverride(context.Context, 
 func (s *launchTestStore) ReplaceAppRegistrationSnapshot(context.Context, string, []AppRegistrationCredential, []AppRegistrationOwner) error {
 	return nil
 }
-func (s *launchTestStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *AppRegistrationNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
+func (s *launchTestStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *ExpiryNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
 	return nil
 }
 

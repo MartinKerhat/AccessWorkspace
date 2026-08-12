@@ -589,20 +589,20 @@ func (r *Repository) ReplaceAppRegistrationSnapshot(ctx context.Context, resourc
 	return tx.Commit(ctx)
 }
 
-func (r *Repository) ReplaceAppRegistrationNotificationPolicies(ctx context.Context, resourceID string, resourcePolicy *AppRegistrationNotificationPolicy, credentialPolicies []AppRegistrationCredentialPolicyInput) error {
+func (r *Repository) ReplaceAppRegistrationNotificationPolicies(ctx context.Context, resourceID string, resourcePolicy *ExpiryNotificationPolicy, credentialPolicies []AppRegistrationCredentialPolicyInput) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, `delete from app_registration_notification_policies where resource_id = $1`, resourceID); err != nil {
+	if _, err := tx.Exec(ctx, `delete from expiry_notification_policies where resource_id = $1`, resourceID); err != nil {
 		return err
 	}
 
 	if resourcePolicy != nil {
 		if _, err := tx.Exec(ctx, `
-			insert into app_registration_notification_policies (
+			insert into expiry_notification_policies (
 				resource_id, credential_key_id, enabled, reminder_days, channels, updated_at
 			) values ($1, '', $2, $3, $4, now())
 		`, resourceID, resourcePolicy.Enabled, resourcePolicy.ReminderDays, notificationChannelsToStrings(resourcePolicy.Channels)); err != nil {
@@ -615,7 +615,7 @@ func (r *Repository) ReplaceAppRegistrationNotificationPolicies(ctx context.Cont
 			continue
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into app_registration_notification_policies (
+			insert into expiry_notification_policies (
 				resource_id, credential_key_id, enabled, reminder_days, channels, updated_at
 			) values ($1, $2, $3, $4, $5, now())
 		`, resourceID, strings.TrimSpace(item.KeyID), item.Policy.Enabled, item.Policy.ReminderDays, notificationChannelsToStrings(item.Policy.Channels)); err != nil {
@@ -709,10 +709,10 @@ func (r *Repository) listAppRegistrationOwners(ctx context.Context, resourceID s
 	return items, rows.Err()
 }
 
-func (r *Repository) listAppRegistrationNotificationPolicies(ctx context.Context, resourceID string) (*AppRegistrationNotificationPolicy, map[string]*AppRegistrationNotificationPolicy, error) {
+func (r *Repository) listAppRegistrationNotificationPolicies(ctx context.Context, resourceID string) (*ExpiryNotificationPolicy, map[string]*ExpiryNotificationPolicy, error) {
 	rows, err := r.db.Query(ctx, `
 		select credential_key_id, enabled, reminder_days, channels
-		from app_registration_notification_policies
+		from expiry_notification_policies
 		where resource_id = $1
 	`, resourceID)
 	if err != nil {
@@ -720,8 +720,8 @@ func (r *Repository) listAppRegistrationNotificationPolicies(ctx context.Context
 	}
 	defer rows.Close()
 
-	var resourcePolicy *AppRegistrationNotificationPolicy
-	credentialPolicies := map[string]*AppRegistrationNotificationPolicy{}
+	var resourcePolicy *ExpiryNotificationPolicy
+	credentialPolicies := map[string]*ExpiryNotificationPolicy{}
 	for rows.Next() {
 		var credentialKeyID string
 		var enabled bool
@@ -730,7 +730,7 @@ func (r *Repository) listAppRegistrationNotificationPolicies(ctx context.Context
 		if err := rows.Scan(&credentialKeyID, &enabled, &reminderDays, &channels); err != nil {
 			return nil, nil, err
 		}
-		policy := &AppRegistrationNotificationPolicy{
+		policy := &ExpiryNotificationPolicy{
 			Enabled:      enabled,
 			ReminderDays: append([]int{}, reminderDays...),
 			Channels:     notificationChannelsFromStrings(channels),

@@ -116,6 +116,13 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 							continue
 						}
 						existingByReference[reference] = created
+						// Evaluate on import too: the update loop below only
+						// walks records that existed when this run started, so
+						// a secret auto-imported on the day it hits a reminder
+						// would otherwise stay silent until the next sync.
+						if s.notifications != nil {
+							_ = s.notifications.EvaluateResource(ctx, created.ID)
+						}
 						result.ImportedResources++
 						result.Sources[i].ImportedCount++
 						_ = s.audit.Log(ctx, audit.LogParams{
@@ -183,7 +190,7 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 			update.ObjectVersion = metadata.Version
 			update.ContentType = metadata.ContentType
 			update.ExpiresAt = metadata.ExpiresAt
-			update.Status = keyVaultStatus(metadata.Enabled)
+			update.Status = keyVaultStatus(metadata.Enabled, metadata.ExpiresAt, now)
 			update.SourceObjectID = strings.TrimRight(item.SourceObjectID, "/")
 			update.LinkedSecretRef = strings.TrimRight(item.LinkedSecretRef, "/")
 			update.SecretReference = reference
@@ -193,6 +200,15 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 				result.MissingResources++
 				result.Sources[i].MissingCount++
 				continue
+			}
+
+			// Reminders are edge-triggered on an exact reminder day, so they
+			// only ever fire if something evaluates the record that day. For
+			// app registrations that is their own sync loop; this is the
+			// equivalent hook for Key Vault. Best-effort like the others: a
+			// notification failure must not fail the sync.
+			if s.notifications != nil {
+				_ = s.notifications.EvaluateResource(ctx, item.ID)
 			}
 
 			result.UpdatedResources++
@@ -231,11 +247,16 @@ func summarizeKeyVaultSourceRun(source KeyVaultSyncSource) string {
 	return strings.Join(parts, ", ")
 }
 
-func keyVaultStatus(enabled bool) string {
-	if enabled {
-		return "active"
+// keyVaultStatus reuses the status vocabulary app registrations already write
+// ("expiring"/"expired"), so the catalog badge that renders any non-active
+// status covers Key Vault secrets with no new UI. Disabled wins over expiry:
+// a disabled secret cannot be used at all, which is the more urgent fact, and
+// the expiry is still on the detail view.
+func keyVaultStatus(enabled bool, expiresAt *time.Time, now time.Time) string {
+	if !enabled {
+		return "disabled"
 	}
-	return "disabled"
+	return expiryStatus(expiresAt, now)
 }
 
 func autoImportCreateInput(source KeyVaultSyncSourceConfig, secret keyvault.SecretItem, now time.Time) CreateResourceInput {
@@ -246,7 +267,7 @@ func autoImportCreateInput(source KeyVaultSyncSourceConfig, secret keyvault.Secr
 		Owner:           strings.TrimSpace(source.DefaultOwner),
 		OwnerTeam:       strings.TrimSpace(source.DefaultOwnerTeam),
 		Environment:     strings.TrimSpace(source.DefaultEnvironment),
-		Status:          keyVaultStatus(secret.Enabled),
+		Status:          keyVaultStatus(secret.Enabled, secret.ExpiresAt, now),
 		SourceKind:      SourceKindAzureKeyVault,
 		SourceObjectID:  strings.TrimRight(strings.TrimSpace(secret.ID), "/"),
 		LastSyncedAt:    &now,

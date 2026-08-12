@@ -102,7 +102,7 @@ func (s *fakeResourceStore) ReplaceAppRegistrationSnapshot(_ context.Context, _ 
 	return nil
 }
 
-func (s *fakeResourceStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *AppRegistrationNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
+func (s *fakeResourceStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *ExpiryNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
 	return nil
 }
 

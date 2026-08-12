@@ -54,7 +54,7 @@ func (s *browserExtensionStore) Update(context.Context, string, UpdateResourceIn
 
 func (s *browserExtensionStore) Archive(context.Context, string) error { return nil }
 
-func (s *browserExtensionStore) Delete(context.Context, string) error { return nil }
+func (s *browserExtensionStore) Delete(context.Context, string) error  { return nil }
 func (s *browserExtensionStore) Restore(context.Context, string) error { return nil }
 func (s *browserExtensionStore) GetConnectionUserPasswordOverride(context.Context, string, string) (ConnectionCredentialOverride, error) {
 	return ConnectionCredentialOverride{}, ErrNotFound
@@ -68,7 +68,7 @@ func (s *browserExtensionStore) DeleteConnectionUserPasswordOverride(context.Con
 func (s *browserExtensionStore) ReplaceAppRegistrationSnapshot(context.Context, string, []AppRegistrationCredential, []AppRegistrationOwner) error {
 	return nil
 }
-func (s *browserExtensionStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *AppRegistrationNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
+func (s *browserExtensionStore) ReplaceAppRegistrationNotificationPolicies(context.Context, string, *ExpiryNotificationPolicy, []AppRegistrationCredentialPolicyInput) error {
 	return nil
 }
 
