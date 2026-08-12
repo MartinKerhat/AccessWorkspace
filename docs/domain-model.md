@@ -77,7 +77,6 @@ Core attributes:
 - `launch_allowed`
 - `reveal_allowed`
 - `secret_ref`
-- `launch_profile`
 - `notes`
 
 Additional rule:

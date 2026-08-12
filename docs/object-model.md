@@ -149,18 +149,13 @@ Should not be duplicated locally unless explicitly configured:
 - `folder_path`
 - `launch_mode`
 - `domain`
-- `window_mode`
-- `screen_mode`
 - `admin_session`
 - `automatic_logon`
-- `use_multiple_monitors`
-- `show_connection_bar`
-- `mac_address`
+- `mac_address` — used for Wake-on-LAN before an RDP launch
 - `gateway_host` for RDP connections behind a Remote Desktop Gateway
 - `secret_ref`
 - `description`
 - `environment`
-- `launch_profile`
 - `working_notes`
 - `reveal_allowed`
 - `copy_allowed`

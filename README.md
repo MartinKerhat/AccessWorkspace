@@ -18,7 +18,7 @@ Access Workspace pulls that into one workspace where access is discoverable, per
 
 ### Connections — a launcher-first RDP and SSH catalog
 
-Shared connections live in the workspace with folder organization, per-connection credentials, and permissions. Connecting hands off to a small local launcher that opens the native client on your machine — **mstsc on Windows, FreeRDP on Linux** — with the credential injected straight from the vault. Remote Desktop Gateway, admin sessions, multi-monitor and window options are carried through as connection data, not per-machine setup. Secrets never travel in a browser URL: the web app requests a one-time launch ticket that only the launcher can redeem.
+Shared connections live in the workspace with folder organization, per-connection credentials, and permissions. Connecting hands off to a small local launcher that opens the native client on your machine — **mstsc on Windows, FreeRDP on Linux** — with the credential injected straight from the vault. Remote Desktop Gateway hosts, admin sessions, and Wake-on-LAN travel with the connection record, so nobody sets them up per machine. Secrets never travel in a browser URL: the web app requests a one-time launch ticket that only the launcher can redeem.
 
 Users can attach **their own saved credentials** to a shared connection, so a jump host shared with the whole team can still be entered with each person's individual account.
 
