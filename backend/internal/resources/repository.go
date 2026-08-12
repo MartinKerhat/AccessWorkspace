@@ -334,6 +334,17 @@ func (r *Repository) ListArchived(ctx context.Context) ([]ArchivedResourceSummar
 	return items, rows.Err()
 }
 
+// sharingList keeps allowed_groups / allowed_users writable from callers that
+// skip normalizeInput (the Key Vault and app registration sync jobs go straight
+// to the repository): pgx encodes a nil slice as NULL, which the not-null
+// columns reject, so an unset list must land as an empty array instead.
+func sharingList(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
 func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Resource, error) {
 	id := uuid.NewString()
 	tx, err := r.db.Begin(ctx)
@@ -367,8 +378,8 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 		input.ConnectionUseMultipleMonitors, input.ConnectionShowConnectionBar, input.ConnectionScreenMode, input.ConnectionMacAddress,
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
-		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups,
-		input.ConnectionGatewayHost, input.AllowedUsers)
+		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, sharingList(input.AllowedGroups),
+		input.ConnectionGatewayHost, sharingList(input.AllowedUsers))
 	if err != nil {
 		return Resource{}, err
 	}
@@ -453,8 +464,8 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 		input.ConnectionUseMultipleMonitors, input.ConnectionShowConnectionBar, input.ConnectionScreenMode, input.ConnectionMacAddress,
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
-		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, input.AllowedGroups,
-		input.ConnectionGatewayHost, input.AllowedUsers)
+		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, sharingList(input.AllowedGroups),
+		input.ConnectionGatewayHost, sharingList(input.AllowedUsers))
 	if err != nil {
 		return Resource{}, err
 	}
