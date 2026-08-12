@@ -10,8 +10,11 @@ import (
 )
 
 // Object mentions let a note reference a stored credential inline: the author
-// types "@", picks an object, and a token is written into the notes text. See
-// .dev-notes/rdp-credential-handoff-plan.md §5.3.
+// types "@", picks an object, and a token is written into the notes text. The
+// point is connection notes that say "log in with @[db-admin](passwords:...)"
+// instead of repeating the credential, so the note stays correct when the
+// credential changes and the reader's own permissions decide what they can do
+// with it.
 //
 // Notes stay a plain text column — the token is the whole storage format, so
 // there is no migration and existing prose keeps working as prose.

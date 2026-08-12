@@ -1,8 +1,8 @@
 name: Release images
 
 # Builds the backend + frontend container images and publishes them to GHCR
-# (public). Insio's ACR (acrinsio) caches these via cache rules, and
-# argocd-image-updater watches GHCR for new tags. Every run produces a NEW,
+# (public). Deployments consume them from there — a registry that caches GHCR
+# and an image updater watching for new tags. Every run produces a NEW,
 # monotonically increasing tag: <VERSION>-build.<run_number> (e.g. 0.1.0-build.42)
 # so image-updater's newest-build strategy always has a fresh, ordered version.
 #

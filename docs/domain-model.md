@@ -1,10 +1,13 @@
 # Domain Model
 
+**Audience:** contributors. **Covers:** the objects that exist today and how
+access to them is decided.
+
 ## Overview
 
-The product should behave as one workspace with multiple object categories. It may still use a shared base record in implementation, but the user experience and domain model should be organized around category-specific object structures.
+The product behaves as one workspace with multiple object categories. Implementation shares a base record, but the user experience and the domain model are organized around category-specific object structures.
 
-Initial category set:
+Category set:
 
 - `Connections`
 - `Key Vault`
@@ -15,7 +18,7 @@ Initial category set:
 
 The first four are object categories. `Activity` and `Admin` are workspace areas rather than business object types.
 
-Detailed attribute, storage, and source-of-truth rules are defined in [object-model-spec.md](object-model-spec.md).
+Detailed attribute, storage, and source-of-truth rules are in [object-model.md](object-model.md).
 
 ## Core entity: Resource
 
@@ -262,40 +265,36 @@ Suggested audit fields:
 
 ## Expiry model
 
-The app should track expirations as first-class operational data.
+Expiry is tracked as operational data on the object itself, and drives
+reminders rather than a separate dashboard.
 
-### Expirable item
+Two sources produce expiring items:
 
-Fields:
+- **app registration credentials** — every synced secret and certificate, each
+  with its own expiry; the resource also carries a summary of the next one to
+  expire
+- **Key Vault secrets** — the expiry of the version the workspace record points
+  at (`expires_at`, from the Azure `exp` attribute). Most secrets carry none, and
+  those never produce a reminder
 
-- `item_id`
-- `item_type`
-- `resource_id`
-- `provider`
-- `display_name`
-- `owner`
-- `expires_at`
-- `severity`
-- `status`
-- `last_checked_at`
+Both reduce to the same shape for reminder purposes: an owning resource, an item
+key, a display name, a kind (`secret` / `certificate`), and an expiry date.
 
-Item types:
+**Status.** An object's expiry maps onto the shared status vocabulary used by
+the catalog badge — `expired`, `expiring` (within 30 days), or `active`. For Key
+Vault secrets `disabled` takes precedence, because an unusable secret is the
+more urgent fact.
 
-- app registration credential
-- shared secret
-- Key Vault secret metadata
-- portal credential if applicable
+**Reminder policy.** Each category has a global policy (enabled, reminder days,
+channels) managed in Administration. App registrations additionally support a
+per-application and a per-credential override. Reminders are delivered in the
+notification center and by email, to the object's owner, the owner team, and
+workspace admins. Reminders written for an expiry date that no longer applies —
+after a rotation, or when a credential is deleted — are retired automatically.
 
-## Future supporting entities
+## Import source
 
-### Launch profile
-
-Defines how a local helper should open a resource on each platform.
-
-### Import source
-
-Tracks whether a record is manual, synced, or partially synced from external systems.
-
-### Reminder rule
-
-Controls how and when expiring items are surfaced or notified.
+Records carry a source kind that distinguishes app-authored objects from
+records imported and kept in sync from an external system, which determines
+which fields the workspace owns and which it must not overwrite. See
+[object-model.md](object-model.md).

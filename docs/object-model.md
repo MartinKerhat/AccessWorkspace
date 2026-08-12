@@ -1,4 +1,7 @@
-# Object Model Specification
+# Object Model
+
+**Audience:** contributors. **Covers:** how each category is stored, retrieved,
+and kept in sync today.
 
 ## Purpose
 
@@ -476,39 +479,6 @@ Even for externally sourced objects, this app may still own:
 | Key Vault | Yes | No | Yes |
 | App registrations | Yes | No | Yes, via linked provider/reference |
 | Passwords | Yes | Sometimes, depending on mode | Yes, if provider-backed |
-
-## Recommended implementation path
-
-### Step 1
-
-Introduce category-specific schemas in code while preserving a small shared base model.
-
-### Step 2
-
-Separate "manual objects" from "externally sourced objects" in persistence and service logic.
-
-### Step 3
-
-Introduce explicit source metadata:
-
-- `source_kind` (`manual`, `azure_key_vault`, `entra_app_registration`, etc.)
-- `source_object_id`
-- `sync_state`
-- `last_synced_at`
-
-### Step 4
-
-Refactor admin UI so:
-
-- Connections and Passwords are created/edited locally
-- Key Vault and App registrations are primarily linked/imported/synced rather than fully created manually
-
-### Step 5
-
-Add provider-backed retrieval rules:
-
-- local metadata
-- external sensitive fetch on demand
 
 ## What should not be duplicated
 

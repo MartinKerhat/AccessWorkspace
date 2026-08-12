@@ -35,12 +35,12 @@ func TestSyncCreateWithoutSharingListsVerify(t *testing.T) {
 	repo := NewRepository(pool)
 	now := time.Now().UTC()
 	input := autoImportCreateInput(KeyVaultSyncSourceConfig{
-		VaultURL:     "https://kvinsio.vault.azure.net",
+		VaultURL:     "https://kvexample.vault.azure.net",
 		DefaultOwner: "Sync Owner",
 	}, keyvault.SecretItem{
-		ID:        "https://kvinsio.vault.azure.net/secrets/sharing-list-regression/1",
+		ID:        "https://kvexample.vault.azure.net/secrets/sharing-list-regression/1",
 		Name:      "sharing-list-regression",
-		VaultName: "kvinsio",
+		VaultName: "kvexample",
 		Version:   "1",
 		Enabled:   true,
 	}, now)

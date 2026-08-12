@@ -1,242 +1,155 @@
 # Architecture
 
-## High-level approach
+**Audience:** contributors and reviewers. **Covers:** what exists today — planned
+work is not described here.
 
-Keep deployment simple while designing clear internal boundaries for future growth.
+## Shape
 
-Current deployment target:
+One backend service, one frontend application, one PostgreSQL database. A
+modular monolith, not microservices.
 
-- one backend service
-- one frontend application
-- one PostgreSQL database
+Two companion clients talk to the same backend rather than being separate
+platforms:
 
-Shipped companion clients:
+- a local desktop **launcher** for SSH and RDP (Windows and Linux)
+- a **browser extension** for portal credential fill (Chrome, Edge, Firefox)
 
-- local desktop launcher for SSH and RDP (Windows and Linux; localhost bridge + one-time launch tickets)
-- browser extension for portal credential fill
+## Components
 
-Both integrate with the same backend rather than becoming separate platforms.
-
-## System components
-
-### Backend
-
-Primary responsibilities:
+### Backend (Go)
 
 - authentication and identity mapping
 - resource catalog API
 - secret access policy and provider integration
-- launch payload generation
+- launch payload generation and one-time launch tickets
 - audit logging
-- expiry tracking
-- integration entry points for Azure/Entra, Key Vault, and future systems
-- lightweight in-process background sync jobs
+- expiry tracking and reminder delivery
+- integration adapters for Azure/Entra and Azure Key Vault
+- in-process background sync jobs
 
-Recommended internal modules:
+### Frontend (React + TypeScript)
 
-- `auth`
-- `catalog`
-- `secrets`
-- `launch`
-- `audit`
-- `integrations`
-- `jobs`
-
-This is a modular monolith, not microservices.
-
-### Frontend
-
-Primary responsibilities:
-
-- category-based workspace navigation
-- category-specific list and search views
-- resource detail views
-- secret reveal/copy actions
-- launch initiation
+- category-based workspace navigation, derived from rights: users see only
+  categories they may use, `Activity` is visible to every signed-in user, and
+  `Administration` appears only for admin-capable users
+- category-specific list, search, and detail views
+- reveal and copy actions, launcher handoff
 - admin management workflows
-- audit and recent activity views
-- Key Vault browsing UX
-- expiry dashboards
+- Key Vault browsing, app registration views, notification center
 
-The web UI should remain the main operational console even after helper and extension support are added.
+Categories: `Connections`, `Key Vault`, `App registrations`, `Passwords`, plus
+the `Activity` and `Administration` workspace areas.
 
-### Frontend navigation model
-
-The main workspace should be organized by object category, not one default mixed catalog.
-
-Initial categories:
-
-- `Connections`
-- `Key Vault`
-- `App registrations`
-- `Passwords`
-- `Activity`
-- `Admin`
-
-Navigation should be rights-aware:
-
-- users should only see categories they are allowed to access
-- `Activity` should be visible for signed-in users
-- `Admin` should appear only for admin-capable users
+The web UI is the main operational console; the launcher and extension extend it
+rather than replacing parts of it.
 
 ### PostgreSQL
 
-Primary responsibilities:
+Stores catalog metadata, access policy mapping, audit trail, imported external
+metadata, expiry state and reminders, and ownership/lifecycle fields.
 
-- catalog metadata
-- access policy mapping
-- audit trail
-- imported external metadata
-- expiry state and reminders
-- ownership and lifecycle fields
+It deliberately does **not** become the permanent storage layer for every real
+secret: values owned by an external system stay there and are fetched on demand.
+Per-category storage and retrieval rules are in [object-model.md](object-model.md).
 
-PostgreSQL should store normalized operational metadata, category mapping, and policy state, not become the permanent storage layer for every real secret.
+### Local launcher
 
-For category-specific storage and retrieval rules, see [object-model-spec.md](object-model-spec.md).
+- exposes a localhost bridge (`/status`, `/launch`) the web app checks before
+  connect, reporting version, platform, and per-feature capabilities so the UI
+  can warn about a missing prerequisite before a launch is attempted
+- redeems one-time backend launch tickets, so secrets never travel inside
+  browser URIs
+- executes RDP with credential handoff and Remote Desktop Gateway support — on
+  Windows through signed per-connection `.rdp` profiles and `mstsc`, on Linux
+  through the system FreeRDP client with the password passed over stdin (no
+  profiles or signing needed)
+- executes SSH in a visible terminal, including launcher-managed password
+  sessions (Windows console; auto-detected terminal emulator on Linux)
+- self-installs per user, registers the `access-workspace://` handler, and
+  arranges bridge autostart (registry on Windows, XDG desktop entries on Linux)
 
-### Local launcher/helper
-
-Current responsibilities (shipped: Windows and Linux):
-
-- expose a localhost bridge (`/status`, `/launch`) the web app checks before connect, reporting version, platform, and per-feature capabilities
-- redeem one-time backend launch tickets so secrets never travel inside browser URIs
-- execute RDP launches with credential handoff and Remote Desktop Gateway support — on Windows through signed per-connection `.rdp` profiles and `mstsc`, on Linux through the system FreeRDP client with arguments (password over stdin, no profiles or signing needed)
-- execute SSH launches in a visible terminal, including launcher-managed password sessions (Windows console; auto-detected terminal emulator on Linux)
-- self-install per user, register the `access-workspace://` handler, and arrange bridge autostart (registry on Windows, XDG desktop entries on Linux)
-
-The launch payload stays semantic (host, port, user, options) so each platform picks its native client mechanics; a macOS launcher is planned follow-through.
+The launch payload stays **semantic** — host, port, user, domain, gateway,
+options. Platform mechanics (`.rdp` files, `cmdkey`, `rdpsign`, FreeRDP
+arguments) are derived by the platform adapter, never sent by the backend.
 
 ### Browser extension
 
-Current responsibilities (shipped):
-
-- connect to the workspace through a one-time exchange token and its own session
-- request approved portal credentials from backend flows
-- fill credentials on allowed websites, including saving new personal logins back to the workspace
-- log sensitive fill actions to the audit trail
-
-It remains separate from the main web UI.
+- connects through a one-time exchange token and holds its own session
+- requests approved portal credentials from backend flows
+- fills credentials on allowed websites and can save new personal logins back
+  into the workspace
+- logs sensitive fill actions to the audit trail
 
 ## Security architecture
 
-Delivered layers (2026-07):
+Summarized here; the full picture is in [security.md](security.md).
 
-### Secrets at rest
+- **Secrets at rest:** envelope encryption per secret, with the key-encryption
+  key either derived locally or held inside Azure Key Vault via workload
+  identity. Sensitive admin settings are encrypted; session tokens are stored
+  only as hashes.
+- **Personal vault:** a per-user keypair whose public half encrypts (so saving
+  never prompts) and whose private half exists only wrapped by the user's unlock
+  methods — login password, passphrase, or per-device passkey. Administrators
+  and database access cannot read personal secrets, and losing every unlock
+  method loses the vault by design.
+- **Sessions and perimeter:** httpOnly cookie sessions with CSRF origin checks,
+  account lockout and per-IP throttling on auth endpoints, CSP/HSTS, and audit
+  coverage of authentication and vault events.
 
-- every stored secret uses envelope encryption: a fresh per-secret data key encrypts the value, and the data key itself is wrapped by a key-encryption key
-- the KEK provider is deployment configuration: a local key for development, or Azure Key Vault wrap/unwrap through workload identity for production
-- sensitive admin settings are encrypted at rest; session tokens are stored only as hashes
-
-### Personal vault
-
-- every user has a personal vault keypair: the public half encrypts, so saving a personal secret works from any session without any prompt (including extension saves)
-- the private half is never stored bare — it exists only wrapped by the user's unlock methods, and a database copy alone cannot open it
-- unlock methods are peers of one another: the local login password (unlocks automatically at sign-in), a passphrase, and passkeys (Windows Hello / Touch ID via WebAuthn PRF, one per device)
-- users manage their own methods from the vault settings UI: add a passphrase or per-device passkey, rename passkeys, and remove methods (the last remaining method and the login-password wrap are protected)
-- consequence by design: administrators and database access cannot read personal secrets, and a user who loses every unlock method loses the vault — there are no recovery codes
-
-### Sessions and perimeter
-
-- web sessions ride an httpOnly cookie (no token in localStorage or redirect URLs) with a CSRF origin check; the extension keeps a separate bearer-token session
-- login and vault-unlock endpoints have account lockout and per-IP rate limiting
-- the frontend ships CSP, HSTS, and related security headers; the API sets equivalent headers on its responses
-- authentication, vault, and unlock-method changes are audited alongside resource events
-
-## Architectural principles
+## Principles
 
 - Keep one deployable backend until complexity truly demands otherwise.
-- Use adapters for external systems such as Azure/Entra and Key Vault.
+- Use adapters for external systems; let the system of record stay the system of
+  record.
 - Separate metadata from secret retrieval.
 - Treat reveal, copy, launch, and fill as distinct action types.
-- Use small in-process background jobs when they fit, while keeping the option to split them later if operational pressure demands it.
+- Keep the launch payload semantic and platform mechanics in the adapter.
+- Use small in-process background jobs where they fit.
 
-## Data flow direction
+## Data flow
 
 ### Authentication and authorization
 
-Current state:
-
-- development auth mode for local work
-- Microsoft Entra sign-in with local-account fallback, invites, and self-service password change
-- httpOnly-cookie sessions with CSRF origin checks; account lockout and IP throttling on auth endpoints
-- backend authorization based on resolved category capabilities and roles
-- admin user administration: effective-access inspection, local groups, blocking, resets
-
-Next target:
-
-- broader Entra group resolution hardening
-- optional second factor for local-account login
+Microsoft Entra sign-in with local-account fallback, invites, and self-service
+password change; a development auth mode for local work. Sessions are httpOnly
+cookies with CSRF origin checks, protected by account lockout and IP throttling.
+Authorization resolves category capabilities and roles from local groups and
+mapped external groups; admins can inspect any user's effective access.
 
 ### Secret access
 
-Current state:
-
-- app-managed secret values stored under envelope encryption (see Security architecture)
-- three secret classes: shared (org-readable under policy), personal (owner-keyed, sealed to the user's vault), and app-scope (integration credentials the backend needs without a session)
-- personal/shared switching rewraps keys server-side without exposing plaintext, and is restricted to the object's owner
-- Key Vault-backed values are fetched on demand and never persisted locally
-- reveal, copy, fill, and launch are distinct audited actions
-
-Next target:
-
-- broaden provider coverage beyond Key Vault where needed
-- add richer expiry-state visibility without turning the catalog into a second secret store
+App-managed values are stored under envelope encryption in three classes:
+shared (readable by authorized users under policy), personal (sealed to the
+owner's vault), and app-scope (integration credentials the backend needs without
+a session). Personal/shared switching re-wraps keys server-side without exposing
+plaintext and is owner-only. Key Vault-backed values are fetched on demand and
+never persisted locally. Reveal, copy, fill, and launch are distinct audited
+actions.
 
 ### Launching
 
-Current state:
-
-- backend returns structured launch payloads and one-time launch tickets
-- the web app verifies launcher presence/version through the localhost bridge, then hands off
-- the launcher executes RDP and SSH natively per platform: Windows via mstsc with signed profiles and credential handoff, Linux via FreeRDP arguments and terminal-hosted SSH sessions — both with RD Gateway support
-- web portal launches open in the browser, with extension-assisted fill where allowed
-
-Target:
-
-- equivalent launcher behavior on macOS
+The backend returns a structured launch payload and a one-time ticket. The web
+app verifies launcher presence, version, and capabilities through the localhost
+bridge, then hands off. The launcher executes RDP and SSH natively per platform.
+Web portal launches open in the browser, with extension-assisted fill where
+allowed.
 
 ### External integrations
 
-Current state:
-
-- Key Vault adapter with discovery, batch import, manual + automatic sync, and archived/restore views
-- app registration discovery/import/sync with owner snapshots, credential expiry metadata, and notification policies (in-app + SMTP email)
-- admin-managed Entra and Key Vault runtime configuration; Azure access runs through a dedicated reader identity (workload identity), separate from the OIDC login app
-- SMTP notification delivery with a delivery log
-
-Next target:
-
-- richer Entra group-resolution and rights-mapping depth
-- selected additional external systems where the workspace adds operational value
-
-## Evolution path
-
-### Stage 1 — done
-
-Category-based monolith with dev auth and simple CRUD.
-
-### Stage 2 — done
-
-Real Azure/Entra identity and group mapping.
-
-### Stage 3 — done
-
-Key Vault-backed secret retrieval and richer secret workflows.
-
-### Stage 4 — partial
-
-Expiry tracking and operational dashboards (app registration credential expiry + notifications shipped; the shared cross-category expiry dashboard is still open).
-
-### Stage 5 — done (Windows launcher + extension)
-
-Launcher helper and browser extension clients; Linux/macOS launcher targets remain.
-
-### Stage 6 — done
-
-Security foundation: envelope encryption at rest, personal vaults with user-managed unlock methods, hardened sessions and perimeter.
+- Key Vault adapter: discovery, batch import, manual and automatic sync,
+  archived/restore views
+- App registration adapter: discovery, import, sync, owner snapshots, credential
+  expiry metadata
+- Expiry reminders for app registration credentials and Key Vault secrets, in
+  the notification center and over SMTP, with a delivery log
+- Admin-managed Entra and Key Vault runtime configuration; Azure access can run
+  through a dedicated reader identity (workload identity) separate from the
+  OIDC login app
 
 ## Deployment notes
 
-- Local Docker Compose remains the primary developer workflow.
-- The backend and frontend should stay easy to containerize.
-- AKS readiness means clear config, health endpoints, and clean service boundaries, not premature service splitting.
+Local Docker Compose is the primary developer workflow; backend and frontend
+stay easy to containerize. AKS readiness means clear configuration, health
+endpoints, and clean service boundaries — not premature service splitting. See
+[deployment.md](deployment.md).

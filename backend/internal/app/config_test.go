@@ -45,7 +45,7 @@ func TestValidate_KEKProvider(t *testing.T) {
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error when azure_key_vault has no vault URL")
 	}
-	cfg.KEKVaultURL = "https://kvinsio.vault.azure.net"
+	cfg.KEKVaultURL = "https://kvexample.vault.azure.net"
 	cfg.KEKKeyName = ""
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error when azure_key_vault has no key name")

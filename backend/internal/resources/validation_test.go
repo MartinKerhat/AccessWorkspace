@@ -97,7 +97,7 @@ func TestValidateInputAcceptsPasswordlessWebPortal(t *testing.T) {
 		Type:          TypeWebPortal,
 		Owner:         "Operations",
 		TargetURL:     "https://claude.ai",
-		Username:      "info@insio.cz",
+		Username:      "info@example.com",
 		RevealAllowed: true,
 		SecretMode:    SecretModeNone,
 	}

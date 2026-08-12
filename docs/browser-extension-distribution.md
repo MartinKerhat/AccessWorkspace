@@ -1,5 +1,8 @@
 # Browser Extension Distribution
 
+**Audience:** maintainers releasing extension builds. **Covers:** the release
+path that exists today.
+
 The extension ships per browser from `browser-extension/{chrome,firefox}`,
 packaged into `artifacts/extensions/` (see `artifacts/README.md` for how the
 backend serves artifacts locally vs from Azure Blob in production).

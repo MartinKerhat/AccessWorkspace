@@ -53,7 +53,7 @@ func TestRevealRefusesPasswordlessEntry(t *testing.T) {
 				Category:    "passwords",
 				Owner:       "Martin",
 				OwnerUserID: "martin",
-				Username:    "info@insio.cz",
+				Username:    "info@example.com",
 				Secret: Secret{
 					Mode: SecretModeNone,
 				},
