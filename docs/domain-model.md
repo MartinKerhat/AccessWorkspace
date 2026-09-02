@@ -291,6 +291,12 @@ notification center and by email, to the object's owner, the owner team, and
 workspace admins. Reminders written for an expiry date that no longer applies —
 after a rotation, or when a credential is deleted — are retired automatically.
 
+**Delivery.** The notification center gets one entry per object, so it stays an
+itemised list. Email is batched instead: a sync run records every reminder it
+finds and then sends each recipient a single digest covering all of them,
+grouped by how far off the expiry is, with a link back to each object. Fifty
+credentials expiring on the same day is one email, not fifty.
+
 ## Import source
 
 Records carry a source kind that distinguishes app-authored objects from

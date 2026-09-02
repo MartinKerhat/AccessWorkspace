@@ -52,8 +52,15 @@ type AppRegistrationResolver interface {
 	CurrentApplication(ctx context.Context, identifier string) (appregistrations.ApplicationItem, error)
 }
 
+// ExpiryNotificationEvaluator is deliberately two-phase. EvaluateResource only
+// records what a single resource owes its recipients; FlushPendingEmails is
+// what actually mails, and it batches everything recorded so far into one
+// digest per recipient. Loops therefore evaluate every record first and flush
+// exactly once at the end — a sweep over 52 expiring app registrations sends
+// each recipient one email rather than 52.
 type ExpiryNotificationEvaluator interface {
 	EvaluateResource(ctx context.Context, resourceID string) error
+	FlushPendingEmails(ctx context.Context) error
 }
 
 // notifiableExpiryType lists the types that can produce expiry reminders. Key
@@ -198,6 +205,7 @@ func (s *Service) Create(ctx context.Context, user auth.User, input CreateResour
 	})
 	if notifiableExpiryType(resource.Type) && s.notifications != nil {
 		_ = s.notifications.EvaluateResource(ctx, resource.ID)
+		_ = s.notifications.FlushPendingEmails(ctx)
 	}
 	return resource, nil
 }
@@ -251,6 +259,7 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 	})
 	if notifiableExpiryType(resource.Type) && s.notifications != nil {
 		_ = s.notifications.EvaluateResource(ctx, resource.ID)
+		_ = s.notifications.FlushPendingEmails(ctx)
 	}
 	return resource, nil
 }

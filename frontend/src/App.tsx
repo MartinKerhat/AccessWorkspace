@@ -9,7 +9,7 @@ import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
 import { KeyVaultImportModal } from "./modals/KeyVaultImportModal";
 import { AppRegistrationImportModal } from "./modals/AppRegistrationImportModal";
-import { currentView, type View } from "./navigation";
+import { clearRequestedResourceId, currentView, requestedResourceId, type View } from "./navigation";
 import { useAuth, authTokenStorageKey } from "./hooks/useAuth";
 import { filterCatalogItems, filterArchivedKeyVaultItems, defaultFilters, type Filters } from "./catalogFilter";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
@@ -51,6 +51,7 @@ import type {
   ResourceSummary
 } from "./types";
 import {
+  categoryForType,
   filterCategoryItems,
   type WorkspaceCategory
 } from "./workspaceCategories";
@@ -103,6 +104,11 @@ export default function App() {
   } = useAuth({ setBusy, setMessage });
   const [allResources, setAllResources] = useState<ResourceSummary[]>([]);
   const [selectedResourceId, setSelectedResourceId] = useState<string>();
+  // A record the workspace has been asked to open by id alone — from an expiry
+  // reminder email or the notification centre. Kept in state rather than acted
+  // on immediately because resolving it needs the catalog loaded, and because
+  // the category hash and the selection land on different renders.
+  const [pendingResourceId, setPendingResourceId] = useState<string>(() => requestedResourceId());
   const [selectedResource, setSelectedResource] = useState<Resource>();
   const [formState, setFormState] = useState<FormState>(closedFormState);
   const {
@@ -581,6 +587,46 @@ export default function App() {
   const archivedKeyVaultItems = archivedResources.filter((item) => item.type === "key_vault_secret");
   const currentArchivedKeyVaultItems = filterArchivedKeyVaultItems(archivedKeyVaultItems, filters);
   useEffect(() => {
+    clearRequestedResourceId();
+  }, []);
+
+  // Two hops on purpose: move to the category that actually lists the record
+  // first (a Key Vault secret is not in #appregistrations), then select it once
+  // that view is live — selecting it before the hash lands would be undone by
+  // the effect below, which drops any selection missing from the current
+  // category.
+  useEffect(() => {
+    if (!pendingResourceId) {
+      return;
+    }
+    const target = allResources.find((item) => item.id === pendingResourceId);
+    if (!target) {
+      // A loaded catalog without the record means it is gone or not visible to
+      // this user, which is worth saying rather than silently ignoring.
+      if (allResources.length > 0) {
+        setPendingResourceId("");
+        setMessage("The linked object is no longer available to you.");
+      }
+      return;
+    }
+    const category = categoryForType(target.type);
+    if (!visibleCategories.includes(category)) {
+      setPendingResourceId("");
+      setMessage("The linked object is no longer available to you.");
+      return;
+    }
+    if (view !== category) {
+      window.location.hash = `#${category}`;
+      return;
+    }
+    // A filter left over from browsing would hide the record, and the effect
+    // below then drops the selection as "not in the current list".
+    setFilters(defaultFilters);
+    setSelectedResourceId(pendingResourceId);
+    setPendingResourceId("");
+  }, [pendingResourceId, allResources, view, visibleCategories]);
+
+  useEffect(() => {
     if (view === "admin" && session && !session.capabilities.canViewAdmin) {
       const fallback = visibleCategories[0] ?? "activity";
       window.location.hash = `#${fallback}`;
@@ -768,10 +814,7 @@ export default function App() {
           onKeyVaultViewModeChange={setKeyVaultViewMode}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
-          onOpenNotificationResource={(resourceId) => {
-            window.location.hash = "#appregistrations";
-            setSelectedResourceId(resourceId);
-          }}
+          onOpenNotificationResource={(resourceId) => setPendingResourceId(resourceId)}
           vaultUnlocked={vaultUnlocked}
           onOpenVaultSettings={() => void openVaultSettings()}
           onOpenBrowserExtensions={() => setBrowserExtensionManagerOpen(true)}

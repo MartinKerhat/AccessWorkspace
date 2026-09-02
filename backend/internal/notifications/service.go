@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/smtp"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -65,14 +66,22 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 type Service struct {
-	repo      *Repository
-	resources ResourceStore
-	users     UserDirectory
-	policies  PolicyStore
+	repo         *Repository
+	resources    ResourceStore
+	users        UserDirectory
+	policies     PolicyStore
+	resourceBase string
 }
 
 func NewService(repo *Repository, resources ResourceStore, users UserDirectory, policies PolicyStore) *Service {
 	return &Service{repo: repo, resources: resources, users: users, policies: policies}
+}
+
+// ConfigureResourceLinks gives the service the workspace origin so digest
+// emails can link straight to the object that is expiring. Optional: with no
+// base URL the digest still lists everything, just without links.
+func (s *Service) ConfigureResourceLinks(baseURL string) {
+	s.resourceBase = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 }
 
 func (s *Service) EvaluateResource(ctx context.Context, resourceID string) error {
@@ -125,22 +134,8 @@ func (s *Service) EvaluateResource(ctx context.Context, resourceID string) error
 			if strings.TrimSpace(recipient.ID) == "" {
 				continue
 			}
-			notification, created, err := s.repo.ensureReminder(ctx, reminderNotification(resource, item, recipient, daysRemaining))
-			if err != nil {
+			if _, _, err := s.repo.ensureReminder(ctx, reminderNotification(resource, item, recipient, daysRemaining)); err != nil {
 				return err
-			}
-			if !created && notification.EmailStatus == "sent" {
-				continue
-			}
-			if slices.Contains(policy.Channels, resources.NotificationChannelEmail) {
-				if err := s.sendEmail(ctx, recipient, notification); err != nil {
-					log.Printf("expiry notification email failed: resource=%s recipient=%s email=%s reminder_day=%d error=%v", resource.ID, recipient.ID, recipient.Email, daysRemaining, err)
-					_ = s.repo.updateEmailStatus(ctx, notification.ID, "failed", nil, err.Error())
-					continue
-				}
-				sentAt := time.Now().UTC()
-				log.Printf("expiry notification email sent: resource=%s recipient=%s email=%s reminder_day=%d", resource.ID, recipient.ID, recipient.Email, daysRemaining)
-				_ = s.repo.updateEmailStatus(ctx, notification.ID, "sent", &sentAt, "")
 			}
 		}
 	}
@@ -281,13 +276,7 @@ func reminderNotification(resource resources.Resource, item expiringItem, recipi
 	if reminderDay > 0 {
 		title = fmt.Sprintf("%s expires in %d days", resource.Name, reminderDay)
 	}
-	// A Key Vault secret's item name is the resource name, so naming both would
-	// read "secret db-password for db-password"; app registrations carry a
-	// distinct credential name that has to stay in the text.
-	subject := fmt.Sprintf("%s %s for %s", item.kind, item.displayName, resource.Name)
-	if strings.EqualFold(strings.TrimSpace(item.displayName), strings.TrimSpace(resource.Name)) {
-		subject = fmt.Sprintf("%s %s", item.kind, resource.Name)
-	}
+	subject := credentialLabel(resource.Name, item.kind, item.displayName)
 	body := fmt.Sprintf("%s expires on %s.", subject, item.expiresAt.Local().Format("02.01.2006 15:04:05"))
 	if reminderDay == 0 {
 		body = fmt.Sprintf("%s expires today at %s.", subject, item.expiresAt.Local().Format("15:04:05"))
@@ -308,14 +297,156 @@ func reminderNotification(resource resources.Resource, item expiringItem, recipi
 	}
 }
 
+// credentialLabel names the expiring thing in one phrase. A Key Vault secret's
+// item name IS the resource name, so naming both would read "secret
+// db-password for db-password"; app registrations carry a distinct credential
+// name that has to stay in the text.
+func credentialLabel(resourceName string, kind string, displayName string) string {
+	if strings.EqualFold(strings.TrimSpace(displayName), strings.TrimSpace(resourceName)) {
+		return fmt.Sprintf("%s %s", kind, resourceName)
+	}
+	return fmt.Sprintf("%s %s for %s", kind, displayName, resourceName)
+}
+
 func calendarDayDistanceUTC(now time.Time, expiry time.Time) int {
 	nowDay := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	expiryDay := time.Date(expiry.UTC().Year(), expiry.UTC().Month(), expiry.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	return int(expiryDay.Sub(nowDay).Hours() / 24)
 }
 
-func (s *Service) sendEmail(ctx context.Context, recipient auth.UserSummary, notification resources.UserNotification) error {
-	return s.SendPlainEmail(ctx, recipient.Email, notification.Title, notification.Body)
+// maxDigestItems caps how many reminders one digest spells out. Past that the
+// email states the remaining count and points at the notification centre,
+// which always holds the full list — a several-hundred-line mail is not
+// something anyone reads, and some relays truncate it anyway.
+const maxDigestItems = 100
+
+// FlushPendingEmails delivers every reminder queued for email as ONE digest per
+// recipient. Reminders are recorded per resource by EvaluateResource, so a sync
+// sweep that finds 52 app registrations expiring on the same day queues 52 rows
+// for the same admin; those used to go out as 52 separate emails. Callers run
+// this once at the end of a sweep, which is what makes the batching possible —
+// the rows have to be written before anything can look at them together.
+func (s *Service) FlushPendingEmails(ctx context.Context) error {
+	pending, err := s.repo.listPendingEmailReminders(ctx)
+	if err != nil {
+		return err
+	}
+	for _, digest := range groupPendingByRecipient(pending) {
+		ids := make([]string, 0, len(digest.items))
+		for _, item := range digest.items {
+			ids = append(ids, item.ID)
+		}
+		if strings.TrimSpace(digest.email) == "" {
+			// Recorded as failed rather than left pending: an address-less
+			// recipient never becomes deliverable on its own, and leaving the
+			// rows queued would re-list them in every later digest.
+			log.Printf("expiry notification digest skipped: recipient=%s items=%d reason=no email address", digest.userID, len(digest.items))
+			_ = s.repo.markEmailStatus(ctx, ids, "failed", nil, "recipient has no email address")
+			continue
+		}
+		subject, body := s.renderDigest(digest.items)
+		if err := s.SendPlainEmail(ctx, digest.email, subject, body); err != nil {
+			log.Printf("expiry notification digest failed: recipient=%s email=%s items=%d error=%v", digest.userID, digest.email, len(digest.items), err)
+			_ = s.repo.markEmailStatus(ctx, ids, "failed", nil, err.Error())
+			continue
+		}
+		sentAt := time.Now().UTC()
+		log.Printf("expiry notification digest sent: recipient=%s email=%s items=%d", digest.userID, digest.email, len(digest.items))
+		_ = s.repo.markEmailStatus(ctx, ids, "sent", &sentAt, "")
+	}
+	return nil
+}
+
+// recipientDigest is one outgoing email: everything queued for a single user.
+type recipientDigest struct {
+	userID string
+	email  string
+	items  []resources.UserNotification
+}
+
+// groupPendingByRecipient leans on the query ordering by user_id, so a
+// recipient's rows arrive consecutively and grouping is one pass. Order within
+// a recipient is preserved and is what the digest body reads out.
+func groupPendingByRecipient(pending []pendingEmailReminder) []recipientDigest {
+	digests := make([]recipientDigest, 0, len(pending))
+	for _, row := range pending {
+		if last := len(digests) - 1; last >= 0 && digests[last].userID == row.UserID {
+			digests[last].items = append(digests[last].items, row.UserNotification)
+			continue
+		}
+		digests = append(digests, recipientDigest{
+			userID: row.UserID,
+			email:  row.userEmail,
+			items:  []resources.UserNotification{row.UserNotification},
+		})
+	}
+	return digests
+}
+
+// renderDigest turns one recipient's queued reminders into subject and body. A
+// lone reminder keeps the exact wording of the notification itself — the list
+// shape only earns its keep once there is more than one thing to list — and
+// both forms carry the deep link back to the object.
+func (s *Service) renderDigest(items []resources.UserNotification) (string, string) {
+	if len(items) == 1 {
+		body := items[0].Body
+		if link := s.resourceLink(items[0].ResourceID); link != "" {
+			body += "\n\n" + link
+		}
+		return items[0].Title, body
+	}
+
+	listed := items
+	if len(listed) > maxDigestItems {
+		listed = listed[:maxDigestItems]
+	}
+
+	var body strings.Builder
+	fmt.Fprintf(&body, "%d credentials in the access workspace are approaching their expiry date.\n", len(items))
+	currentDay := 0
+	grouped := false
+	for _, item := range listed {
+		if !grouped || item.ReminderDay != currentDay {
+			currentDay = item.ReminderDay
+			grouped = true
+			fmt.Fprintf(&body, "\n%s\n", reminderDayHeading(item.ReminderDay))
+		}
+		body.WriteString("- " + credentialLabel(item.ResourceName, item.CredentialType, item.CredentialDisplayName))
+		if item.CredentialEndDateTime != nil {
+			body.WriteString(", expires " + item.CredentialEndDateTime.Local().Format("02.01.2006 15:04:05"))
+		}
+		body.WriteString("\n")
+		if link := s.resourceLink(item.ResourceID); link != "" {
+			body.WriteString("  " + link + "\n")
+		}
+	}
+	if remaining := len(items) - len(listed); remaining > 0 {
+		fmt.Fprintf(&body, "\nAnd %d more: open the workspace notification centre for the full list.\n", remaining)
+	}
+
+	return fmt.Sprintf("%d credentials are approaching expiry", len(items)), body.String()
+}
+
+func reminderDayHeading(reminderDay int) string {
+	switch {
+	case reminderDay <= 0:
+		return "Expiring today:"
+	case reminderDay == 1:
+		return "Expiring tomorrow:"
+	default:
+		return fmt.Sprintf("Expiring in %d days:", reminderDay)
+	}
+}
+
+// resourceLink is the deep link the frontend resolves back to the object: it
+// picks the record's own category, opens it and selects the record. Empty when
+// no workspace origin is configured, which only costs the digest its links.
+func (s *Service) resourceLink(resourceID string) string {
+	resourceID = strings.TrimSpace(resourceID)
+	if s.resourceBase == "" || resourceID == "" {
+		return ""
+	}
+	return s.resourceBase + "/?resource=" + url.QueryEscape(resourceID)
 }
 
 // SendPlainEmail delivers a plain-text email through the configured SMTP
@@ -468,15 +599,86 @@ func (r *Repository) markRead(ctx context.Context, userID string, notificationID
 	return err
 }
 
-func (r *Repository) updateEmailStatus(ctx context.Context, notificationID string, status string, sentAt *time.Time, emailError string) error {
+// pendingEmailReminder is a queued reminder plus the address it has to reach.
+// The address is joined in here rather than re-resolved per recipient: the rows
+// are the authority on who is owed an email, and a user deleted between
+// recording and flushing simply has no address and is recorded as failed.
+type pendingEmailReminder struct {
+	resources.UserNotification
+	userEmail string
+}
+
+// listPendingEmailReminders returns every reminder still owed an email: its
+// policy asked for the email channel when the row was written, it has not since
+// been read (the supersede pass marks stale reminders read, and mailing an
+// expiry date that no longer exists is exactly the noise it exists to prevent),
+// and delivery has not already succeeded.
+//
+// A failed delivery is retried, which is what the per-resource send did before
+// digests existed — but only for a day. Reminders are edge-triggered on one
+// calendar day, so a failed row older than that describes a day already gone;
+// left unbounded it would re-list itself in every digest from then on, and one
+// undeliverable reminder would drag a stale line into months of later mail.
+func (r *Repository) listPendingEmailReminders(ctx context.Context) ([]pendingEmailReminder, error) {
+	rows, err := r.db.Query(ctx, `
+		select n.id, n.user_id, n.resource_id, n.resource_name, n.credential_key_id, n.credential_display_name,
+		       n.credential_type, n.credential_end_date_time, n.reminder_day, n.title, n.body, n.channels,
+		       n.read_at, n.email_status, n.email_sent_at, n.email_error, n.created_at,
+		       coalesce(u.email, '') as user_email
+		from expiry_notifications n
+		left join app_users u on u.id = n.user_id
+		where 'email' = any(n.channels)
+		  and n.read_at is null
+		  and (
+		      n.email_status = ''
+		      or (n.email_status = 'failed' and n.created_at > now() - interval '1 day')
+		  )
+		order by n.user_id, n.reminder_day, n.resource_name, n.credential_display_name, n.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []pendingEmailReminder{}
+	for rows.Next() {
+		var item pendingEmailReminder
+		var credentialEnd pgtype.Timestamptz
+		var readAt pgtype.Timestamptz
+		var emailSentAt pgtype.Timestamptz
+		var channels []string
+		if err := rows.Scan(
+			&item.ID, &item.UserID, &item.ResourceID, &item.ResourceName, &item.CredentialKeyID, &item.CredentialDisplayName,
+			&item.CredentialType, &credentialEnd, &item.ReminderDay, &item.Title, &item.Body, &channels,
+			&readAt, &item.EmailStatus, &emailSentAt, &item.EmailError, &item.CreatedAt,
+			&item.userEmail,
+		); err != nil {
+			return nil, err
+		}
+		item.CredentialEndDateTime = timeFromPg(credentialEnd)
+		item.ReadAt = timeFromPg(readAt)
+		item.EmailSentAt = timeFromPg(emailSentAt)
+		item.Channels = notificationChannelsFromStrings(channels)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// markEmailStatus records one delivery outcome across every row the digest
+// covered, so the admin delivery log still reports per object even though a
+// single email went out.
+func (r *Repository) markEmailStatus(ctx context.Context, notificationIDs []string, status string, sentAt *time.Time, emailError string) error {
+	if len(notificationIDs) == 0 {
+		return nil
+	}
 	_, err := r.db.Exec(ctx, `
 		update expiry_notifications
 		set email_status = $2,
 		    email_sent_at = $3,
 		    email_error = $4,
 		    updated_at = now()
-		where id = $1
-	`, notificationID, strings.TrimSpace(status), sentAt, strings.TrimSpace(emailError))
+		where id = any($1::text[])
+	`, notificationIDs, strings.TrimSpace(status), sentAt, strings.TrimSpace(emailError))
 	return err
 }
 

@@ -45,6 +45,7 @@ func (s *Service) UpdateAppRegistrationNotificationPolicies(ctx context.Context,
 	}
 	if s.notifications != nil {
 		_ = s.notifications.EvaluateResource(ctx, id)
+		_ = s.notifications.FlushPendingEmails(ctx)
 	}
 	return updated, nil
 }
@@ -118,6 +119,10 @@ func (s *Service) ImportAppRegistrations(ctx context.Context, user auth.User, in
 		if s.notifications != nil {
 			_ = s.notifications.EvaluateResource(ctx, resource.ID)
 		}
+	}
+
+	if s.notifications != nil {
+		_ = s.notifications.FlushPendingEmails(ctx)
 	}
 
 	return imported, nil
@@ -203,6 +208,13 @@ func (s *Service) SyncAppRegistrations(ctx context.Context, user auth.User, auto
 		result.ExpiringCredentials += expiring
 		result.ExpiredCredentials += expired
 		result.UpdatedResources++
+	}
+
+	// One digest per recipient for the whole sweep: the loop above recorded a
+	// reminder per record, and mailing them individually is what buried owners
+	// of many same-day expiries under one message each.
+	if s.notifications != nil {
+		_ = s.notifications.FlushPendingEmails(ctx)
 	}
 
 	return result, nil

@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -248,5 +249,148 @@ func TestCalendarDayDistanceUTC(t *testing.T) {
 	}
 	if got := calendarDayDistanceUTC(now, time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)); got != -2 {
 		t.Fatalf("expected -2, got %d", got)
+	}
+}
+
+func digestReminder(userID string, resourceID string, resourceName string, displayName string, reminderDay int, expiry time.Time) pendingEmailReminder {
+	end := expiry
+	return pendingEmailReminder{
+		UserNotification: resources.UserNotification{
+			ID:                    resourceID + "-" + userID,
+			UserID:                userID,
+			ResourceID:            resourceID,
+			ResourceName:          resourceName,
+			CredentialKeyID:       displayName,
+			CredentialDisplayName: displayName,
+			CredentialType:        "secret",
+			CredentialEndDateTime: &end,
+			ReminderDay:           reminderDay,
+			Title:                 resourceName + " expires",
+			Body:                  resourceName + " expires soon.",
+		},
+		userEmail: userID + "@example.com",
+	}
+}
+
+func TestGroupPendingByRecipientCollapsesConsecutiveRows(t *testing.T) {
+	expiry := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	// Ordered by user_id the way listPendingEmailReminders returns them.
+	pending := []pendingEmailReminder{
+		digestReminder("u-admin", "res-1", "Billing API", "prod secret", 7, expiry),
+		digestReminder("u-admin", "res-2", "Reporting API", "prod secret", 7, expiry),
+		digestReminder("u-owner", "res-2", "Reporting API", "prod secret", 7, expiry),
+	}
+
+	digests := groupPendingByRecipient(pending)
+	if len(digests) != 2 {
+		t.Fatalf("expected 2 digests, got %d", len(digests))
+	}
+	if digests[0].userID != "u-admin" || len(digests[0].items) != 2 {
+		t.Fatalf("expected the admin to get both rows, got %+v", digests[0])
+	}
+	if digests[0].email != "u-admin@example.com" {
+		t.Fatalf("unexpected recipient address %q", digests[0].email)
+	}
+	if digests[1].userID != "u-owner" || len(digests[1].items) != 1 {
+		t.Fatalf("expected the owner to get one row, got %+v", digests[1])
+	}
+}
+
+func TestRenderDigestSingleItemKeepsNotificationWording(t *testing.T) {
+	expiry := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	service := &Service{}
+	service.ConfigureResourceLinks("https://workspace.example.com/")
+	item := digestReminder("u-1", "res-1", "Billing API", "prod secret", 7, expiry).UserNotification
+
+	subject, body := service.renderDigest([]resources.UserNotification{item})
+	if subject != item.Title {
+		t.Fatalf("expected the notification title as subject, got %q", subject)
+	}
+	if !strings.HasPrefix(body, item.Body) {
+		t.Fatalf("expected the notification body to lead, got %q", body)
+	}
+	if want := "https://workspace.example.com/?resource=res-1"; !strings.Contains(body, want) {
+		t.Fatalf("expected %q in body, got %q", want, body)
+	}
+}
+
+func TestRenderDigestBatchesEverythingIntoOneEmail(t *testing.T) {
+	today := time.Date(2026, 9, 2, 9, 0, 0, 0, time.UTC)
+	later := time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC)
+	service := &Service{}
+	service.ConfigureResourceLinks("https://workspace.example.com")
+
+	items := []resources.UserNotification{
+		digestReminder("u-1", "res-1", "Billing API", "prod secret", 0, today).UserNotification,
+		digestReminder("u-1", "res-2", "Reporting API", "prod secret", 0, today).UserNotification,
+		digestReminder("u-1", "db-password", "db-password", "db-password", 7, later).UserNotification,
+	}
+
+	subject, body := service.renderDigest(items)
+	if want := "3 credentials are approaching expiry"; subject != want {
+		t.Fatalf("expected subject %q, got %q", want, subject)
+	}
+	for _, want := range []string{
+		"Expiring today:",
+		"Expiring in 7 days:",
+		"secret prod secret for Billing API",
+		"secret prod secret for Reporting API",
+		// The Key Vault case: item name and resource name are the same, so the
+		// line must not read "secret db-password for db-password".
+		"- secret db-password,",
+		"https://workspace.example.com/?resource=res-1",
+		"https://workspace.example.com/?resource=db-password",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected %q in body, got:\n%s", want, body)
+		}
+	}
+	if strings.Count(body, "Expiring today:") != 1 {
+		t.Fatalf("expected one heading per reminder day, got:\n%s", body)
+	}
+}
+
+func TestRenderDigestCapsListedItems(t *testing.T) {
+	expiry := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	service := &Service{}
+	items := make([]resources.UserNotification, 0, maxDigestItems+3)
+	for i := 0; i < maxDigestItems+3; i++ {
+		items = append(items, digestReminder("u-1", "res-"+strconv.Itoa(i), "App "+strconv.Itoa(i), "prod secret", 7, expiry).UserNotification)
+	}
+
+	subject, body := service.renderDigest(items)
+	if want := "103 credentials are approaching expiry"; subject != want {
+		t.Fatalf("expected subject %q, got %q", want, subject)
+	}
+	// The count in the subject stays honest about all of them; the body says
+	// how many it did not spell out.
+	if want := "And 3 more"; !strings.Contains(body, want) {
+		t.Fatalf("expected %q in body, got:\n%s", want, body)
+	}
+	if strings.Contains(body, "App 101") {
+		t.Fatalf("expected the list to stop at the cap, got:\n%s", body)
+	}
+}
+
+func TestRenderDigestWithoutBaseURLOmitsLinks(t *testing.T) {
+	expiry := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	service := &Service{}
+	items := []resources.UserNotification{
+		digestReminder("u-1", "res-1", "Billing API", "prod secret", 7, expiry).UserNotification,
+		digestReminder("u-1", "res-2", "Reporting API", "prod secret", 7, expiry).UserNotification,
+	}
+
+	_, body := service.renderDigest(items)
+	if strings.Contains(body, "http") {
+		t.Fatalf("expected no links without a configured origin, got:\n%s", body)
+	}
+}
+
+func TestReminderDayHeading(t *testing.T) {
+	cases := map[int]string{0: "Expiring today:", 1: "Expiring tomorrow:", 14: "Expiring in 14 days:"}
+	for day, want := range cases {
+		if got := reminderDayHeading(day); got != want {
+			t.Fatalf("day %d: expected %q, got %q", day, want, got)
+		}
 	}
 }

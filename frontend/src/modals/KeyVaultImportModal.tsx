@@ -249,7 +249,7 @@ export function KeyVaultImportModal({
                 )}
               </div>
             </div>
-            <div className="form-grid">
+            <div className="form-grid stacked">
               <label>
                 <span>Owner</span>
                 <div className="picker-shell">

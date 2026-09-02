@@ -1464,6 +1464,12 @@ dt {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* The import modals put this grid in a narrow side column, where two columns
+   squeeze the owner/team pickers so hard their search dropdown is unusable. */
+.form-grid.stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .form-grid label {
   display: grid;
   gap: 8px;

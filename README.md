@@ -34,7 +34,7 @@ Import Entra app registrations with their owners and their full secret/certifica
 
 ![An app registration with its synced credentials, each carrying its own expiry state](docs/images/app-registration-expiry.png)
 
-Key Vault secrets that carry an expiry date go through the same pipeline, with their own reminder schedule. Reminders reach the owner, the owner's team, and admins.
+Key Vault secrets that carry an expiry date go through the same pipeline, with their own reminder schedule. Reminders reach the owner, the owner's team, and admins. Email reminders arrive batched: whatever a sync run finds becomes one digest per recipient, grouped by how soon each credential expires and linking straight back to each object, so a day with fifty expiries is one email rather than fifty.
 
 ![Expiry reminder policies for app registrations and Key Vault, side by side in Administration](docs/images/expiry-reminders.png)
 

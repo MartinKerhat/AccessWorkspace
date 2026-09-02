@@ -222,6 +222,12 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 		result.Sources[i].LastSyncSummary = summarizeKeyVaultSourceRun(result.Sources[i])
 	}
 
+	// After every source, not per source: a recipient owning secrets in two
+	// vaults should still get one email for the run.
+	if s.notifications != nil {
+		_ = s.notifications.FlushPendingEmails(ctx)
+	}
+
 	return result, nil
 }
 
