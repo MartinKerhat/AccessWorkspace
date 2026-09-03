@@ -219,6 +219,13 @@ func (s *Service) MarkRead(ctx context.Context, userID string, notificationID st
 	return s.repo.markRead(ctx, userID, notificationID)
 }
 
+// MarkAllRead clears a user's whole unread list in one request and reports how
+// many rows it touched. One expiry sweep can leave dozens of reminders unread,
+// and dismissing them one id at a time is a round trip each.
+func (s *Service) MarkAllRead(ctx context.Context, userID string) (int64, error) {
+	return s.repo.markAllRead(ctx, userID)
+}
+
 func (s *Service) resolveRecipients(ctx context.Context, owner string, ownerTeam string) ([]auth.UserSummary, error) {
 	users, err := s.users.ListUsers(ctx)
 	if err != nil {
@@ -588,6 +595,21 @@ func (r *Repository) listForUser(ctx context.Context, userID string, limit int) 
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// markAllRead is one statement rather than a loop over ids: the client only
+// knows "everything I can see", and reminders are already scoped by user
+// server-side, so the set is unambiguous without shipping ids back and forth.
+func (r *Repository) markAllRead(ctx context.Context, userID string) (int64, error) {
+	tag, err := r.db.Exec(ctx, `
+		update expiry_notifications
+		set read_at = now(), updated_at = now()
+		where user_id = $1 and read_at is null
+	`, strings.TrimSpace(userID))
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 func (r *Repository) markRead(ctx context.Context, userID string, notificationID string) error {

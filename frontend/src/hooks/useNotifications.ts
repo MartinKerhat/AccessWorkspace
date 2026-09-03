@@ -50,6 +50,21 @@ export function useNotifications({
     }
   }
 
+  async function handleMarkAllNotificationsRead() {
+    if (!session) {
+      return;
+    }
+    try {
+      await api.markAllNotificationsRead();
+      // Stamped locally rather than refetched: the list is already on screen
+      // and a reload would scroll the popover back to the top mid-review.
+      const readAt = new Date().toISOString();
+      setNotifications((current) => current.map((item) => (item.readAt ? item : { ...item, readAt })));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to update notifications");
+    }
+  }
+
   async function handleSaveNotificationPolicyOverride() {
     if (!session || notificationPolicyModalState.mode !== "resource") {
       return;
@@ -79,6 +94,7 @@ export function useNotifications({
     notifications,
     loadNotifications,
     handleMarkNotificationRead,
+    handleMarkAllNotificationsRead,
     notificationPolicyModalState,
     setNotificationPolicyModalState,
     handleSaveNotificationPolicyOverride

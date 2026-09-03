@@ -546,12 +546,50 @@ dd {
 .notification-popover {
   width: min(440px, 92vw);
   max-height: 70vh;
-  overflow: auto;
+  /* The list scrolls, not the whole popover: the header carries "mark all as
+     read", which is useless if a long reminder list can push it out of view. */
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .notification-list {
   display: grid;
   gap: 10px;
+}
+
+.notification-popover .notification-list {
+  overflow-y: auto;
+  /* Room for the scrollbar so it does not sit on top of the row borders. */
+  padding-right: 4px;
+}
+
+.notification-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-mark-all,
+.notification-item-dismiss {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notification-mark-all {
+  padding: 6px 12px;
+}
+
+.notification-mark-all:hover,
+.notification-item-dismiss:hover {
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .notification-item {
@@ -564,6 +602,32 @@ dd {
   background: rgba(255, 255, 255, 0.03);
   color: inherit;
   text-align: left;
+}
+
+/* The row is a container now, so the reminder text carries the open action and
+   the dismiss button can sit beside it instead of nested inside it. */
+.notification-item-open {
+  display: grid;
+  gap: 2px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item-actions {
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: 8px;
+}
+
+.notification-item-dismiss {
+  padding: 4px 10px;
+  font-size: 0.78rem;
 }
 
 .notification-item p {

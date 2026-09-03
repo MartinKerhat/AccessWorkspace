@@ -98,6 +98,7 @@ type NotificationService interface {
 	ListForUser(ctx context.Context, userID string, limit int) ([]resources.UserNotification, error)
 	ListRecentEmailDeliveries(ctx context.Context, limit int) ([]resources.NotificationDeliveryRecord, error)
 	MarkRead(ctx context.Context, userID string, notificationID string) error
+	MarkAllRead(ctx context.Context, userID string) (int64, error)
 }
 
 type KeyVaultService interface {

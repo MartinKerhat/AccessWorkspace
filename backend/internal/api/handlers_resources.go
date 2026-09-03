@@ -279,6 +279,20 @@ func (s *Server) handleUserNotificationRoutes(w http.ResponseWriter, r *http.Req
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/me/notifications/"), "/")
 	parts := strings.Split(path, "/")
+
+	// Clearing the whole list is its own route rather than a batch of ids: the
+	// caller means "everything of mine", and reminders are already scoped by
+	// user server-side, so there is nothing for the client to enumerate.
+	if len(parts) == 1 && parts[0] == "read-all" && r.Method == http.MethodPost {
+		count, err := s.notifications.MarkAllRead(r.Context(), user.ID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "count": count})
+		return
+	}
+
 	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || parts[1] != "read" || r.Method != http.MethodPost {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return

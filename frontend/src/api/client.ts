@@ -436,6 +436,9 @@ export const api = {
   markNotificationRead(id: string) {
     return request<{ status: string }>(`/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
   },
+  markAllNotificationsRead() {
+    return request<{ status: string; count: number }>("/me/notifications/read-all", { method: "POST" });
+  },
   listLocalGroups() {
     return request<{ items: LocalGroup[] }>("/admin/local-groups");
   },

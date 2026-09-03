@@ -16,6 +16,7 @@ type WorkspaceTopbarProps = {
   onKeyVaultViewModeChange: (mode: KeyVaultViewMode) => void;
   notifications: UserNotification[];
   onMarkNotificationRead: (notificationID: string) => Promise<void>;
+  onMarkAllNotificationsRead: () => Promise<void>;
   onOpenNotificationResource: (resourceId: string) => void;
   vaultUnlocked: boolean;
   onOpenVaultSettings: () => void;
@@ -36,6 +37,7 @@ export function WorkspaceTopbar({
   onKeyVaultViewModeChange,
   notifications,
   onMarkNotificationRead,
+  onMarkAllNotificationsRead,
   onOpenNotificationResource,
   vaultUnlocked,
   onOpenVaultSettings,
@@ -120,23 +122,36 @@ export function WorkspaceTopbar({
           </button>
           {notificationCenterOpen ? (
             <div className="account-popover notification-popover">
-              <p className="eyebrow">Notification center</p>
+              {/* Outside the scrolling list on purpose: one expiry sweep can fill
+                  the list past its own height, and the bulk action has to stay
+                  reachable without scrolling back to the top. */}
+              <div className="notification-popover-header">
+                <p className="eyebrow">Notification center</p>
+                {notificationUnreadCount(notifications) > 0 ? (
+                  <button
+                    type="button"
+                    className="notification-mark-all"
+                    onClick={() => void onMarkAllNotificationsRead()}
+                  >
+                    Mark all as read
+                  </button>
+                ) : null}
+              </div>
               {notifications.length === 0 ? (
-                <p className="section-copy">No app registration reminders yet.</p>
+                <p className="section-copy">No expiry reminders yet.</p>
               ) : (
                 <div className="notification-list">
                   {notifications.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`notification-item ${item.readAt ? "read" : "unread"}`}
-                      onClick={() => {
-                        onOpenNotificationResource(item.resourceId);
-                        setNotificationCenterOpen(false);
-                        void onMarkNotificationRead(item.id);
-                      }}
-                    >
-                      <div>
+                    <div key={item.id} className={`notification-item ${item.readAt ? "read" : "unread"}`}>
+                      <button
+                        type="button"
+                        className="notification-item-open"
+                        onClick={() => {
+                          onOpenNotificationResource(item.resourceId);
+                          setNotificationCenterOpen(false);
+                          void onMarkNotificationRead(item.id);
+                        }}
+                      >
                         <strong>{item.title}</strong>
                         <p>{item.body}</p>
                         <p>{new Date(item.createdAt).toLocaleString()}</p>
@@ -146,9 +161,24 @@ export function WorkspaceTopbar({
                             {item.emailError ? `: ${item.emailError}` : ""}
                           </p>
                         ) : null}
-                      </div>
-                      {!item.readAt ? <span className="tag">new</span> : null}
-                    </button>
+                      </button>
+                      {!item.readAt ? (
+                        <div className="notification-item-actions">
+                          <span className="tag">new</span>
+                          {/* Deliberately leaves the popover open — dismissing a
+                              reminder is not the same intent as opening it, and
+                              closing here means reopening and re-scrolling to
+                              reach the next one. */}
+                          <button
+                            type="button"
+                            className="notification-item-dismiss"
+                            onClick={() => void onMarkNotificationRead(item.id)}
+                          >
+                            Mark read
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               )}

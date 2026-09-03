@@ -194,6 +194,7 @@ export default function App() {
     notifications,
     loadNotifications,
     handleMarkNotificationRead,
+    handleMarkAllNotificationsRead,
     notificationPolicyModalState,
     setNotificationPolicyModalState,
     handleSaveNotificationPolicyOverride
@@ -814,6 +815,7 @@ export default function App() {
           onKeyVaultViewModeChange={setKeyVaultViewMode}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
+          onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
           onOpenNotificationResource={(resourceId) => setPendingResourceId(resourceId)}
           vaultUnlocked={vaultUnlocked}
           onOpenVaultSettings={() => void openVaultSettings()}
