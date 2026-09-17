@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 func (s *Service) ListPortalCredentialMatches(ctx context.Context, user auth.User, rawURL string) ([]PortalCredentialMatch, error) {

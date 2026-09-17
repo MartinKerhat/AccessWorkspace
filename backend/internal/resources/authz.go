@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 func (s *Service) ExplainVisibleResources(ctx context.Context, user auth.User, filter Filter) ([]VisibleResourceSummary, error) {

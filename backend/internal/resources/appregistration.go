@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"access-workspace/backend/internal/appregistrations"
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/appregistrations"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 func (s *Service) UpdateAppRegistrationNotificationPolicies(ctx context.Context, user auth.User, id string, input AppRegistrationNotificationPolicyUpdateInput) (Resource, error) {

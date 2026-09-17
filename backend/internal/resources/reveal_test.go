@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 func TestRevealAllowsPasswordOwnerWithoutRevealRight(t *testing.T) {
@@ -13,7 +13,7 @@ func TestRevealAllowsPasswordOwnerWithoutRevealRight(t *testing.T) {
 		items: map[string]Resource{
 			"password-1": {
 				ID:          "password-1",
-				Name:        "Autodesk",
+				Name:        "Nickleby",
 				Type:        TypeWebPortal,
 				Category:    "passwords",
 				Owner:       "Martin",
@@ -73,4 +73,3 @@ func TestRevealRefusesPasswordlessEntry(t *testing.T) {
 		t.Fatalf("expected passwordless reveal to be refused with invalid input, got %v", err)
 	}
 }
-

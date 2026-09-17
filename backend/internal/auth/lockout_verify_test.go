@@ -9,7 +9,7 @@ import (
 	"os"
 	"testing"
 
-	"access-workspace/backend/internal/db"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/db"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

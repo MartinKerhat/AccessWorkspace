@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"access-workspace/backend/internal/appregistrations"
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
-	"access-workspace/backend/internal/keyvault"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/appregistrations"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/keyvault"
 )
 
 type fakeResourceStore struct {

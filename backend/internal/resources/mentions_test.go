@@ -5,14 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 func TestParseMentionIDsIgnoresProseAndBrokenTokens(t *testing.T) {
 	// Both id shapes in use must parse: uuids in real deployments and slugs in
 	// seeded data. Constraining this to uuids once left every seeded mention
 	// rendering as raw text.
-	notes := "VPN user: @[Heimstaden VPN MK](passwords:11111111-1111-1111-1111-111111111111)\n" +
+	notes := "VPN user: @[Pemberley VPN MK](passwords:11111111-1111-1111-1111-111111111111)\n" +
 		"SQL: @[Prod SQL](keyvault:res-kv)\n" +
 		"mail me @ someone, @[missing paren](passwords:res-web, " +
 		"@[dup](passwords:11111111-1111-1111-1111-111111111111)"

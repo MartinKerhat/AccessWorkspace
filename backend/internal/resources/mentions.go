@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 // Object mentions let a note reference a stored credential inline: the author

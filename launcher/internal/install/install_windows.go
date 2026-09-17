@@ -18,7 +18,7 @@ import (
 	"time"
 	"unsafe"
 
-	"access-workspace/launcher/internal/launcherinfo"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/launcherinfo"
 )
 
 const (

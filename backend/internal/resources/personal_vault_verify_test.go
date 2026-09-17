@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"access-workspace/backend/internal/auth"
-	"access-workspace/backend/internal/db"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/db"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

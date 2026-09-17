@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 // runSSHPlatform opens the session in a visible terminal emulator by

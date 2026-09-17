@@ -3,7 +3,7 @@ package seed
 import (
 	"context"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -45,10 +45,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		) values
 			('res-bastion', 'Platform Bastion', 'ssh', 'Shared SSH bastion for platform maintenance', 'Platform Team', 'Platform', 'prod', 'active', 'manual', '', 'Primary bastion for platform operations', 'bastion.internal', 22, '', '', 'platform-admin', '', '', '', '', '', '', '', null, '', true, true, true, '{"platform","ops-admins"}'),
 			('res-rdp', 'Finance Jump Host', 'rdp', 'RDP access point for finance reporting workloads', 'Finance Ops', 'Finance', 'prod', 'active', 'manual', '', 'Used for reporting support and month-end operations', 'fin-jump.internal', 3389, '', '', 'finops-user', '', '', '', '', '', '', '', null, '', true, false, false, '{"support","ops-admins"}'),
-			('res-web', 'Kibana Prod', 'web_portal', 'Production observability portal', 'SRE', 'Observability', 'prod', 'active', 'manual', '', 'Shared portal access for operational troubleshooting', '', null, 'https://kibana.internal.example', 'Kibana', '', '', '', '', '', '', '', '', null, '', true, false, false, '{"support","platform","network"}'),
+			('res-web', 'Micawber Prod', 'web_portal', 'Production observability portal', 'SRE', 'Observability', 'prod', 'active', 'manual', '', 'Shared portal access for operational troubleshooting', '', null, 'https://micawber.internal.example', 'Micawber', '', '', '', '', '', '', '', '', null, '', true, false, false, '{"support","platform","network"}'),
 			('res-secret', 'Legacy Billing Credential', 'shared_secret', 'Shared credential for a legacy billing workflow', 'Billing Ops', 'Billing', 'prod', 'active', 'manual', '', 'Credential used during legacy vendor reconciliations', '', null, 'https://billing.internal.example', 'Billing portal', 'billing-shared', '', '', '', '', '', '', '', null, '', false, true, true, '{"support"}'),
 			('res-kv', 'Payroll KV Secret', 'key_vault_secret', 'Payroll secret metadata from Azure Key Vault', 'HR Systems', 'HR Platforms', 'prod', 'active', 'azure_key_vault', 'https://payroll-vault.vault.azure.net/secrets/payroll-api-password', 'External metadata record; secret value stays in Key Vault', '', null, '', '', '', 'payroll-vault', 'payroll-api-password', 'secret', '', '', '', '', '2026-12-31T00:00:00Z', '', false, true, true, '{"ops-admins"}'),
-			('res-appreg', 'Grafana App Registration', 'app_registration', 'Operational view of the Grafana Entra application registration', 'Identity Team', 'Identity', 'prod', 'active', 'entra_app_registration', 'grafana-app-reg', 'External application metadata with local ownership overlay', '', null, '', '', '', '', '', '', 'entra', 'grafana-app-reg', 'core-tenant', 'client_secret', '2026-09-01T00:00:00Z', 'azure-key-vault://shared/appregs/grafana-prod', false, false, false, '{"platform"}')
+			('res-appreg', 'Pickwick App Registration', 'app_registration', 'Operational view of the Pickwick Entra application registration', 'Identity Team', 'Identity', 'prod', 'active', 'entra_app_registration', 'pickwick-app-reg', 'External application metadata with local ownership overlay', '', null, '', '', '', '', '', '', 'entra', 'pickwick-app-reg', 'core-tenant', 'client_secret', '2026-09-01T00:00:00Z', 'azure-key-vault://shared/appregs/pickwick-prod', false, false, false, '{"platform"}')
 	`)
 	if err != nil {
 		return err
@@ -58,10 +58,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		insert into resource_secrets (resource_id, secret_mode, secret_value, secret_reference) values
 			('res-bastion', 'inline', 'Sup3rSshSecret!', ''),
 			('res-rdp', 'external_reference', '', 'secret://finance/jump-host/password'),
-			('res-web', 'external_reference', '', 'url://kibana.internal.example'),
+			('res-web', 'external_reference', '', 'url://micawber.internal.example'),
 			('res-secret', 'inline', 'Billing-Password-2026', ''),
 			('res-kv', 'external_reference', '', 'azure-key-vault://payroll/ops-password'),
-			('res-appreg', 'external_reference', '', 'app-registration://grafana-prod')
+			('res-appreg', 'external_reference', '', 'app-registration://pickwick-prod')
 	`)
 	if err != nil {
 		return err
@@ -71,8 +71,8 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		insert into app_registration_credentials (
 			resource_id, key_id, credential_type, display_name, start_date_time, end_date_time, hint, usage
 		) values
-			('res-appreg', 'grafana-secret-2026', 'client_secret', 'Grafana production secret', '2026-01-01T00:00:00Z', '2026-09-01T00:00:00Z', 'prod', ''),
-			('res-appreg', 'grafana-cert-2027', 'certificate', 'Grafana workload certificate', '2026-01-01T00:00:00Z', '2027-03-01T00:00:00Z', '', 'Verify')
+			('res-appreg', 'pickwick-secret-2026', 'client_secret', 'Pickwick production secret', '2026-01-01T00:00:00Z', '2026-09-01T00:00:00Z', 'prod', ''),
+			('res-appreg', 'pickwick-cert-2027', 'certificate', 'Pickwick workload certificate', '2026-01-01T00:00:00Z', '2027-03-01T00:00:00Z', '', 'Verify')
 		on conflict do nothing
 	`)
 	if err != nil {

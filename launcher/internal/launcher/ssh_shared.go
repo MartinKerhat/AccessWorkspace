@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 // Shared pieces of the launcher-managed SSH session (the in-process

@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.org/x/term"
 
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 const createNewConsole = 0x00000010

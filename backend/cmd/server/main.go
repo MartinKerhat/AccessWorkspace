@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"access-workspace/backend/internal/app"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/app"
 )
 
 func main() {

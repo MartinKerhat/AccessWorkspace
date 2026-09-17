@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 // runRDPPlatform is the Windows RDP flow: temporary Credential Manager

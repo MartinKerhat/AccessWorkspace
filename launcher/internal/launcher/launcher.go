@@ -19,8 +19,8 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"access-workspace/launcher/internal/launcherinfo"
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/launcherinfo"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 func ShowLaunchFailure(err error) {

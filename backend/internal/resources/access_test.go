@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 // accessDenied hides personal resources from non-owners as 404 rather than

@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"access-workspace/backend/internal/appregistrations"
-	"access-workspace/backend/internal/artifacts"
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
-	"access-workspace/backend/internal/keyvault"
-	"access-workspace/backend/internal/resources"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/appregistrations"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/artifacts"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/keyvault"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/resources"
 )
 
 type ResourceService interface {

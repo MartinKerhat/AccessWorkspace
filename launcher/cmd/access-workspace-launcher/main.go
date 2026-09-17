@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"access-workspace/launcher/internal/install"
-	"access-workspace/launcher/internal/launcher"
-	"access-workspace/launcher/internal/launcherinfo"
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/install"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/launcher"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/launcherinfo"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 func main() {

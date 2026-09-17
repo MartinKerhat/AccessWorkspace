@@ -5,7 +5,7 @@ package launcher
 import (
 	"fmt"
 
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewayHost string) error {

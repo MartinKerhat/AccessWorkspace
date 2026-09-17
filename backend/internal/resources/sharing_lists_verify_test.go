@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"access-workspace/backend/internal/db"
-	"access-workspace/backend/internal/keyvault"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/db"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/keyvault"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

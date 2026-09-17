@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 type browserExtensionStore struct {
@@ -77,32 +77,32 @@ func TestListPortalCredentialMatchesUsesURLAndCopyPolicy(t *testing.T) {
 		items: map[string]Resource{
 			"portal-1": {
 				ID:          "portal-1",
-				Name:        "Autodesk Shared",
+				Name:        "Nickleby Shared",
 				Type:        TypeWebPortal,
 				Category:    "passwords",
 				Owner:       "Engineering",
-				TargetURL:   "https://manage.autodesk.com/apps",
-				Username:    "shared.autodesk",
+				TargetURL:   "https://manage.nickleby.example/apps",
+				Username:    "shared.nickleby",
 				CopyAllowed: true,
 			},
 			"portal-2": {
 				ID:          "portal-2",
-				Name:        "Autodesk Hidden",
+				Name:        "Nickleby Hidden",
 				Type:        TypeWebPortal,
 				Category:    "passwords",
 				Owner:       "Engineering",
-				TargetURL:   "https://manage.autodesk.com/apps",
-				Username:    "blocked.autodesk",
+				TargetURL:   "https://manage.nickleby.example/apps",
+				Username:    "blocked.nickleby",
 				CopyAllowed: false,
 			},
 			"portal-3": {
 				ID:          "portal-3",
-				Name:        "Grafana Shared",
+				Name:        "Pickwick Shared",
 				Type:        TypeWebPortal,
 				Category:    "passwords",
 				Owner:       "Platform",
-				TargetURL:   "https://grafana.example.test",
-				Username:    "shared.grafana",
+				TargetURL:   "https://pickwick.example.test",
+				Username:    "shared.pickwick",
 				CopyAllowed: true,
 			},
 		},
@@ -114,7 +114,7 @@ func TestListPortalCredentialMatchesUsesURLAndCopyPolicy(t *testing.T) {
 		Rights: []string{"passwords.read"},
 	}
 
-	items, err := service.ListPortalCredentialMatches(context.Background(), user, "https://manage.autodesk.com/apps/new")
+	items, err := service.ListPortalCredentialMatches(context.Background(), user, "https://manage.nickleby.example/apps/new")
 	if err != nil {
 		t.Fatalf("expected portal matches to succeed, got %v", err)
 	}
@@ -122,7 +122,7 @@ func TestListPortalCredentialMatchesUsesURLAndCopyPolicy(t *testing.T) {
 		t.Fatalf("expected one fill-enabled portal match, got %#v", items)
 	}
 	if items[0].ResourceID != "portal-1" {
-		t.Fatalf("expected Autodesk shared match, got %#v", items[0])
+		t.Fatalf("expected Nickleby shared match, got %#v", items[0])
 	}
 }
 
@@ -131,12 +131,12 @@ func TestFillPortalCredentialReturnsSecretAndLogsAudit(t *testing.T) {
 		items: map[string]Resource{
 			"portal-1": {
 				ID:          "portal-1",
-				Name:        "Autodesk Shared",
+				Name:        "Nickleby Shared",
 				Type:        TypeWebPortal,
 				Category:    "passwords",
 				Owner:       "Engineering",
-				TargetURL:   "https://manage.autodesk.com/apps",
-				Username:    "shared.autodesk",
+				TargetURL:   "https://manage.nickleby.example/apps",
+				Username:    "shared.nickleby",
 				CopyAllowed: true,
 				Secret: Secret{
 					Mode:  SecretModeInline,
@@ -153,11 +153,11 @@ func TestFillPortalCredentialReturnsSecretAndLogsAudit(t *testing.T) {
 		Rights: []string{"passwords.read"},
 	}
 
-	result, err := service.FillPortalCredential(context.Background(), user, "portal-1", "https://manage.autodesk.com/apps/new")
+	result, err := service.FillPortalCredential(context.Background(), user, "portal-1", "https://manage.nickleby.example/apps/new")
 	if err != nil {
 		t.Fatalf("expected portal fill to succeed, got %v", err)
 	}
-	if result.Username != "shared.autodesk" || result.Password != "topsecret" {
+	if result.Username != "shared.nickleby" || result.Password != "topsecret" {
 		t.Fatalf("expected username and password in fill result, got %#v", result)
 	}
 	if len(auditLog.entries) != 1 {
@@ -173,12 +173,12 @@ func TestFillPortalCredentialRejectsWhenCopyDisabled(t *testing.T) {
 		items: map[string]Resource{
 			"portal-1": {
 				ID:        "portal-1",
-				Name:      "Autodesk Shared",
+				Name:      "Nickleby Shared",
 				Type:      TypeWebPortal,
 				Category:  "passwords",
 				Owner:     "Engineering",
-				TargetURL: "https://manage.autodesk.com/apps",
-				Username:  "shared.autodesk",
+				TargetURL: "https://manage.nickleby.example/apps",
+				Username:  "shared.nickleby",
 				Secret: Secret{
 					Mode:  SecretModeInline,
 					Value: "topsecret",
@@ -193,7 +193,7 @@ func TestFillPortalCredentialRejectsWhenCopyDisabled(t *testing.T) {
 		Rights: []string{"passwords.read"},
 	}
 
-	_, err := service.FillPortalCredential(context.Background(), user, "portal-1", "https://manage.autodesk.com/apps/new")
+	_, err := service.FillPortalCredential(context.Background(), user, "portal-1", "https://manage.nickleby.example/apps/new")
 	if err != ErrForbidden {
 		t.Fatalf("expected copy-disabled portal fill to be forbidden, got %v", err)
 	}

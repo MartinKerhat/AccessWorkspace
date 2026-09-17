@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 func (s *Server) handleVaultStatus(w http.ResponseWriter, r *http.Request, user auth.User) {

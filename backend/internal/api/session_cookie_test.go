@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 // fakeSessionAuth only needs SessionTTL; embedding the interface satisfies

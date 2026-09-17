@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 type personalPasswordStore struct {
@@ -135,14 +135,14 @@ func TestAdminCannotManageAnotherUsersPersonalPassword(t *testing.T) {
 	store := &personalPasswordStore{
 		resource: Resource{
 			ID:          "pwd-1",
-			Name:        "Grafana",
+			Name:        "Pickwick",
 			Type:        TypeWebPortal,
 			Category:    CategoryForType(TypeWebPortal),
 			Personal:    true,
 			Owner:       "Alice Admin",
 			OwnerUserID: "alice",
 			Username:    "admin",
-			TargetURL:   "https://grafana.example/login",
+			TargetURL:   "https://pickwick.example/login",
 			Secret: Secret{
 				Mode:  SecretModeInline,
 				Value: "existing-secret",
@@ -161,14 +161,14 @@ func TestAdminCannotManageAnotherUsersPersonalPassword(t *testing.T) {
 	// It returns ErrNotFound rather than ErrForbidden: personal resources are
 	// hidden from non-owners entirely, so their existence is not even confirmed.
 	if _, err := service.Update(context.Background(), admin, "pwd-1", UpdateResourceInput{
-		Name:        "Grafana",
+		Name:        "Pickwick",
 		Type:        TypeWebPortal,
 		Personal:    false,
 		Owner:       "Alice Admin",
 		OwnerTeam:   "ops-admins",
 		Status:      "active",
 		SourceKind:  SourceKindManual,
-		TargetURL:   "https://grafana.example/login",
+		TargetURL:   "https://pickwick.example/login",
 		Username:    "admin",
 		CopyAllowed: true,
 		SecretMode:  SecretModeInline,
@@ -191,14 +191,14 @@ func TestOwnerCanConvertPersonalWebPortalPasswordToShared(t *testing.T) {
 	store := &personalPasswordStore{
 		resource: Resource{
 			ID:          "pwd-1",
-			Name:        "Grafana",
+			Name:        "Pickwick",
 			Type:        TypeWebPortal,
 			Category:    CategoryForType(TypeWebPortal),
 			Personal:    true,
 			Owner:       "Alice Admin",
 			OwnerUserID: "alice",
 			Username:    "admin",
-			TargetURL:   "https://grafana.example/login",
+			TargetURL:   "https://pickwick.example/login",
 			Secret: Secret{
 				Mode:  SecretModeInline,
 				Value: "existing-secret",
@@ -213,7 +213,7 @@ func TestOwnerCanConvertPersonalWebPortalPasswordToShared(t *testing.T) {
 	}
 
 	updated, err := service.Update(context.Background(), owner, "pwd-1", UpdateResourceInput{
-		Name:          "Grafana",
+		Name:          "Pickwick",
 		Type:          TypeWebPortal,
 		Personal:      false,
 		Description:   "Shared portal login",
@@ -221,7 +221,7 @@ func TestOwnerCanConvertPersonalWebPortalPasswordToShared(t *testing.T) {
 		OwnerTeam:     "ops-admins",
 		Status:        "active",
 		SourceKind:    SourceKindManual,
-		TargetURL:     "https://grafana.example/login",
+		TargetURL:     "https://pickwick.example/login",
 		Username:      "admin",
 		CopyAllowed:   true,
 		AllowedGroups: []string{"ops-admins"},

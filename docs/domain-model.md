@@ -123,8 +123,8 @@ Used for Azure app registrations and similar credential-bearing integrations.
 
 Examples:
 
-- Autodesk client application
-- Atlassian integration app
+- Nickleby Design client application
+- Copperfield ticketing integration app
 - internal service principal
 
 Core attributes:

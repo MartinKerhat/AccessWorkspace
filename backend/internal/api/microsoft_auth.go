@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"strings"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 	"github.com/google/uuid"
 )
 

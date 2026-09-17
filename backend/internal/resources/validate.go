@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 func normalizeInput(input CreateResourceInput) CreateResourceInput {

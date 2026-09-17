@@ -1,4 +1,4 @@
-module access-workspace/launcher
+module github.com/MartinKerhat/AccessWorkspace/launcher
 
 go 1.25.0
 

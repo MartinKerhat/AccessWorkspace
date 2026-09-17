@@ -4,9 +4,9 @@ import (
 	"context"
 	"log"
 
-	"access-workspace/backend/internal/app"
-	"access-workspace/backend/internal/db"
-	"access-workspace/backend/internal/seed"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/app"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/db"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/seed"
 )
 
 func main() {

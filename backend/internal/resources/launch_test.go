@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 type launchTestStore struct {
@@ -85,14 +85,14 @@ func TestLaunchIssuesLauncherTicketForConnections(t *testing.T) {
 	store := &launchTestStore{
 		resource: Resource{
 			ID:                   "conn-1",
-			Name:                 "Altron",
+			Name:                 "Bounderby",
 			Type:                 TypeRDP,
 			Category:             "connections",
-			TargetHost:           "91.195.203.250",
+			TargetHost:           "203.0.113.25",
 			Owner:                "Alice",
 			LaunchAllowed:        true,
-			Username:             "efminstall",
-			ConnectionDomain:     "altron",
+			Username:             "bounderby.install",
+			ConnectionDomain:     "bounderby",
 			ConnectionScreenMode: "remember_screen",
 			Secret: Secret{
 				Mode:  SecretModeInline,
@@ -132,7 +132,7 @@ func TestLaunchIssuesLauncherTicketForConnections(t *testing.T) {
 	if metadataString(resolved.Metadata, "secretValue") != "rdp-password" {
 		t.Fatalf("expected decrypted secret in resolved payload, got %#v", resolved.Metadata["secretValue"])
 	}
-	if metadataString(resolved.Metadata, "connectionDomain") != "altron" {
+	if metadataString(resolved.Metadata, "connectionDomain") != "bounderby" {
 		t.Fatalf("expected connection domain in resolved payload, got %#v", resolved.Metadata["connectionDomain"])
 	}
 }

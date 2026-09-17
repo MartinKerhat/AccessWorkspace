@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"access-workspace/launcher/internal/install"
-	"access-workspace/launcher/internal/launcherinfo"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/install"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/launcherinfo"
 )
 
 type rdpSigningPublicConfig struct {

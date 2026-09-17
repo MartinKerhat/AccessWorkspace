@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"access-workspace/backend/internal/artifacts"
-	"access-workspace/backend/internal/launcherinfo"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/artifacts"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/launcherinfo"
 )
 
 // requiredLauncherVersion is the version the app demands from installed

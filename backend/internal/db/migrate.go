@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"access-workspace/backend/migrations"
+	"github.com/MartinKerhat/AccessWorkspace/backend/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

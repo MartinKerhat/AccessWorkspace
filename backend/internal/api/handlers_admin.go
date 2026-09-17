@@ -6,9 +6,9 @@ import (
 	"net/url"
 	"strings"
 
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
-	"access-workspace/backend/internal/resources"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/resources"
 )
 
 func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request, user auth.User) {

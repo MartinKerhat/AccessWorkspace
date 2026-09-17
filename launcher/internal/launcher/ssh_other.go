@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 // Preview fallback for platforms without a dedicated SSH flow yet (macOS):

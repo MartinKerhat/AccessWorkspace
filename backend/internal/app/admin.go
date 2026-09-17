@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"access-workspace/backend/internal/notifications"
-	"access-workspace/backend/internal/resources"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/notifications"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/resources"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

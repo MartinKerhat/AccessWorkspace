@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"access-workspace/launcher/internal/payload"
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
 // Linux RDP goes through FreeRDP (the de-facto standard client, packaged by

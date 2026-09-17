@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 // A password may legitimately begin or end with whitespace, and a Key Vault

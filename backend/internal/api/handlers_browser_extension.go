@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"access-workspace/backend/internal/artifacts"
-	"access-workspace/backend/internal/auth"
-	"access-workspace/backend/internal/browserextinfo"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/artifacts"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/browserextinfo"
 )
 
 func (s *Server) handleBrowserExtensionRuntime(w http.ResponseWriter, r *http.Request) {

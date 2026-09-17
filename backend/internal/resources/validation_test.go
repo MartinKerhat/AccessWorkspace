@@ -150,12 +150,12 @@ func TestValidateInputRejectsPasswordlessWithSecretValue(t *testing.T) {
 
 func TestNormalizeInputDefaultsSourceKindByType(t *testing.T) {
 	input := normalizeInput(CreateResourceInput{
-		Name:          "Grafana app",
+		Name:          "Pickwick app",
 		Type:          TypeAppRegistration,
 		Owner:         "Identity",
 		AllowedGroups: []string{"platform"},
 		Provider:      "entra",
-		ApplicationID: "grafana-app",
+		ApplicationID: "pickwick-app",
 		SecretMode:    SecretModeExternal,
 	})
 

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"access-workspace/backend/internal/audit"
-	"access-workspace/backend/internal/auth"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/audit"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/auth"
 )
 
 type archiveTestStore struct {

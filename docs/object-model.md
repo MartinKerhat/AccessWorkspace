@@ -286,7 +286,7 @@ Represents application registrations and related credentials that matter operati
 
 Primary source of truth:
 
-- Azure / Entra / external provider system (Atlassian, Google...)
+- Azure / Entra / external provider system (third-party SaaS providers)
 
 Reason:
 

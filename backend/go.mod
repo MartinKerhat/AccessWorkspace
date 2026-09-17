@@ -1,4 +1,4 @@
-module access-workspace/backend
+module github.com/MartinKerhat/AccessWorkspace/backend
 
 go 1.25.0
 
