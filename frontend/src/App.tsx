@@ -9,7 +9,7 @@ import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
 import { KeyVaultImportModal } from "./modals/KeyVaultImportModal";
 import { AppRegistrationImportModal } from "./modals/AppRegistrationImportModal";
-import { clearRequestedResourceId, currentView, requestedResourceId, type View } from "./navigation";
+import { clearRequestedResourceId, currentView, landingView, requestedResourceId, type View } from "./navigation";
 import { useAuth, authTokenStorageKey } from "./hooks/useAuth";
 import { filterCatalogItems, filterArchivedKeyVaultItems, defaultFilters, type Filters } from "./catalogFilter";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
@@ -627,17 +627,23 @@ export default function App() {
     setPendingResourceId("");
   }, [pendingResourceId, allResources, view, visibleCategories]);
 
+  // Views the signed-in user may not open fall back to their landing view.
+  // Nothing runs before the session is known: with no capabilities loaded yet
+  // every view looks forbidden, and redirecting then sent everyone to
+  // #activity before their real sidebar had a chance to exist.
   useEffect(() => {
-    if (view === "admin" && session && !session.capabilities.canViewAdmin) {
-      const fallback = visibleCategories[0] ?? "activity";
-      window.location.hash = `#${fallback}`;
+    if (!session) {
       return;
     }
-    if (view === "audit" && session && !session.capabilities.canViewAudit) {
-      const fallback = visibleCategories[0] ?? "activity";
-      window.location.hash = `#${fallback}`;
+    const forbidden =
+      (view === "admin" && !session.capabilities.canViewAdmin) ||
+      (view === "audit" && !session.capabilities.canViewAudit) ||
+      (view === "activity" && !session.capabilities.canViewActivity) ||
+      (categoryView !== null && !visibleCategories.includes(categoryView));
+    if (forbidden) {
+      window.location.hash = `#${landingView(session.capabilities)}`;
     }
-  }, [session, view, visibleCategories]);
+  }, [session, view, categoryView, visibleCategories]);
 
   useEffect(() => {
     if (!categoryView) {
@@ -664,8 +670,7 @@ export default function App() {
       return;
     }
     if (!visibleCategories.includes(view)) {
-      const fallback = visibleCategories[0] ?? "activity";
-      window.location.hash = `#${fallback}`;
+      // The redirect effect above moves the user away; nothing to select here.
       return;
     }
     if (!selectedResourceId && currentItems.length > 0) {
@@ -940,6 +945,11 @@ export default function App() {
                   onOpenBrowserExtensions={() => setBrowserExtensionManagerOpen(true)}
                   onOpenLauncherDownloads={() => setLauncherDownloadsOpen(true)}
                   onReveal={handleReveal}
+                  onShowRevealedPassword={(secretValue) => {
+                    if (selectedResource) {
+                      setReveal({ resourceId: selectedResource.id, secretMode: selectedResource.secret.mode, secretValue });
+                    }
+                  }}
                   onRevealOverridePassword={handleRevealOverridePassword}
                   onRevealConnectionPassword={
                     selectedResource &&

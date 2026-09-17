@@ -1,4 +1,5 @@
 import { categoryLabel, type WorkspaceCategory } from "./workspaceCategories";
+import type { WorkspaceCapabilities } from "./types";
 
 export type View = WorkspaceCategory | "activity" | "audit" | "admin";
 
@@ -53,4 +54,22 @@ export function clearRequestedResourceId() {
   }
   url.searchParams.delete("resource");
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+// Where a signed-in user lands when the address bar carries no usable view:
+// the first item of the sidebar they can actually see, in sidebar order. Every
+// user sees a different sidebar, so there is no single fixed landing page.
+export function landingView(capabilities: WorkspaceCapabilities): View {
+  const categories: WorkspaceCategory[] = ["connections", "keyvault", "appregistrations", "passwords"];
+  const firstCategory = categories.find((category) => capabilities.categories[category]?.view);
+  if (firstCategory) {
+    return firstCategory;
+  }
+  if (capabilities.canViewActivity) {
+    return "activity";
+  }
+  if (capabilities.canViewAudit) {
+    return "audit";
+  }
+  return "admin";
 }

@@ -44,7 +44,7 @@ export function ResourceFormModal({
 }: Props) {
   return (
     <div className="modal-scrim" {...scrimDismissProps(onClose)}>
-      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-card resource-form-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
             <p className="eyebrow">{mode === "create" ? "Create object" : "Edit object"}</p>

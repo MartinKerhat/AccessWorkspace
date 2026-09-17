@@ -61,6 +61,8 @@ type Props = {
   onOpenBrowserExtensions?: () => void;
   onOpenLauncherDownloads?: () => void;
   onReveal: () => Promise<string | undefined>;
+  // Reopens the reveal modal with an already-fetched value (no new audit event).
+  onShowRevealedPassword?: (secretValue: string) => void;
   onRevealOverridePassword?: () => Promise<string | undefined>;
   onRevealConnectionPassword?: () => Promise<string | undefined>;
   mentionTargets?: MentionTarget[];
@@ -221,6 +223,7 @@ export function ResourceDetailPage({
   onOpenBrowserExtensions,
   onOpenLauncherDownloads,
   onReveal,
+  onShowRevealedPassword,
   onRevealOverridePassword,
   onRevealConnectionPassword,
   mentionTargets = [],
@@ -297,23 +300,23 @@ export function ResourceDetailPage({
   const showLaunchAction = showDetailLaunchAction(resource);
   const showRevealAction = showDetailRevealAction(resource);
 
+  // First click fetches the secret (audited once per selection) and onReveal
+  // opens the reveal modal as a side effect. Later clicks reuse the cached
+  // value, so the modal has to be reopened explicitly — without that the button
+  // silently copied and appeared dead after the modal was closed once.
   async function handleCopyPassword() {
-    if (!revealedPassword) {
-      const secretValue = await onReveal();
+    let secretValue = revealedPassword;
+    if (secretValue) {
+      onShowRevealedPassword?.(secretValue);
+    } else {
+      secretValue = (await onReveal()) ?? "";
       if (!secretValue) {
         return;
       }
       setRevealedPassword(secretValue);
-      try {
-        await navigator.clipboard.writeText(secretValue);
-        setPasswordCopyMessage("Password copied to clipboard");
-      } catch {
-        setPasswordCopyMessage("Copying the password failed");
-      }
-      return;
     }
     try {
-      await navigator.clipboard.writeText(revealedPassword);
+      await navigator.clipboard.writeText(secretValue);
       setPasswordCopyMessage("Password copied to clipboard");
     } catch {
       setPasswordCopyMessage("Copying the password failed");

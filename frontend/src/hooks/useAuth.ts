@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { landingView } from "../navigation";
 import { api } from "../api/client";
 import type { Session } from "../types";
 
@@ -124,7 +125,7 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
         capabilities: response.capabilities
       });
       if (!window.location.hash) {
-        window.location.hash = "#connections";
+        window.location.hash = `#${landingView(response.capabilities)}`;
       }
     } catch (error) {
       const nextMessage = authMessage(error, "Failed to load auth bootstrap");
@@ -149,7 +150,7 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
       });
       setMessage(undefined);
       if (!window.location.hash) {
-        window.location.hash = "#connections";
+        window.location.hash = `#${landingView(response.capabilities)}`;
       }
     } catch (error) {
       setMessage(authMessage(error, "Sign-in failed"));
@@ -172,7 +173,7 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       setMessage(undefined);
       if (!window.location.hash) {
-        window.location.hash = "#connections";
+        window.location.hash = `#${landingView(response.capabilities)}`;
       }
     } catch (error) {
       setMessage(authMessage(error, "Account setup failed"));
