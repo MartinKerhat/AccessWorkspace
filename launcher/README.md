@@ -41,6 +41,23 @@ into `../artifacts/launcher/`. For a quick local Windows build:
 go build -o dist\access-workspace-launcher.exe .\cmd\access-workspace-launcher
 ```
 
+### Install from source
+
+With a Go toolchain installed, the launcher can be built and installed straight
+from the repository without cloning it:
+
+```sh
+go install github.com/MartinKerhat/AccessWorkspace/launcher/cmd/access-workspace-launcher@latest
+```
+
+The binary lands in `$(go env GOPATH)/bin` (`%USERPROFILE%\go\bin` on Windows).
+Run it once to register the protocol handler, exactly as with a downloaded
+release. Release tags (`launcher-v<version>`) are not Go module version tags, so
+`@latest` resolves to the newest commit on `main`; pin a specific release
+with `@launcher-v<version>` when reproducibility matters. Prebuilt, versioned
+artifacts remain available from the GitHub Releases page and the in-app
+download dialog.
+
 ## Test a payload
 
 ```powershell
@@ -57,7 +74,7 @@ or
 
 The frontend download folder includes the current versioned launcher artifact:
 
-- `access-workspace-launcher-windows-amd64-v0.5.6.exe`
+- `access-workspace-launcher-windows-amd64-v<version>.exe`
 
 Run the `.exe` once. On Windows, that first run now:
 
