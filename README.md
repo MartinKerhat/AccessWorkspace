@@ -30,7 +30,7 @@ Discover secrets in your vaults, import them in batches, and browse them with th
 
 ### App registrations — credential risk you can see coming
 
-Import Entra app registrations with their owners and their full secret/certificate inventory. Credential expiry is tracked as first-class data and drives reminders in the in-app notification center and by email, on a schedule you configure — globally, per application, or per individual credential. Rotate a credential and stale reminders retire themselves.
+Import Entra app registrations with their owners and their full secret/certificate inventory. Credential expiry is tracked as first-class data and drives reminders in the in-app notification center and by email, on a schedule you configure — globally, per application, or per individual credential. The expiring badge always reflects the nearest live credential, so an old secret keeps the record flagged until it is actually gone. Rotate a credential, remove the retired one in Entra, and on the next sync the badge clears and stale reminders retire themselves.
 
 ![An app registration with its synced credentials, each carrying its own expiry state](docs/images/app-registration-expiry.png)
 
