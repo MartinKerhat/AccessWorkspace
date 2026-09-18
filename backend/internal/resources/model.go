@@ -359,6 +359,37 @@ type KeyVaultSyncResult struct {
 	Sources           []KeyVaultSyncSource `json:"sources"`
 }
 
+// KeyVaultImportItem is one discovered secret selected in the manual import
+// modal. SecretID is the full Key Vault secret identifier and doubles as the
+// duplicate-detection key: it is what both auto import and manual import store
+// as the resource's source object id and secret reference.
+type KeyVaultImportItem struct {
+	VaultURL    string     `json:"vaultUrl"`
+	VaultName   string     `json:"vaultName"`
+	ObjectName  string     `json:"objectName"`
+	SecretID    string     `json:"secretId"`
+	ContentType string     `json:"contentType"`
+	ExpiresAt   *time.Time `json:"expiresAt"`
+	Enabled     *bool      `json:"enabled"`
+}
+
+type KeyVaultImportInput struct {
+	Description   string               `json:"description"`
+	Owner         string               `json:"owner"`
+	OwnerTeam     string               `json:"ownerTeam"`
+	Environment   string               `json:"environment"`
+	Notes         string               `json:"notes"`
+	AllowedGroups []string             `json:"allowedGroups"`
+	Items         []KeyVaultImportItem `json:"items"`
+}
+
+type KeyVaultImportResult struct {
+	Items []Resource `json:"items"`
+	// Skipped counts selected secrets that already had a live managed
+	// resource (or appeared twice in the same request) and were not created.
+	Skipped int `json:"skipped"`
+}
+
 type AppRegistrationImportInput struct {
 	Owner          string   `json:"owner"`
 	OwnerTeam      string   `json:"ownerTeam"`

@@ -42,6 +42,7 @@ type ResourceService interface {
 	Launch(ctx context.Context, user auth.User, id string) (resources.LaunchPayload, error)
 	ResolveLaunchTicket(ctx context.Context, ticket string) (resources.LaunchPayload, error)
 	SyncKeyVault(ctx context.Context, user auth.User, sources []resources.KeyVaultSyncSourceConfig, automatic bool) (resources.KeyVaultSyncResult, error)
+	ImportKeyVaultSecrets(ctx context.Context, user auth.User, input resources.KeyVaultImportInput) (resources.KeyVaultImportResult, error)
 	ImportAppRegistrations(ctx context.Context, user auth.User, input resources.AppRegistrationImportInput) ([]resources.Resource, error)
 	SyncAppRegistrations(ctx context.Context, user auth.User, automatic bool) (resources.AppRegistrationSyncResult, error)
 	UpdateAppRegistrationNotificationPolicies(ctx context.Context, user auth.User, id string, input resources.AppRegistrationNotificationPolicyUpdateInput) (resources.Resource, error)

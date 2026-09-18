@@ -1,6 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { api } from "../api/client";
-import { getSelectedKeyVaultItems } from "../keyVault";
+import { getSelectedKeyVaultItems, importedKeyVaultSecretKeys, keyVaultSecretKey } from "../keyVault";
 import type {
   AdminConfig,
   AdminForm,
@@ -10,6 +10,7 @@ import type {
   KeyVaultSyncResult,
   LaunchPayload,
   Resource,
+  ResourceSummary,
   RevealResult,
   Session
 } from "../types";
@@ -57,6 +58,7 @@ type UseKeyVaultAdminDeps = {
   setBusy: (busy: boolean) => void;
   setMessage: (message: string | undefined) => void;
   adminForm: AdminForm;
+  allResources: ResourceSummary[];
   applyAdminConfigResponse: (response: AdminConfig) => void;
   loadAdminConfig: () => Promise<void>;
   loadArchivedResources: () => Promise<void>;
@@ -78,6 +80,7 @@ export function useKeyVaultAdmin({
   setBusy,
   setMessage,
   adminForm,
+  allResources,
   applyAdminConfigResponse,
   loadAdminConfig,
   loadArchivedResources,
@@ -97,6 +100,11 @@ export function useKeyVaultAdmin({
   const [selectedArchivedKeyVaultId, setSelectedArchivedKeyVaultId] = useState<string>();
   const [keyVaultSyncing, setKeyVaultSyncing] = useState(false);
   const [keyVaultModalState, setKeyVaultModalState] = useState<KeyVaultModalState>(closedKeyVaultModalState);
+
+  // Secrets that already have a live managed resource. The backend skips
+  // these too; the set drives the "already imported" state in the modal so
+  // the user is told up front instead of after a silent no-op.
+  const importedKeyVaultSecrets = importedKeyVaultSecretKeys(allResources);
 
   async function loadKeyVaultDiscoveries() {
     const response = await api.discoverKeyVault();
@@ -200,7 +208,11 @@ export function useKeyVaultAdmin({
       const selectedItems = getSelectedKeyVaultItems(
         keyVaultImportForm.selectedSecretIds,
         keyVaultDiscoveries.sources
-      );
+      ).filter((item) => !importedKeyVaultSecrets.has(keyVaultSecretKey(item.vaultName, item.name)));
+      if (selectedItems.length === 0) {
+        setMessage("Selected Key Vault secrets were already imported");
+        return;
+      }
       const payloadItems: KeyVaultImportItem[] = selectedItems.map((item) => ({
         vaultUrl: item.vaultUrl,
         vaultName: item.vaultName,
@@ -217,7 +229,11 @@ export function useKeyVaultAdmin({
         }
       );
       const createdItems = response.items ?? [];
-      setMessage(createdItems.length === 1 ? "Key Vault secret imported" : `${createdItems.length} Key Vault secrets imported`);
+      if (createdItems.length === 0) {
+        setMessage("Selected Key Vault secrets were already imported");
+      } else {
+        setMessage(createdItems.length === 1 ? "Key Vault secret imported" : `${createdItems.length} Key Vault secrets imported`);
+      }
       await loadAllResources();
       await loadActivity();
       if (session.capabilities.canViewAudit) {
@@ -259,6 +275,7 @@ export function useKeyVaultAdmin({
     keyVaultSyncing,
     keyVaultModalState,
     setKeyVaultModalState,
+    importedKeyVaultSecrets,
     handleSyncKeyVault,
     handleSaveKeyVaultSources,
     openKeyVaultImport,

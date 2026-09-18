@@ -61,60 +61,40 @@ func (s *Server) handleKeyVaultImport(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 
-	imported := make([]resources.Resource, 0, len(items))
-	now := time.Now().UTC()
-	sharedDescription := strings.TrimSpace(input.Description)
-	sharedOwner := strings.TrimSpace(input.Owner)
-	sharedOwnerTeam := strings.TrimSpace(input.OwnerTeam)
-	sharedEnvironment := strings.TrimSpace(input.Environment)
-	sharedNotes := strings.TrimSpace(input.Notes)
-
+	// Validate every reference before creating anything so a bad item late
+	// in the selection cannot leave a half-imported batch behind.
+	serviceItems := make([]resources.KeyVaultImportItem, 0, len(items))
 	for _, item := range items {
 		secretID := strings.TrimSpace(item.SecretID)
 		if err := s.keyVault.ValidateReference(r.Context(), secretID); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-
-		resource, err := s.resources.Create(r.Context(), user, resources.CreateResourceInput{
-			Name:            strings.TrimSpace(item.ObjectName),
-			Type:            resources.TypeKeyVaultSecret,
-			Description:     sharedDescription,
-			Owner:           sharedOwner,
-			OwnerTeam:       sharedOwnerTeam,
-			Environment:     sharedEnvironment,
-			Status:          keyVaultImportStatus(item.Enabled),
-			SourceKind:      resources.SourceKindAzureKeyVault,
-			SourceObjectID:  secretID,
-			LastSyncedAt:    &now,
-			Notes:           sharedNotes,
-			VaultName:       strings.TrimSpace(item.VaultName),
-			ObjectName:      strings.TrimSpace(item.ObjectName),
-			ObjectType:      "secret",
-			ContentType:     strings.TrimSpace(item.ContentType),
-			ExpiresAt:       item.ExpiresAt,
-			RevealAllowed:   true,
-			CopyAllowed:     true,
-			AllowedGroups:   input.AllowedGroups,
-			SecretMode:      resources.SecretModeExternal,
-			SecretReference: secretID,
-			LinkedSecretRef: secretID,
+		serviceItems = append(serviceItems, resources.KeyVaultImportItem{
+			VaultURL:    item.VaultURL,
+			VaultName:   item.VaultName,
+			ObjectName:  item.ObjectName,
+			SecretID:    secretID,
+			ContentType: item.ContentType,
+			ExpiresAt:   item.ExpiresAt,
+			Enabled:     item.Enabled,
 		})
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		imported = append(imported, resource)
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"items": imported})
-}
-
-func keyVaultImportStatus(enabled *bool) string {
-	if enabled != nil && !*enabled {
-		return "disabled"
+	result, err := s.resources.ImportKeyVaultSecrets(r.Context(), user, resources.KeyVaultImportInput{
+		Description:   input.Description,
+		Owner:         input.Owner,
+		OwnerTeam:     input.OwnerTeam,
+		Environment:   input.Environment,
+		Notes:         input.Notes,
+		AllowedGroups: input.AllowedGroups,
+		Items:         serviceItems,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
 	}
-	return "active"
+	writeJSON(w, http.StatusCreated, map[string]any{"items": result.Items, "skipped": result.Skipped})
 }
 
 func (s *Server) handleKeyVaultSync(w http.ResponseWriter, r *http.Request, user auth.User) {

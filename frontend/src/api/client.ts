@@ -494,7 +494,7 @@ export const api = {
     return request<KeyVaultDiscoverResult>("/keyvault/discover");
   },
   importKeyVaultSecrets(input: KeyVaultImportForm & { items: KeyVaultImportItem[] }) {
-    return request<{ items: Resource[] }>("/keyvault/import", {
+    return request<{ items: Resource[]; skipped?: number }>("/keyvault/import", {
       method: "POST",
       body: JSON.stringify(input)
     });

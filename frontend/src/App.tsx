@@ -264,6 +264,7 @@ export default function App() {
     keyVaultSyncing,
     keyVaultModalState,
     setKeyVaultModalState,
+    importedKeyVaultSecrets,
     handleSyncKeyVault,
     handleSaveKeyVaultSources,
     openKeyVaultImport,
@@ -274,6 +275,7 @@ export default function App() {
     setBusy,
     setMessage,
     adminForm,
+    allResources,
     applyAdminConfigResponse,
     loadAdminConfig,
     loadArchivedResources,
@@ -1205,6 +1207,7 @@ export default function App() {
             discoveries={keyVaultDiscoveries}
             form={keyVaultImportForm}
             setForm={setKeyVaultImportForm}
+            importedSecretKeys={importedKeyVaultSecrets}
             knownUsers={knownUsers}
             localGroups={localGroups}
             message={message}

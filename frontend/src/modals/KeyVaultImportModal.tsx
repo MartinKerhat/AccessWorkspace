@@ -1,13 +1,14 @@
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { KeyVaultDiscoverResult, KeyVaultImportForm, LocalGroup, UserSummary } from "../types";
-import { getSelectedKeyVaultItems } from "../keyVault";
+import { getSelectedKeyVaultItems, keyVaultSecretKey } from "../keyVault";
 import { scrimDismissProps } from "./scrim";
 
 type Props = {
   discoveries: KeyVaultDiscoverResult;
   form: KeyVaultImportForm;
   setForm: Dispatch<SetStateAction<KeyVaultImportForm>>;
+  importedSecretKeys: Set<string>;
   knownUsers: UserSummary[];
   localGroups: LocalGroup[];
   // Global status/error message mirrored inside the modal: import errors are
@@ -24,6 +25,7 @@ export function KeyVaultImportModal({
   discoveries,
   form,
   setForm,
+  importedSecretKeys,
   knownUsers,
   localGroups,
   message,
@@ -55,7 +57,11 @@ export function KeyVaultImportModal({
       );
     })
   }));
-  const selectedItems = getSelectedKeyVaultItems(form.selectedSecretIds, discoveries.sources);
+  const isAlreadyImported = (item: { vaultName: string; name: string }) =>
+    importedSecretKeys.has(keyVaultSecretKey(item.vaultName, item.name));
+  const selectedItems = getSelectedKeyVaultItems(form.selectedSecretIds, discoveries.sources).filter(
+    (item) => !isAlreadyImported(item)
+  );
   const selectedVaultCount = new Set(selectedItems.map((item) => item.vaultUrl)).size;
 
   const filteredOwners = knownUsers.filter((owner) => {
@@ -166,7 +172,12 @@ export function KeyVaultImportModal({
                           <button
                             className="button ghost"
                             type="button"
-                            onClick={() => setSourceSecrets(sourceResult.items.map((item) => item.id), true)}
+                            onClick={() =>
+                              setSourceSecrets(
+                                sourceResult.items.filter((item) => !isAlreadyImported(item)).map((item) => item.id),
+                                true
+                              )
+                            }
                           >
                             Select all
                           </button>
@@ -186,22 +197,27 @@ export function KeyVaultImportModal({
                     {sourceResult.items.length === 0 && !sourceResult.error ? (
                       <p className="section-copy">No discoverable secrets matched the current filter.</p>
                     ) : null}
-                    {sourceResult.items.map((item) => (
-                      <label key={item.id} className="discovery-item">
-                        <input
-                          type="checkbox"
-                          checked={form.selectedSecretIds.includes(item.id)}
-                          onChange={() => toggleSecret(item.id)}
-                        />
-                        <div>
-                          <strong>{item.name}</strong>
-                          <p>{item.contentType || "no content type"}</p>
-                          <p>{item.enabled ? "enabled" : "disabled in Azure"}</p>
-                          <p>{item.expiresAt ? `expires ${new Date(item.expiresAt).toLocaleDateString()}` : "no expiry"}</p>
-                          <p>{item.id}</p>
-                        </div>
-                      </label>
-                    ))}
+                    {sourceResult.items.map((item) => {
+                      const alreadyImported = isAlreadyImported(item);
+                      return (
+                        <label key={item.id} className="discovery-item">
+                          <input
+                            type="checkbox"
+                            disabled={alreadyImported}
+                            checked={!alreadyImported && form.selectedSecretIds.includes(item.id)}
+                            onChange={() => toggleSecret(item.id)}
+                          />
+                          <div>
+                            <strong>{item.name}</strong>
+                            <p>{item.contentType || "no content type"}</p>
+                            <p>{item.enabled ? "enabled" : "disabled in Azure"}</p>
+                            <p>{item.expiresAt ? `expires ${new Date(item.expiresAt).toLocaleDateString()}` : "no expiry"}</p>
+                            <p>{item.id}</p>
+                            {alreadyImported ? <p>already imported</p> : null}
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </article>
               ))}

@@ -26,17 +26,7 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 	if err != nil {
 		return KeyVaultSyncResult{}, err
 	}
-	existingByReference := map[string]Resource{}
-	for _, item := range items {
-		reference := strings.TrimRight(strings.TrimSpace(item.Secret.Reference), "/")
-		if reference == "" {
-			reference = strings.TrimRight(strings.TrimSpace(item.SourceObjectID), "/")
-		}
-		if reference == "" {
-			continue
-		}
-		existingByReference[reference] = item
-	}
+	existingByReference := managedKeyVaultReferences(items)
 
 	discoveredBySource := map[string]keyvault.DiscoverSourceResult{}
 	needsDiscovery := false
@@ -101,7 +91,7 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 					markKeyVaultSyncError(&result.Sources[i], discovered.Error)
 				} else {
 					for _, secret := range discovered.Items {
-						reference := strings.TrimRight(strings.TrimSpace(secret.ID), "/")
+						reference := normalizeKeyVaultReference(secret.ID)
 						if reference == "" {
 							continue
 						}
