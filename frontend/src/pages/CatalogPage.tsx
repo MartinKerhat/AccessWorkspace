@@ -18,6 +18,9 @@ type Props = {
   secondaryActionLabel?: string;
   onFilterChange: (next: Filters) => void;
   onSelect: (id: string) => void;
+  // Double-click on a launchable connection card. Only wired for the
+  // connections category; other categories keep single-click select.
+  onLaunch?: (item: ResourceSummary) => void;
   onCreate?: () => void;
   onSecondaryAction?: () => void;
 };
@@ -153,19 +156,30 @@ function sortByExpiryUrgency(category: WorkspaceCategory, items: ResourceSummary
   });
 }
 
+// RDP and SSH always hand off to the launcher. Web portals live in the
+// passwords category and keep their explicit "Open target" button; they are
+// deliberately not double-click targets.
+function isLaunchableConnection(item: ResourceSummary) {
+  return item.type === "rdp" || item.type === "ssh";
+}
+
 function renderResourceCard(
   category: WorkspaceCategory,
   item: ResourceSummary,
   selectedId: string | undefined,
-  onSelect: (id: string) => void
+  onSelect: (id: string) => void,
+  onLaunch?: (item: ResourceSummary) => void
 ) {
   const connectionCard = isConnectionCategory(category);
+  const doubleClickLaunch = connectionCard && onLaunch && isLaunchableConnection(item) ? onLaunch : undefined;
 
   return (
     <button
       key={item.id}
       className={`resource-card ${selectedId === item.id ? "active" : ""}`}
       onClick={() => onSelect(item.id)}
+      onDoubleClick={doubleClickLaunch ? () => doubleClickLaunch(item) : undefined}
+      title={doubleClickLaunch ? "Double-click to connect" : undefined}
     >
       <div className="resource-card-top">
         <span className={`resource-type ${item.type}`}>{resourceTypeLabel(item.type)}</span>
@@ -274,6 +288,7 @@ export function CatalogPage({
   secondaryActionLabel,
   onFilterChange,
   onSelect,
+  onLaunch,
   onCreate,
   onSecondaryAction
 }: Props) {
@@ -382,7 +397,7 @@ export function CatalogPage({
             </div>
           ) : null}
           <div className="resource-section-list">
-            {visibleItems.map((item) => renderResourceCard(category, item, selectedId, onSelect))}
+            {visibleItems.map((item) => renderResourceCard(category, item, selectedId, onSelect, onLaunch))}
           </div>
         </div>
       </div>

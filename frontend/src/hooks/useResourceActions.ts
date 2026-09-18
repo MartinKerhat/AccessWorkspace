@@ -10,6 +10,7 @@ import type {
   MentionTarget,
   Resource,
   ResourceForm,
+  ResourceType,
   ResourceSummary,
   RevealResult,
   Session
@@ -282,15 +283,21 @@ export function useResourceActions({
     }
   }
 
-  async function handleLaunch() {
-    if (!selectedResourceId || !session || launching) {
+  // The target is optional: the detail pane launches the selected resource,
+  // while a catalog double-click passes its card explicitly. A double-click's
+  // first click only just started loading the selection, so reading the type
+  // from state there would still see the previous (or no) resource.
+  async function handleLaunch(target?: { id: string; type: ResourceType }) {
+    const launchId = target?.id ?? selectedResourceId;
+    const launchType = target?.type ?? selectedResource?.type;
+    if (!launchId || !session || launching) {
       return;
     }
     setLaunching(true);
     try {
-      const response = await api.launchResource(selectedResourceId);
+      const response = await api.launchResource(launchId);
       setLaunch(response);
-      if (selectedResource?.type === "rdp" || selectedResource?.type === "ssh") {
+      if (launchType === "rdp" || launchType === "ssh") {
         let runtime = launcherRuntime;
         if (!runtime) {
           runtime = await api.launcherRuntime();
@@ -308,9 +315,9 @@ export function useResourceActions({
         // Launchers report per-capability support (e.g. Linux RDP needs a
         // FreeRDP client installed) so missing prerequisites surface as a
         // clear message instead of a failed hand-off.
-        if (status.capabilities && status.capabilities[selectedResource.type] === false) {
+        if (status.capabilities && status.capabilities[launchType] === false) {
           setMessage(
-            selectedResource.type === "rdp"
+            launchType === "rdp"
               ? "This machine's launcher cannot open RDP yet — install the FreeRDP client (e.g. the freerdp package) and try again."
               : "This machine's launcher cannot open SSH yet — install an OpenSSH client and a terminal emulator, then try again."
           );
@@ -328,7 +335,7 @@ export function useResourceActions({
           : response;
         await api.launcherLocalLaunch(runtime.launchUrl, preparedPayload);
         setMessage("Connection handed off to the desktop launcher.");
-      } else if (selectedResource?.type === "web_portal") {
+      } else if (launchType === "web_portal") {
         if (response.url) {
           setLaunch(null);
           window.open(response.url, "_blank", "noopener,noreferrer");
@@ -339,7 +346,7 @@ export function useResourceActions({
       }
       await refreshAfterSensitiveAction();
     } catch (error) {
-      if (await guardVaultLocked(error, () => handleLaunch())) {
+      if (await guardVaultLocked(error, () => handleLaunch(target))) {
         return;
       }
       setMessage(error instanceof Error ? error.message : "Launch failed");

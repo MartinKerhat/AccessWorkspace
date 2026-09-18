@@ -864,6 +864,13 @@ export default function App() {
                   }
                   onFilterChange={setFilters}
                   onSelect={setSelectedResourceId}
+                  onLaunch={
+                    categoryView === "connections"
+                      ? (item) => {
+                          void handleLaunch({ id: item.id, type: item.type });
+                        }
+                      : undefined
+                  }
                   onSecondaryAction={
                     categoryView === "keyvault" && session.user.isAdmin
                       ? () => {
