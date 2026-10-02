@@ -542,10 +542,10 @@ func TestAccountLifecycleEndToEnd(t *testing.T) {
 
 	// Password change: login password rotates, vault and secrets survive.
 	const newPassword = "user-rotated-password-2"
-	if err := authService.ChangeOwnPassword(ctx, accepted.User, ownPassword, newPassword); err != nil {
+	if _, err := authService.ChangeOwnPassword(ctx, accepted.User, accepted.Token, ownPassword, newPassword); err != nil {
 		t.Fatalf("change password: %v", err)
 	}
-	if err := authService.ChangeOwnPassword(ctx, accepted.User, "wrong-current", "whatever-123"); err == nil {
+	if _, err := authService.ChangeOwnPassword(ctx, accepted.User, accepted.Token, "wrong-current", "whatever-123"); err == nil {
 		t.Fatalf("expected wrong current password to be rejected")
 	}
 	if _, err := authService.Login(ctx, "invited-user", ownPassword); err == nil {

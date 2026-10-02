@@ -60,7 +60,12 @@ type Authenticator interface {
 	IssueBrowserExtensionConnectToken(ctx context.Context, user User, mode Mode) (BrowserExtensionConnectToken, error)
 	ExchangeBrowserExtensionConnectToken(ctx context.Context, token string, installationID string) (LoginResult, error)
 	Logout(ctx context.Context, token string) error
-	ChangeOwnPassword(ctx context.Context, user User, currentPassword, newPassword string) error
+	ListOwnSessions(ctx context.Context, user User, currentToken string) ([]SessionInfo, error)
+	RevokeOwnSession(ctx context.Context, user User, sessionID string, currentToken string) (string, bool, error)
+	RevokeOtherSessions(ctx context.Context, user User, currentToken string) (int, error)
+	// ChangeOwnPassword also ends every other session of the user (rule, no
+	// opt-out) and returns how many it ended.
+	ChangeOwnPassword(ctx context.Context, user User, currentToken, currentPassword, newPassword string) (int, error)
 	AcceptInvite(ctx context.Context, token, password string) (LoginResult, error)
 	GetVaultStatus(ctx context.Context, user User) (VaultStatus, error)
 	SetupVault(ctx context.Context, user User, token, passphrase string) error

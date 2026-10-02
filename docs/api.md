@@ -15,8 +15,24 @@ exchange token.
 - `GET /api/auth/me`
 - `GET /api/auth/microsoft/start`
 - `GET /api/auth/microsoft/callback`
-- `POST /api/auth/password` — self-service password change
+- `POST /api/auth/password` — self-service password change; also ends every
+  other session of the user (the response reports how many)
 - `POST /api/auth/invite/accept` — set password from an invite link
+
+## Sessions
+
+Every request looks its session up in the database, so ending a session takes
+effect on the next request. A revoked session also loses its copy of the
+unlocked personal-vault key.
+
+- `GET /api/auth/sessions` — the caller's live web and browser-extension
+  sessions: id, kind, created, last used, expiry, IP, a short client label
+  derived from the user agent, whether it is the current one, and whether the
+  vault is unlocked in it
+- `DELETE /api/auth/sessions/{id}` — end one session; ending the current one
+  behaves like logout
+- `POST /api/auth/sessions/revoke-others` — end every session except the
+  current one, plus any pending extension connect tokens
 
 ## Personal vault
 
@@ -64,6 +80,11 @@ is not unlocked in the current session, so the UI can prompt.
 - `GET /api/admin/users/{id}` / `PUT /api/admin/users/{id}` / `DELETE /api/admin/users/{id}`
 - `POST /api/admin/users/{id}/invite` — reissue invite link
 - `POST /api/admin/users/{id}/reset-password` — destroys the vault; issues a reset link
+- `GET /api/admin/users/{id}/sessions` — a user's live sessions (same shape as
+  the self view, without `current`)
+- `DELETE /api/admin/users/{id}/sessions` — sign the user out everywhere
+  without blocking them
+- `DELETE /api/admin/users/{id}/sessions/{sessionId}` — end one session
 - `GET /api/admin/notification-deliveries`
 - `GET /api/admin/archived-resources`
 - `POST /api/admin/archived-resources/{id}/restore`

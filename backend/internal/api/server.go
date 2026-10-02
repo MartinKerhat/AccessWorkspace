@@ -178,6 +178,9 @@ type LocalGroupAdminService interface {
 	UpdateLocalGroup(ctx context.Context, name string, input auth.LocalGroupInput) error
 	IssueUserInvite(ctx context.Context, actor auth.User, userID string, purpose string) (auth.UserInvite, error)
 	ResetUserPassword(ctx context.Context, actor auth.User, userID string) (auth.UserInvite, error)
+	ListUserSessions(ctx context.Context, userID string) ([]auth.SessionInfo, error)
+	RevokeUserSession(ctx context.Context, userID, sessionID string) (string, error)
+	RevokeAllUserSessions(ctx context.Context, userID string) (int, error)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -214,6 +217,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request rejected"})
 		return
 	}
+
+	// Sessions issued during this request (login, SSO callback, invite accept,
+	// extension connect-exchange) record the client that opened them.
+	r = r.WithContext(auth.WithSessionClient(r.Context(), auth.SessionClient{
+		IP:        clientIP(r),
+		UserAgent: r.UserAgent(),
+	}))
 
 	user, authErr := s.authenticator.CurrentUser(r.Context(), r)
 
@@ -301,11 +311,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.auditVault(r, user, audit.EventVaultLocked, "")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/browser-extension-session":
+	case r.Method == http.MethodGet && r.URL.Path == "/api/auth/sessions":
 		if !requireAuth(w, user, authErr) {
 			return
 		}
-		s.handleBrowserExtensionSession(w, r, user)
+		s.handleListOwnSessions(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/sessions/revoke-others":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleRevokeOtherSessions(w, r, user)
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/auth/sessions/"):
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleRevokeOwnSession(w, r, user)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/browser-extension-connect-token":
 		if !requireAuth(w, user, authErr) {
 			return

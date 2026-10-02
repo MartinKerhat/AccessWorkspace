@@ -35,7 +35,13 @@ type appRegistrationResourceSyncer interface {
 	SyncAppRegistrations(ctx context.Context, user auth.User, automatic bool) (resources.AppRegistrationSyncResult, error)
 }
 
-func (a *App) startAutomaticKeyVaultSync(store keyVaultSourceSyncStore, syncer keyVaultResourceSyncer) {
+// sessionPurger drops long-expired session rows; piggybacks on the sync tick
+// so there is no second scheduler.
+type sessionPurger interface {
+	PurgeExpiredSessions(ctx context.Context) (int64, error)
+}
+
+func (a *App) startAutomaticKeyVaultSync(store keyVaultSourceSyncStore, syncer keyVaultResourceSyncer, purger sessionPurger) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.backgroundCancel = cancel
 	a.backgroundWG.Add(1)
@@ -43,33 +49,38 @@ func (a *App) startAutomaticKeyVaultSync(store keyVaultSourceSyncStore, syncer k
 	go func() {
 		defer a.backgroundWG.Done()
 
-		runAutomaticKeyVaultSyncLoop(ctx, store, syncer)
+		runAutomaticKeyVaultSyncLoop(ctx, store, syncer, purger)
 	}()
 }
 
-func runAutomaticKeyVaultSyncLoop(ctx context.Context, store keyVaultSourceSyncStore, syncer keyVaultResourceSyncer) {
+func runAutomaticKeyVaultSyncLoop(ctx context.Context, store keyVaultSourceSyncStore, syncer keyVaultResourceSyncer, purger sessionPurger) {
 	ticker := time.NewTicker(automaticKeyVaultSyncInterval)
 	defer ticker.Stop()
 
-	runAutomaticKeyVaultSyncOnce(ctx, store, syncer)
+	runAutomaticKeyVaultSyncOnce(ctx, store, syncer, purger)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			runAutomaticKeyVaultSyncOnce(ctx, store, syncer)
+			runAutomaticKeyVaultSyncOnce(ctx, store, syncer, purger)
 		}
 	}
 }
 
-func runAutomaticKeyVaultSyncOnce(ctx context.Context, store keyVaultSourceSyncStore, syncer keyVaultResourceSyncer) {
+func runAutomaticKeyVaultSyncOnce(ctx context.Context, store keyVaultSourceSyncStore, syncer keyVaultResourceSyncer, purger sessionPurger) {
 	if err := runAutomaticKeyVaultSync(ctx, store, syncer); err != nil && ctx.Err() == nil {
 		log.Printf("automatic key vault sync: %v", err)
 	}
 	if appSyncer, ok := syncer.(appRegistrationResourceSyncer); ok {
 		if err := runAutomaticAppRegistrationSync(ctx, store, appSyncer); err != nil && ctx.Err() == nil {
 			log.Printf("automatic app registration sync: %v", err)
+		}
+	}
+	if purger != nil {
+		if _, err := purger.PurgeExpiredSessions(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("expired session purge: %v", err)
 		}
 	}
 }

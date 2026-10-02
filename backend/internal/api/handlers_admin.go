@@ -152,6 +152,11 @@ func (s *Server) handleAdminUserRoutes(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 
+	if len(parts) >= 2 && parts[1] == "sessions" {
+		s.handleAdminUserSessions(w, r, user, id, parts[2:])
+		return
+	}
+
 	if len(parts) == 2 && r.Method == http.MethodPost && parts[1] == "reset-password" {
 		// Destroys the user's vault and personal secrets (unrecoverable by
 		// design), kills their sessions, and returns a one-time reset link.

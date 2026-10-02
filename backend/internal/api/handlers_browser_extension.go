@@ -63,20 +63,6 @@ func (s *Server) handleBrowserExtensionPortalFill(w http.ResponseWriter, r *http
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (s *Server) handleBrowserExtensionSession(w http.ResponseWriter, r *http.Request, user auth.User) {
-	result, err := s.authenticator.IssueSession(r.Context(), user, s.authenticator.Bootstrap().AuthMode)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token":        result.Token,
-		"user":         result.User,
-		"authMode":     result.AuthMode,
-		"capabilities": result.Capabilities,
-	})
-}
-
 func (s *Server) handleBrowserExtensionConnectToken(w http.ResponseWriter, r *http.Request, user auth.User) {
 	result, err := s.authenticator.IssueBrowserExtensionConnectToken(r.Context(), user, s.authenticator.Bootstrap().AuthMode)
 	if err != nil {

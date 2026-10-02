@@ -93,10 +93,11 @@ func (r *Repository) recordFailedLogin(ctx context.Context, userID string, attem
 
 func (r *Repository) CreateSession(ctx context.Context, userID string, ttl time.Duration) (string, error) {
 	token := uuid.NewString()
+	client := sessionClientFrom(ctx)
 	_, err := r.db.Exec(ctx, `
-		insert into auth_sessions (token, user_id, expires_at)
-		values ($1, $2, now() + ($3 * interval '1 second'))
-	`, hashToken(token), userID, int(ttl.Seconds()))
+		insert into auth_sessions (token, user_id, expires_at, created_ip, user_agent)
+		values ($1, $2, now() + ($3 * interval '1 second'), $4, $5)
+	`, hashToken(token), userID, int(ttl.Seconds()), client.IP, client.UserAgent)
 	if err != nil {
 		return "", err
 	}
@@ -183,10 +184,11 @@ func (r *Repository) UpsertBrowserExtensionSession(ctx context.Context, userID s
 		return "", err
 	}
 
+	client := sessionClientFrom(ctx)
 	if _, err := tx.Exec(ctx, `
-		insert into browser_extension_sessions (token, user_id, installation_id, expires_at, vault_private_key)
-		values ($1, $2, $3, now() + ($4 * interval '1 second'), $5)
-	`, hashToken(token), strings.TrimSpace(userID), strings.TrimSpace(installationID), int(ttl.Seconds()), wrappedVaultKey); err != nil {
+		insert into browser_extension_sessions (token, user_id, installation_id, expires_at, vault_private_key, created_ip, user_agent)
+		values ($1, $2, $3, now() + ($4 * interval '1 second'), $5, $6, $7)
+	`, hashToken(token), strings.TrimSpace(userID), strings.TrimSpace(installationID), int(ttl.Seconds()), wrappedVaultKey, client.IP, client.UserAgent); err != nil {
 		return "", err
 	}
 
@@ -212,6 +214,13 @@ func (r *Repository) UserByToken(ctx context.Context, token string) (User, error
 			return User{}, ErrBlocked
 		}
 		user.VaultPrivateKey = openSessionVaultKey(token, wrappedVaultKey)
+		// Best-effort activity stamp, throttled to one write per minute so a
+		// busy tab does not turn every request into an update. Feeds the
+		// "last active" column of the session list; never fails the request.
+		_, _ = r.db.Exec(ctx, `
+			update auth_sessions set last_used_at = now()
+			where token = $1 and last_used_at < now() - interval '1 minute'
+		`, tokenHash)
 		return user, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {

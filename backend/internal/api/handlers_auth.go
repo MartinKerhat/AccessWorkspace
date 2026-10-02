@@ -81,7 +81,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, us
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := s.authenticator.ChangeOwnPassword(r.Context(), user, input.CurrentPassword, input.NewPassword); err != nil {
+	revoked, err := s.authenticator.ChangeOwnPassword(r.Context(), user, requestSessionToken(r), input.CurrentPassword, input.NewPassword)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
@@ -89,9 +90,17 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, us
 		EventType: audit.EventUserAccessUpdated,
 		UserID:    user.ID,
 		UserName:  user.Name,
-		Metadata:  map[string]any{"action": "password_changed"},
+		Metadata:  map[string]any{"action": "password_changed", "sessionsRevoked": revoked},
 	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	if revoked > 0 {
+		_ = s.audit.Log(r.Context(), audit.LogParams{
+			EventType: audit.EventSessionsRevokedAll,
+			UserID:    user.ID,
+			UserName:  user.Name,
+			Metadata:  map[string]any{"revoked": revoked, "reason": "password_change"},
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "sessionsRevoked": revoked})
 }
 
 func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) {

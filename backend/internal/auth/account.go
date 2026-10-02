@@ -82,15 +82,19 @@ func (s *Service) emailInvite(ctx context.Context, user User, invite UserInvite)
 }
 
 // ChangeOwnPassword verifies the current password, stores the new one, and
-// re-wraps the vault's password unlock so personal secrets survive.
-func (s *Service) ChangeOwnPassword(ctx context.Context, user User, currentPassword, newPassword string) error {
+// re-wraps the vault's password unlock so personal secrets survive. It then
+// ends every other session of the user — a password change is most often a
+// reaction to suspicion, and an attacker who changes it kicks the real owner
+// out visibly. The session making the change (currentToken) stays. Returns
+// the number of other sessions ended.
+func (s *Service) ChangeOwnPassword(ctx context.Context, user User, currentToken, currentPassword, newPassword string) (int, error) {
 	currentPassword = strings.TrimSpace(currentPassword)
 	newPassword = strings.TrimSpace(newPassword)
 	if len(newPassword) < 8 {
-		return fmt.Errorf("%w: new password must be at least 8 characters", ErrInvalidInput)
+		return 0, fmt.Errorf("%w: new password must be at least 8 characters", ErrInvalidInput)
 	}
 	if err := s.repo.verifyPassword(ctx, user.ID, currentPassword); err != nil {
-		return err
+		return 0, err
 	}
 
 	// Prefer the session-carried vault key; fall back to unlocking with the
@@ -99,21 +103,26 @@ func (s *Service) ChangeOwnPassword(ctx context.Context, user User, currentPassw
 	if len(privateKey) == 0 {
 		unlocked, err := s.repo.unlockVaultWithPassword(ctx, user.ID, currentPassword)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		privateKey = unlocked
 	}
 
 	if err := s.repo.setPasswordHash(ctx, user.ID, newPassword); err != nil {
-		return err
+		return 0, err
 	}
 	if len(privateKey) > 0 {
-		return s.repo.rewrapPasswordUnlock(ctx, user.ID, privateKey, newPassword)
+		if err := s.repo.rewrapPasswordUnlock(ctx, user.ID, privateKey, newPassword); err != nil {
+			return 0, err
+		}
+	} else {
+		// No vault could be opened (none exists, or its wrap predates unknown
+		// history): make sure one exists under the new password going forward.
+		if _, err := s.repo.EnsureLocalUserVault(ctx, user.ID, newPassword); err != nil {
+			return 0, err
+		}
 	}
-	// No vault could be opened (none exists, or its wrap predates unknown
-	// history): make sure one exists under the new password going forward.
-	_, err := s.repo.EnsureLocalUserVault(ctx, user.ID, newPassword)
-	return err
+	return s.repo.DeleteOtherSessions(ctx, user.ID, currentToken)
 }
 
 // IssueUserInvite (re)creates the one-time setup link for a user. Any

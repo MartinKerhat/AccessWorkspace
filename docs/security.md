@@ -71,11 +71,19 @@ owner can unlock the private key.
 - Web sessions ride an httpOnly cookie — no token in localStorage or in redirect
   URLs — with a CSRF origin check on state-changing requests. The browser
   extension holds a separate bearer-token session.
+- Sessions are listable and revocable. A user sees their own web and extension
+  sessions (client label, IP, last activity) and can end any one or all others;
+  an admin can do the same for any user without blocking them. Revocation is
+  immediate — every request is checked against the database — and a revoked
+  session loses its copy of the unlocked vault key, so a leaked token cannot
+  read personal secrets afterwards. Changing your password ends all your other
+  sessions. The client IP and user agent are recorded once when a session is
+  opened and deleted with it; expired rows are purged after seven days.
 - Login and vault-unlock endpoints have account lockout and per-IP rate limiting.
 - The frontend ships CSP, HSTS, and related security headers; the API sets
   equivalent headers on its responses.
-- Authentication, vault, and unlock-method changes are audited alongside
-  resource events.
+- Authentication, vault, unlock-method changes, and session revocations are
+  audited alongside resource events.
 
 ## Storage and secret modes
 

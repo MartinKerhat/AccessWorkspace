@@ -24,6 +24,13 @@ const (
 	EventVaultLocked        EventType = "vault_locked"
 	EventVaultMethodAdded   EventType = "vault_method_added"
 	EventVaultMethodRemoved EventType = "vault_method_removed"
+	// Session revocation: a user ending one of their own sessions, a user
+	// signing out everywhere else (also emitted by a password change), and the
+	// admin equivalents against another user.
+	EventSessionRevoked          EventType = "session_revoked"
+	EventSessionsRevokedAll      EventType = "sessions_revoked_all"
+	EventAdminSessionRevoked     EventType = "admin_session_revoked"
+	EventAdminSessionsRevokedAll EventType = "admin_sessions_revoked_all"
 )
 
 type Event struct {

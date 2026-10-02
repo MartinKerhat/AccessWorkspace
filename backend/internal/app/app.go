@@ -251,7 +251,7 @@ func New(cfg Config) (*App, error) {
 		db:      pool,
 		handler: server,
 	}
-	application.startAutomaticKeyVaultSync(adminStore, resourceService)
+	application.startAutomaticKeyVaultSync(adminStore, resourceService, authService)
 	return application, nil
 }
 
