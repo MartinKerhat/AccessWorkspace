@@ -56,7 +56,7 @@ An admin can open a user and see their **effective access** — which categories
 
 - **Envelope encryption** for every stored secret: a fresh per-secret data key encrypts the value, and that key is wrapped by a key-encryption key which can live inside Azure Key Vault and never leave it.
 - **Personal vaults**: per-user keypairs, unlocked by your login password, a passphrase, or a passkey (Windows Hello / Touch ID). Saving never prompts; reading requires an unlocked session.
-- **Hardened sessions**: httpOnly cookies, CSRF origin checks, no tokens in localStorage or redirect URLs, account lockout and per-IP throttling on auth endpoints, CSP and HSTS.
+- **Hardened sessions**: httpOnly cookies, CSRF origin checks, no tokens in localStorage or redirect URLs, account lockout and per-IP throttling on auth endpoints, CSP and HSTS. Every session is listed and can be ended from the account menu or by an admin; a revoked session also loses its vault key.
 - **Audit trail** across reveal, copy, launch, fill, create/update/archive, sign-in, and vault operations.
 
 A database dump alone yields no secret material and no session takeover. See [Security](docs/security.md) for how each layer works.
