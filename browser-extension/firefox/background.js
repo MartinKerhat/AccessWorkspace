@@ -356,10 +356,14 @@ async function savePortalCredential(input) {
   };
 }
 
+const NOT_CONNECTED_MESSAGE = "Not connected to a workspace. Open Access Workspace and use Connect extension.";
+const SESSION_ENDED_MESSAGE =
+  "Your workspace session for this extension has ended (signed out or expired). Open Access Workspace and connect the extension again.";
+
 async function requestJSON(path, options = {}) {
   const config = await getConfig();
   if (!config.sessionToken) {
-    throw new Error("Configure the extension with a workspace session token first.");
+    throw new Error(NOT_CONNECTED_MESSAGE);
   }
   const response = await fetch(`${config.workspaceBaseUrl}/api${path}`, {
     method: options.method || "GET",
@@ -370,8 +374,21 @@ async function requestJSON(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined
   });
   const payload = await response.json().catch(() => null);
+  if (response.status === 401) {
+    // The session row is gone — revoked from the workspace ("Sessions &
+    // devices" / admin), expired, or the user was blocked. The token can
+    // never work again, so drop it: the popup then shows the reconnect
+    // state instead of a generic failure on every page.
+    await chrome.storage.local.set({ workspaceBaseUrl: config.workspaceBaseUrl, sessionToken: "" });
+    const error = new Error(SESSION_ENDED_MESSAGE);
+    error.status = 401;
+    error.sessionEnded = true;
+    throw error;
+  }
   if (!response.ok) {
-    throw new Error(payload?.error || `Request failed with status ${response.status}`);
+    const error = new Error(payload?.error || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   return payload;
 }
@@ -392,13 +409,24 @@ async function handleMessage(message, sender) {
           connected: false
         };
       }
-      const result = await authState();
-      return {
-        workspaceBaseUrl: config.workspaceBaseUrl,
-        user: result.user,
-        authMode: result.authMode,
-        connected: true
-      };
+      try {
+        const result = await authState();
+        return {
+          workspaceBaseUrl: config.workspaceBaseUrl,
+          user: result.user,
+          authMode: result.authMode,
+          connected: true
+        };
+      } catch (error) {
+        if (error?.sessionEnded) {
+          return {
+            workspaceBaseUrl: config.workspaceBaseUrl,
+            connected: false,
+            sessionEnded: true
+          };
+        }
+        throw error;
+      }
     }
     case "connect-workspace":
       return connectWorkspace(message.workspaceBaseUrl, message.connectToken);

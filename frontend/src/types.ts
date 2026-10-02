@@ -7,6 +7,9 @@ export type User = {
   rights: string[];
   directRights?: string[];
   isAdmin: boolean;
+  // False for Microsoft-backed accounts: no workspace password exists, so
+  // "change password" is hidden; their vault doors live in vault settings.
+  hasLocalPassword?: boolean;
 };
 
 export type BrowserExtensionClient = "chromium" | "firefox" | "safari" | "unknown";
@@ -120,6 +123,20 @@ export type VaultStatus = {
   methods: string[];
   passkeys: VaultPasskeyDescriptor[];
   methodDetails: VaultMethodDetail[];
+};
+
+// One live session as returned by GET /auth/sessions. `client` is a short
+// label the server derives from the user agent ("Edge on Windows").
+export type SessionInfo = {
+  id: string;
+  kind: "web" | "extension";
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  ip: string;
+  client: string;
+  current: boolean;
+  vaultUnlocked: boolean;
 };
 
 export type UserInvite = {

@@ -239,6 +239,17 @@ func (s *Service) SessionTTL() time.Duration {
 	return s.sessionTTL
 }
 
+// ConfigureSessionTTLs overrides the session lifetimes; a zero value keeps the
+// built-in default for that kind (web 24h, browser extension 30 days).
+func (s *Service) ConfigureSessionTTLs(web, browserExtension time.Duration) {
+	if web > 0 {
+		s.sessionTTL = web
+	}
+	if browserExtension > 0 {
+		s.browserExtensionTTL = browserExtension
+	}
+}
+
 func (s *Service) CurrentUser(ctx context.Context, r *http.Request) (User, error) {
 	token := SessionTokenFromRequest(r)
 	if token == "" {

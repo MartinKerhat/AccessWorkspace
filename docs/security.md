@@ -78,7 +78,9 @@ owner can unlock the private key.
   session loses its copy of the unlocked vault key, so a leaked token cannot
   read personal secrets afterwards. Changing your password ends all your other
   sessions. The client IP and user agent are recorded once when a session is
-  opened and deleted with it; expired rows are purged after seven days.
+  opened and deleted with it; expired rows are purged after seven days. Web
+  sessions last 24 hours and extension sessions 30 days by default; both are
+  configurable (see [configuration](configuration.md)).
 - Login and vault-unlock endpoints have account lockout and per-IP rate limiting.
 - The frontend ships CSP, HSTS, and related security headers; the API sets
   equivalent headers on its responses.

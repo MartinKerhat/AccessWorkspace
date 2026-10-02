@@ -5,6 +5,7 @@ import type {
   LocalGroup,
   LocalGroupForm,
   Session,
+  SessionInfo,
   UserAccessDetail,
   UserAccessUpdateInput,
   UserInvite,
@@ -42,12 +43,14 @@ export function useAdminUsers({
   const [selectedAdminUserId, setSelectedAdminUserId] = useState<string>();
   const [selectedAdminUser, setSelectedAdminUser] = useState<UserAccessDetail>();
   const [selectedAdminUserResources, setSelectedAdminUserResources] = useState<VisibleResourceSummary[]>([]);
+  const [selectedAdminUserSessions, setSelectedAdminUserSessions] = useState<SessionInfo[]>([]);
 
   useEffect(() => {
     if (!session?.capabilities.canViewAdmin) {
       setSelectedAdminUserId(undefined);
       setSelectedAdminUser(undefined);
       setSelectedAdminUserResources([]);
+      setSelectedAdminUserSessions([]);
       return;
     }
     if (!selectedAdminUserId && knownUsers.length > 0) {
@@ -63,6 +66,7 @@ export function useAdminUsers({
     if (!session?.capabilities.canViewAdmin || !selectedAdminUserId) {
       setSelectedAdminUser(undefined);
       setSelectedAdminUserResources([]);
+      setSelectedAdminUserSessions([]);
       return;
     }
     void loadAdminUserDetail(selectedAdminUserId);
@@ -79,12 +83,84 @@ export function useAdminUsers({
   }
 
   async function loadAdminUserDetail(id: string) {
-    const [userResponse, visibleResourcesResponse] = await Promise.all([
+    const [userResponse, visibleResourcesResponse, sessionsResponse] = await Promise.all([
       api.getAdminUser(id),
-      api.getAdminUserVisibleResources(id)
+      api.getAdminUserVisibleResources(id),
+      api.adminUserSessions(id)
     ]);
     setSelectedAdminUser(userResponse);
     setSelectedAdminUserResources(visibleResourcesResponse.items);
+    setSelectedAdminUserSessions(sessionsResponse.sessions);
+  }
+
+  async function reloadAdminUserSessions(id: string) {
+    try {
+      const response = await api.adminUserSessions(id);
+      setSelectedAdminUserSessions(response.sessions);
+    } catch {
+      // Non-fatal: the list keeps its last known state.
+    }
+  }
+
+  // Admin ends one session of the selected user. Revocation is immediate
+  // server-side; the user is not blocked and can sign in again.
+  async function handleRevokeAdminUserSession(target: UserAccessDetail, item: SessionInfo) {
+    if (!session) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.revokeAdminUserSession(target.id, item.id);
+      await reloadAdminUserSessions(target.id);
+      if (session.capabilities.canViewAudit) {
+        await loadAudit();
+      }
+      setMessage(`Signed out one ${item.kind === "extension" ? "browser extension" : "web"} session of ${target.name}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Signing out the session failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // "Sign out everywhere" without blocking: every web + extension session and
+  // pending connect token of the user is ended.
+  async function handleRevokeAllAdminUserSessions(target: UserAccessDetail) {
+    if (!session) {
+      return;
+    }
+    const own = target.id === session.user.id;
+    const confirmed = window.confirm(
+      own
+        ? "Sign yourself out everywhere? Every one of your sessions — including this one — will be ended."
+        : `Sign out ${target.name} everywhere?\n\nEvery browser and browser extension signed in as them will be signed out immediately. The account stays active and they can sign in again.`
+    );
+    if (!confirmed) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.revokeAllAdminUserSessions(target.id);
+      if (own) {
+        // The current session is gone too; the next request lands on 401 and
+        // the global handler drops the signed-in UI.
+        onForcedSignOut("Signed out everywhere");
+        return;
+      }
+      await reloadAdminUserSessions(target.id);
+      if (session.capabilities.canViewAudit) {
+        await loadAudit();
+      }
+      setMessage(
+        result.revoked === 0
+          ? `${target.name} had no active sessions`
+          : `Signed out ${target.name} everywhere (${result.revoked} ${result.revoked === 1 ? "session" : "sessions"})`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Signing out the user failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleSaveLocalGroup(mode: "create" | "edit", originalName: string | undefined, input: LocalGroupForm) {
@@ -243,6 +319,7 @@ export function useAdminUsers({
     setSelectedAdminUserId(undefined);
     setSelectedAdminUser(undefined);
     setSelectedAdminUserResources([]);
+    setSelectedAdminUserSessions([]);
   }
 
   return {
@@ -252,6 +329,9 @@ export function useAdminUsers({
     setSelectedAdminUserId,
     selectedAdminUser,
     selectedAdminUserResources,
+    selectedAdminUserSessions,
+    handleRevokeAdminUserSession,
+    handleRevokeAllAdminUserSessions,
     loadLocalGroups,
     loadKnownUsers,
     loadAdminUserDetail,

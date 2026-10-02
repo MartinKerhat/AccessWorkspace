@@ -34,6 +34,8 @@ backend fails fast at startup if a required one is missing.
 | `FRONTEND_URL` | no | dev value | Frontend URL for CORS/redirects, and the base for emailed invite / password-reset links — set it to the real public URL in production. |
 | `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` | when `AUTH_MODE=entra` | — | Microsoft Entra app credentials. Startup fails if `AUTH_MODE=entra` and any are missing. |
 | `ENTRA_AUTHORITY` / `ENTRA_REDIRECT_URI` / `ENTRA_GROUP_SOURCE` / `ENTRA_DIRECT_RIGHTS_JSON` | no | see `.env.example` | Additional Entra settings. |
+| `SESSION_TTL` | no | `24h` | Lifetime of a web session, as a Go duration (minimum `1m`). Startup fails on an unparseable value. |
+| `BROWSER_EXTENSION_SESSION_TTL` | no | `720h` (30 days) | Lifetime of a browser-extension session. Same format and rules. |
 | `ARTIFACTS_SOURCE` | no | `local` | Where downloadable builds (launcher, extensions) are listed from: `local` (a directory), `blob` (Azure Blob container), or `github` (this repo's releases). See [`artifacts/README.md`](../artifacts/README.md). |
 | `ARTIFACTS_DIR` | when `local` | `/data/downloads` | Filesystem root of the artifact folders. Dev bind-mounts `./artifacts`; prod mounts a volume. |
 | `ARTIFACTS_BLOB_CONTAINER_URL` / `ARTIFACTS_BLOB_SAS` | when `blob` | — | Azure Blob container URL and optional SAS token (list + read). |

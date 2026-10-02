@@ -47,6 +47,21 @@ func TestSessionClientContextRoundTrip(t *testing.T) {
 	}
 }
 
+func TestIsLocalPasswordAccount(t *testing.T) {
+	cases := map[string]bool{
+		"alice":            true,
+		"invited-user":     true,
+		"entra:abc-123":    false,
+		" entra:abc-123 ":  false,
+		"Entra:not-prefix": true, // prefix is exact; usernames are stored lower-case for external users
+	}
+	for username, want := range cases {
+		if got := isLocalPasswordAccount(username); got != want {
+			t.Errorf("isLocalPasswordAccount(%q) = %v, want %v", username, got, want)
+		}
+	}
+}
+
 func TestCurrentSessionHashSentinel(t *testing.T) {
 	if got := currentSessionHash(""); got != noCurrentSession {
 		t.Fatalf("empty token must map to the sentinel, got %q", got)

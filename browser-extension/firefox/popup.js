@@ -42,8 +42,10 @@ checkButton.addEventListener("click", async () => {
       status.textContent = `Connected to ${result.workspaceBaseUrl} as ${result.user.name} (${result.authMode}).`;
       return;
     }
-    connectionState.textContent = "Waiting for connection";
-    status.textContent = "Open Access Workspace in this browser and use Connect extension.";
+    connectionState.textContent = result.sessionEnded ? "Session ended" : "Waiting for connection";
+    status.textContent = result.sessionEnded
+      ? "Your workspace session for this extension has ended (signed out or expired). Open Access Workspace in this browser and use Connect extension again."
+      : "Open Access Workspace in this browser and use Connect extension.";
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : "Checking the workspace session failed.";
   }

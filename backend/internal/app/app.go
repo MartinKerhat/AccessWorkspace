@@ -205,6 +205,7 @@ func New(cfg Config) (*App, error) {
 
 	auditService := audit.NewService(auditRepo)
 	authService := auth.NewService(authRepo, auth.Mode(cfg.AuthMode), cfg.EntraDirectRights)
+	authService.ConfigureSessionTTLs(cfg.SessionTTL(), cfg.BrowserExtensionSessionTTL())
 	notificationService := notifications.NewService(notificationRepo, resourceRepo, authService, adminStore)
 	// Expiry digests link straight to the object that is expiring, which needs
 	// the workspace origin the recipient actually browses.

@@ -188,8 +188,12 @@ export function useAuth({ setBusy, setMessage }: UseAuthDeps) {
     }
     setBusy(true);
     try {
-      await api.changePassword(currentPassword, newPassword);
-      setMessage("Password changed");
+      const result = await api.changePassword(currentPassword, newPassword);
+      setMessage(
+        result.sessionsRevoked > 0
+          ? `Password changed. Signed out ${result.sessionsRevoked} other ${result.sessionsRevoked === 1 ? "session" : "sessions"}.`
+          : "Password changed"
+      );
       return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Changing password failed");

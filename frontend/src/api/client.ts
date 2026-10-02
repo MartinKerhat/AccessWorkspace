@@ -31,6 +31,7 @@ import type {
   CreateUserInput,
   Directory,
   UserInvite,
+  SessionInfo,
   VaultStatus,
   UserNotification,
   VisibleResourceSummary,
@@ -220,16 +221,39 @@ export const api = {
     return request<{ status: string }>("/auth/vault/lock", { method: "POST" });
   },
   changePassword(currentPassword: string, newPassword: string) {
-    return request<{ status: string }>("/auth/password", {
+    return request<{ status: string; sessionsRevoked: number }>("/auth/password", {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword })
     });
+  },
+  sessions() {
+    return request<{ sessions: SessionInfo[] }>("/auth/sessions");
+  },
+  revokeSession(id: string) {
+    return request<{ status: string; current?: boolean; kind?: string }>(`/auth/sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE"
+    });
+  },
+  revokeOtherSessions() {
+    return request<{ revoked: number }>("/auth/sessions/revoke-others", { method: "POST" });
   },
   issueUserInvite(userId: string) {
     return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/invite`, { method: "POST" });
   },
   resetUserPassword(userId: string) {
     return request<UserInvite>(`/admin/users/${encodeURIComponent(userId)}/reset-password`, { method: "POST" });
+  },
+  adminUserSessions(userId: string) {
+    return request<{ sessions: SessionInfo[] }>(`/admin/users/${encodeURIComponent(userId)}/sessions`);
+  },
+  revokeAdminUserSession(userId: string, sessionId: string) {
+    return request<{ status: string; kind?: string }>(
+      `/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" }
+    );
+  },
+  revokeAllAdminUserSessions(userId: string) {
+    return request<{ revoked: number }>(`/admin/users/${encodeURIComponent(userId)}/sessions`, { method: "DELETE" });
   },
   authLogout() {
     return request<{ status: string }>("/auth/logout", { method: "POST" });

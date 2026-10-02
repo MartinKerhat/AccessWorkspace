@@ -28,7 +28,7 @@ export function ChangePasswordModal({ busy, onSave, onClose }: Props) {
             Close
           </button>
         </div>
-        <p className="section-copy">Your personal saved passwords stay intact through a password change.</p>
+        <p className="section-copy">Changing your password signs you out everywhere else; this session stays.</p>
         <div className="form-grid">
           <label className="wide">
             <span>Current password</span>

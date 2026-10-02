@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CreateUserInput, LocalGroup, UserAccessDetail, UserAccessUpdateInput, UserInvite, UserSummary, VisibleResourceSummary } from "../types";
+import type { CreateUserInput, LocalGroup, SessionInfo, UserAccessDetail, UserAccessUpdateInput, UserInvite, UserSummary, VisibleResourceSummary } from "../types";
 import { categoryLabel, type WorkspaceCategory } from "../workspaceCategories";
+import { relativeTime, sessionKindLabel } from "../sessions";
 
 type Props = {
   items: UserSummary[];
@@ -16,6 +17,9 @@ type Props = {
   onSave: (input: UserAccessUpdateInput) => void;
   onDelete: (user: UserAccessDetail) => void;
   onResetPassword: (user: UserAccessDetail) => Promise<UserInvite | null>;
+  sessions: SessionInfo[];
+  onRevokeSession: (user: UserAccessDetail, item: SessionInfo) => void;
+  onRevokeAllSessions: (user: UserAccessDetail) => void;
 };
 
 const emptyCreateUserDraft: CreateUserInput = {
@@ -82,7 +86,10 @@ export function UserAccessAdminPage({
   onCreate,
   onSave,
   onDelete,
-  onResetPassword
+  onResetPassword,
+  sessions,
+  onRevokeSession,
+  onRevokeAllSessions
 }: Props) {
   const [query, setQuery] = useState("");
   const [draftBlocked, setDraftBlocked] = useState(false);
@@ -584,6 +591,58 @@ export function UserAccessAdminPage({
                   <dd>{draftBlocked ? "blocked" : "allowed"}</dd>
                 </div>
               </dl>
+
+              <div className="group-card-section">
+                <div className="panel-header compact-panel-header">
+                  <div>
+                    <p className="eyebrow">Sessions</p>
+                    <p className="section-copy">
+                      Where this user is signed in right now. Signing out here is immediate and does not block the
+                      account — use it to cut off a device without locking the person out.
+                    </p>
+                  </div>
+                  {sessions.length > 0 ? (
+                    <button
+                      className="button ghost compact-button"
+                      disabled={loading}
+                      onClick={() => onRevokeAllSessions(selectedUser)}
+                    >
+                      Sign out everywhere
+                    </button>
+                  ) : null}
+                </div>
+                {sessions.length === 0 ? (
+                  <p className="section-copy">No active sessions.</p>
+                ) : (
+                  <div className="session-list">
+                    {sessions.map((item) => (
+                      <div key={item.id} className="session-row">
+                        <div className="session-row-copy">
+                          <strong>{item.client}</strong>
+                          <span>
+                            {sessionKindLabel(item)}
+                            {item.ip ? ` · ${item.ip}` : ""}
+                            {item.vaultUnlocked ? " · vault unlocked" : ""}
+                          </span>
+                          <span>
+                            Last active {relativeTime(item.lastUsedAt)} · signed in {new Date(item.createdAt).toLocaleString()}{" "}
+                            · expires {new Date(item.expiresAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="session-row-actions">
+                          <button
+                            className="button ghost compact-button"
+                            disabled={loading}
+                            onClick={() => onRevokeSession(selectedUser, item)}
+                          >
+                            Sign out
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="group-card-section">
                 <div className="panel-header compact-panel-header">

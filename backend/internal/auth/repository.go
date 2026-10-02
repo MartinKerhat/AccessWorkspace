@@ -18,6 +18,16 @@ import (
 
 const externalPasswordPlaceholder = "external-auth-managed"
 
+// externalUsernamePrefix marks accounts created from a Microsoft sign-in
+// (UpsertExternalUser). They have no usable local password.
+const externalUsernamePrefix = "entra:"
+
+// isLocalPasswordAccount reports whether the stored username belongs to an
+// account that signs in with a workspace password.
+func isLocalPasswordAccount(username string) bool {
+	return !strings.HasPrefix(strings.TrimSpace(username), externalUsernamePrefix)
+}
+
 type Repository struct {
 	db *pgxpool.Pool
 }
@@ -56,6 +66,7 @@ func (r *Repository) Authenticate(ctx context.Context, username, password string
 		}
 		return User{}, err
 	}
+	user.HasLocalPassword = true
 	if lockedUntil != nil && lockedUntil.After(time.Now()) {
 		return User{}, ErrLockedOut
 	}
@@ -202,17 +213,19 @@ func (r *Repository) UserByToken(ctx context.Context, token string) (User, error
 	var user User
 	var blocked bool
 	var wrappedVaultKey string
+	var username string
 	tokenHash := hashToken(token)
 	err := r.db.QueryRow(ctx, `
-		select u.id, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights, s.vault_private_key
+		select u.id, u.username, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights, s.vault_private_key
 		from auth_sessions s
 		join app_users u on u.id = s.user_id
 		where s.token = $1 and s.expires_at > now()
-	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &wrappedVaultKey)
+	`, tokenHash).Scan(&user.ID, &username, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &wrappedVaultKey)
 	if err == nil {
 		if blocked {
 			return User{}, ErrBlocked
 		}
+		user.HasLocalPassword = isLocalPasswordAccount(username)
 		user.VaultPrivateKey = openSessionVaultKey(token, wrappedVaultKey)
 		// Best-effort activity stamp, throttled to one write per minute so a
 		// busy tab does not turn every request into an update. Feeds the
@@ -228,17 +241,18 @@ func (r *Repository) UserByToken(ctx context.Context, token string) (User, error
 	}
 
 	err = r.db.QueryRow(ctx, `
-		select u.id, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights, s.vault_private_key
+		select u.id, u.username, u.display_name, u.email, u.groups, u.is_admin, u.workspace_blocked, u.direct_rights, s.vault_private_key
 		from browser_extension_sessions s
 		join app_users u on u.id = s.user_id
 		where s.token = $1 and s.expires_at > now()
-	`, tokenHash).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &wrappedVaultKey)
+	`, tokenHash).Scan(&user.ID, &username, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &wrappedVaultKey)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrUnauthenticated
 		}
 		return User{}, err
 	}
+	user.HasLocalPassword = isLocalPasswordAccount(username)
 	user.VaultPrivateKey = openSessionVaultKey(token, wrappedVaultKey)
 	if _, touchErr := r.db.Exec(ctx, `
 		update browser_extension_sessions
@@ -480,17 +494,19 @@ func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (str
 
 func (r *Repository) userByID(ctx context.Context, id string) (User, error) {
 	var item User
+	var username string
 	err := r.db.QueryRow(ctx, `
-		select id, display_name, email, groups, is_admin, workspace_blocked, direct_rights
+		select id, username, display_name, email, groups, is_admin, workspace_blocked, direct_rights
 		from app_users
 		where id = $1
-	`, strings.TrimSpace(id)).Scan(&item.ID, &item.Name, &item.Email, &item.Groups, &item.IsAdmin, &item.Blocked, &item.DirectRights)
+	`, strings.TrimSpace(id)).Scan(&item.ID, &username, &item.Name, &item.Email, &item.Groups, &item.IsAdmin, &item.Blocked, &item.DirectRights)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
 		return User{}, err
 	}
+	item.HasLocalPassword = isLocalPasswordAccount(username)
 	return item, nil
 }
 

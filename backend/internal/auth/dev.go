@@ -19,6 +19,11 @@ type User struct {
 	DirectRights []string `json:"directRights,omitempty"`
 	IsAdmin     bool     `json:"isAdmin"`
 	Blocked     bool     `json:"blocked,omitempty"`
+	// HasLocalPassword is true for accounts that sign in with a workspace
+	// username + password (local or invited). Microsoft-backed accounts carry
+	// only a placeholder hash, so "change password" does not apply to them —
+	// their vault doors are the passphrase/passkeys in vault settings.
+	HasLocalPassword bool `json:"hasLocalPassword"`
 	// VaultPrivateKey is the session-unlocked personal-vault private key,
 	// unwrapped per request from the session row via the raw bearer token.
 	// Never serialized. nil = vault locked (or absent) for this request.

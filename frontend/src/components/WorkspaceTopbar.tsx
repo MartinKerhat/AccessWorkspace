@@ -21,6 +21,7 @@ type WorkspaceTopbarProps = {
   vaultUnlocked: boolean;
   onOpenVaultSettings: () => void;
   onOpenBrowserExtensions: () => void;
+  onOpenSessions: () => void;
   onOpenChangePassword: () => void;
   onSignOut: () => void;
 };
@@ -42,6 +43,7 @@ export function WorkspaceTopbar({
   vaultUnlocked,
   onOpenVaultSettings,
   onOpenBrowserExtensions,
+  onOpenSessions,
   onOpenChangePassword,
   onSignOut
 }: WorkspaceTopbarProps) {
@@ -224,11 +226,22 @@ export function WorkspaceTopbar({
                   className="menu-item"
                   onClick={() => {
                     setAccountMenuOpen(false);
-                    onOpenChangePassword();
+                    onOpenSessions();
                   }}
                 >
-                  <span>Change password</span>
+                  <span>Sessions &amp; devices</span>
                 </button>
+                {currentUser.hasLocalPassword !== false ? (
+                  <button
+                    className="menu-item"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      onOpenChangePassword();
+                    }}
+                  >
+                    <span>Change password</span>
+                  </button>
+                ) : null}
                 <button className="menu-item" onClick={onSignOut}>
                   <span>Sign out</span>
                 </button>

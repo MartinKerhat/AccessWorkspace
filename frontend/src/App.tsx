@@ -5,6 +5,8 @@ import { AdminConfigModal } from "./modals/AdminConfigModal";
 import { ChangePasswordModal } from "./modals/ChangePasswordModal";
 import { VaultUnlockModal } from "./modals/VaultUnlockModal";
 import { VaultSettingsModal } from "./modals/VaultSettingsModal";
+import { SessionsModal } from "./modals/SessionsModal";
+import { useSessions } from "./hooks/useSessions";
 import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
 import { KeyVaultImportModal } from "./modals/KeyVaultImportModal";
@@ -102,6 +104,24 @@ export default function App() {
     refreshCurrentSession,
     handleMicrosoftSignIn
   } = useAuth({ setBusy, setMessage });
+  const {
+    sessions: sessionList,
+    openSessions,
+    closeSessions,
+    revokeSession,
+    revokeOtherSessions,
+    reset: resetSessions
+  } = useSessions({
+    session,
+    setBusy,
+    setMessage,
+    onCurrentSessionRevoked: () => {
+      // The server deleted the row and cleared the cookie; mirror a sign-out
+      // locally without calling logout again.
+      clearWorkspaceState();
+      setMessage("Signed out");
+    }
+  });
   const [allResources, setAllResources] = useState<ResourceSummary[]>([]);
   const [selectedResourceId, setSelectedResourceId] = useState<string>();
   // A record the workspace has been asked to open by id alone — from an expiry
@@ -235,6 +255,9 @@ export default function App() {
     setSelectedAdminUserId,
     selectedAdminUser,
     selectedAdminUserResources,
+    selectedAdminUserSessions,
+    handleRevokeAdminUserSession,
+    handleRevokeAllAdminUserSessions,
     loadLocalGroups,
     loadKnownUsers,
     handleSaveLocalGroup,
@@ -380,6 +403,7 @@ export default function App() {
     setLauncherDownloadsOpen(false);
     setBrowserExtensionConnectState(null);
     resetVault();
+    resetSessions();
     setSession(null);
     setAllResources([]);
     setSelectedResourceId(undefined);
@@ -827,6 +851,7 @@ export default function App() {
           vaultUnlocked={vaultUnlocked}
           onOpenVaultSettings={() => void openVaultSettings()}
           onOpenBrowserExtensions={() => setBrowserExtensionManagerOpen(true)}
+          onOpenSessions={() => void openSessions()}
           onOpenChangePassword={() => setChangePasswordOpen(true)}
           onSignOut={signOut}
         />
@@ -1029,6 +1054,9 @@ export default function App() {
                 onSave={(input) => void handleSaveAdminUserAccess(input)}
                 onDelete={(target) => void handleDeleteAdminUser(target)}
                 onResetPassword={(target) => handleResetAdminUserPassword(target)}
+                sessions={selectedAdminUserSessions}
+                onRevokeSession={(target, item) => void handleRevokeAdminUserSession(target, item)}
+                onRevokeAllSessions={(target) => void handleRevokeAllAdminUserSessions(target)}
               />
             ) : null}
 
@@ -1153,6 +1181,17 @@ export default function App() {
 
         {changePasswordOpen ? (
           <ChangePasswordModal busy={busy} onSave={changePassword} onClose={() => setChangePasswordOpen(false)} />
+        ) : null}
+
+        {sessionList ? (
+          <SessionsModal
+            sessions={sessionList}
+            message={message}
+            busy={busy}
+            onRevoke={revokeSession}
+            onRevokeOthers={revokeOtherSessions}
+            onClose={closeSessions}
+          />
         ) : null}
 
         {vaultSettings ? (

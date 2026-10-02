@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func baseValidConfig() Config {
 	return Config{
@@ -140,6 +143,39 @@ func TestValidate_ArtifactsSource(t *testing.T) {
 	cfg.ArtifactsDir = ""
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error: local source without dir")
+	}
+}
+
+func TestValidate_SessionTTLs(t *testing.T) {
+	base := baseValidConfig()
+	if err := base.Validate(); err != nil {
+		t.Fatalf("baseline must validate: %v", err)
+	}
+	if base.SessionTTL() != 0 || base.BrowserExtensionSessionTTL() != 0 {
+		t.Fatalf("empty TTLs must report 0 (use default)")
+	}
+
+	ok := baseValidConfig()
+	ok.SessionTTLRaw = "8h"
+	ok.BrowserExtensionSessionTTLRaw = "168h"
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid TTLs rejected: %v", err)
+	}
+	if ok.SessionTTL() != 8*time.Hour || ok.BrowserExtensionSessionTTL() != 168*time.Hour {
+		t.Fatalf("parsed TTLs wrong: %v %v", ok.SessionTTL(), ok.BrowserExtensionSessionTTL())
+	}
+
+	for _, raw := range []string{"abc", "30", "-1h", "10s"} {
+		bad := baseValidConfig()
+		bad.SessionTTLRaw = raw
+		if err := bad.Validate(); err == nil {
+			t.Errorf("SESSION_TTL=%q must be rejected", raw)
+		}
+		bad = baseValidConfig()
+		bad.BrowserExtensionSessionTTLRaw = raw
+		if err := bad.Validate(); err == nil {
+			t.Errorf("BROWSER_EXTENSION_SESSION_TTL=%q must be rejected", raw)
+		}
 	}
 }
 

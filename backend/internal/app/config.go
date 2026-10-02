@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // legacyDevSecretKey is the old hardcoded encryption key that used to ship as a
@@ -49,6 +50,11 @@ type Config struct {
 	EntraGroupSource    string
 	EntraClientSecret   string
 	EntraDirectRights   string
+	// Session lifetimes as Go durations ("24h", "720h"); empty keeps the
+	// built-in defaults (web 24h, browser extension 30 days). Parsed and
+	// validated in Validate; read through SessionTTL/BrowserExtensionSessionTTL.
+	SessionTTLRaw                 string
+	BrowserExtensionSessionTTLRaw string
 }
 
 func ConfigFromEnv() Config {
@@ -85,7 +91,39 @@ func ConfigFromEnv() Config {
 		EntraGroupSource:    envOrDefault("ENTRA_GROUP_SOURCE", "graph"),
 		EntraClientSecret:   strings.TrimSpace(os.Getenv("ENTRA_CLIENT_SECRET")),
 		EntraDirectRights:   envOrDefault("ENTRA_DIRECT_RIGHTS_JSON", ""),
+
+		SessionTTLRaw:                 strings.TrimSpace(os.Getenv("SESSION_TTL")),
+		BrowserExtensionSessionTTLRaw: strings.TrimSpace(os.Getenv("BROWSER_EXTENSION_SESSION_TTL")),
 	}
+}
+
+// parseSessionTTL accepts an empty value (use the default) or a positive Go
+// duration of at least one minute. Anything else is a configuration error.
+func parseSessionTTL(name, raw string) (time.Duration, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a Go duration such as \"24h\" or \"720h\", got %q", name, raw)
+	}
+	if d < time.Minute {
+		return 0, fmt.Errorf("%s must be at least 1m, got %q", name, raw)
+	}
+	return d, nil
+}
+
+// SessionTTL is the configured web-session lifetime, or 0 for the default.
+func (c Config) SessionTTL() time.Duration {
+	d, _ := parseSessionTTL("SESSION_TTL", c.SessionTTLRaw)
+	return d
+}
+
+// BrowserExtensionSessionTTL is the configured extension-session lifetime, or
+// 0 for the default.
+func (c Config) BrowserExtensionSessionTTL() time.Duration {
+	d, _ := parseSessionTTL("BROWSER_EXTENSION_SESSION_TTL", c.BrowserExtensionSessionTTLRaw)
+	return d
 }
 
 // Validate ensures every secret the app depends on is provided by the
@@ -145,6 +183,13 @@ func (c Config) Validate() error {
 		if c.ResetDBOnStart {
 			return fmt.Errorf("RESET_DB_ON_START must be false when APP_ENV=production (it would wipe the database)")
 		}
+	}
+
+	if _, err := parseSessionTTL("SESSION_TTL", c.SessionTTLRaw); err != nil {
+		return err
+	}
+	if _, err := parseSessionTTL("BROWSER_EXTENSION_SESSION_TTL", c.BrowserExtensionSessionTTLRaw); err != nil {
+		return err
 	}
 
 	if c.AuthMode == "entra" {
