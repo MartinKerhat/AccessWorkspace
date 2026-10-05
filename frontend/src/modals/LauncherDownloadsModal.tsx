@@ -65,11 +65,9 @@ export function LauncherDownloadsModal({ runtime, onClose }: Props) {
         )}
         {runtime.releasesUrl ? (
           <p className="detail-description muted">
-            Only the newest build is offered here; the app refuses launchers older than the required version.{" "}
             <a href={runtime.releasesUrl} target="_blank" rel="noreferrer">
               Older versions
-            </a>{" "}
-            stay archived on GitHub.
+            </a>
           </p>
         ) : null}
       </div>
