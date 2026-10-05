@@ -1,6 +1,6 @@
 import type { LauncherRuntime } from "../types";
 import { formatArtifactMeta } from "../format";
-import { detectClientLauncherPlatform, matchesLauncherPlatform } from "../platform";
+import { detectClientLauncherPlatform, launcherPlatformLabel, matchesLauncherPlatform } from "../platform";
 import { scrimDismissProps } from "./scrim";
 
 type Props = {
@@ -9,7 +9,8 @@ type Props = {
 };
 
 export function LauncherDownloadsModal({ runtime, onClose }: Props) {
-  // Builds for the OS this browser runs on come first, tagged; the rest stay
+  // The backend already offers only the newest build per platform. The build
+  // for the OS this browser runs on comes first, tagged; the rest stay
   // available for downloading onto another machine.
   const clientPlatform = detectClientLauncherPlatform();
   const downloads = [...runtime.downloads].sort((a, b) => {
@@ -42,14 +43,18 @@ export function LauncherDownloadsModal({ runtime, onClose }: Props) {
               <li key={file.name} className="artifact-file">
                 <span className="artifact-file-info">
                   <span className="artifact-file-name">
-                    {file.name}
+                    {launcherPlatformLabel(file)}
                     {matchesLauncherPlatform(file, clientPlatform) ? <span className="tag">for this device</span> : null}
                   </span>
                   {formatArtifactMeta(file) ? (
                     <span className="artifact-file-meta muted">{formatArtifactMeta(file)}</span>
                   ) : null}
                 </span>
-                <a className="button secondary launch-link-button artifact-download-button" href={file.downloadUrl}>
+                <a
+                  className="button secondary launch-link-button artifact-download-button"
+                  href={file.downloadUrl}
+                  title={file.name}
+                >
                   Download
                 </a>
               </li>
@@ -58,6 +63,15 @@ export function LauncherDownloadsModal({ runtime, onClose }: Props) {
         ) : (
           <p className="detail-description muted">No launcher builds are published yet.</p>
         )}
+        {runtime.releasesUrl ? (
+          <p className="detail-description muted">
+            Only the newest build is offered here; the app refuses launchers older than the required version.{" "}
+            <a href={runtime.releasesUrl} target="_blank" rel="noreferrer">
+              Older versions
+            </a>{" "}
+            stay archived on GitHub.
+          </p>
+        ) : null}
       </div>
     </div>
   );

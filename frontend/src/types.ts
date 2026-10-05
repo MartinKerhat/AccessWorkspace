@@ -634,6 +634,8 @@ export type LauncherRuntime = {
   launchUrl: string;
   downloadUrl: string;
   downloads: DownloadArtifact[];
+  // Browsable archive of older launcher builds (GitHub Releases); absent for local/blob sources.
+  releasesUrl?: string;
 };
 
 export type BrowserExtensionRuntime = {

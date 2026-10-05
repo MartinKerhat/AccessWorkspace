@@ -118,3 +118,36 @@ jobs:
             "access-workspace-launcher-linux-amd64-v${VERSION}.tar.gz" \
             --clobber
           echo "Release $tag updated."
+
+      # Retention: keep the newest RETAIN launcher releases (by version) and
+      # remove the rest, tags included. The app only ever offers the newest
+      # build per platform and refuses older launchers at connection time, so
+      # old releases serve one purpose: rolling back a bad release by removing
+      # it, which makes the previous one the requirement again. Three versions
+      # is a comfortable window for that. The release just published is never
+      # removed, even when `force` rebuilt an old version.
+      - name: Prune old launcher releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RETAIN: "3"
+        run: |
+          set -euo pipefail
+          current="launcher-v${VERSION}"
+          mapfile -t tags < <(
+            gh release list --limit 200 --json tagName --jq '.[].tagName' \
+              | grep -E '^launcher-v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -t v -k 2 -V -r
+          )
+          echo "Launcher releases (newest first): ${tags[*]}"
+          if [ "${#tags[@]}" -le "$RETAIN" ]; then
+            echo "Nothing to prune (keeping up to $RETAIN)."
+            exit 0
+          fi
+          for tag in "${tags[@]:$RETAIN}"; do
+            if [ "$tag" = "$current" ]; then
+              echo "Keeping $tag (just published)."
+              continue
+            fi
+            echo "Pruning $tag and its tag."
+            gh release delete "$tag" --cleanup-tag --yes
+          done

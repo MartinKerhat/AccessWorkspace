@@ -134,6 +134,8 @@ type Server struct {
 type ArtifactService interface {
 	LauncherDownloads(ctx context.Context) ([]artifacts.Artifact, error)
 	ExtensionPackages(ctx context.Context) ([]artifacts.PackageView, error)
+	// LauncherReleasesURL is the browsable archive of older launcher builds, or "".
+	LauncherReleasesURL() string
 	Open(ctx context.Context, category, name string) (io.ReadCloser, *artifacts.ObjectInfo, error)
 }
 

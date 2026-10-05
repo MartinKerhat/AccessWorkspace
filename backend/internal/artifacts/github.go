@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,20 @@ func NewGitHubSource(repo, token string) *GitHubSource {
 		apiBase: "https://api.github.com",
 		client:  &http.Client{Timeout: 15 * time.Second},
 	}
+}
+
+// ReleasesURL implements ReleaseArchiver: the repository's releases page,
+// filtered to tags with the given prefix. GitHub keeps every published build
+// there, so the app only has to offer the newest one.
+func (s *GitHubSource) ReleasesURL(tagPrefix string) string {
+	if s.repo == "" {
+		return ""
+	}
+	page := "https://github.com/" + s.repo + "/releases"
+	if tagPrefix != "" {
+		page += "?q=" + url.QueryEscape(tagPrefix) + "&expanded=true"
+	}
+	return page
 }
 
 type githubAsset struct {

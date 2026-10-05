@@ -111,3 +111,101 @@ func TestService_ExtensionDirectDownloadWhenNoStore(t *testing.T) {
 		}
 	}
 }
+
+func TestSortNewestFirst_VersionBeatsModifiedTime(t *testing.T) {
+	items := []Artifact{
+		{Name: "launcher-v0.6.3.exe", Version: "0.6.3", ModifiedAt: "2026-10-05T10:00:00Z"}, // re-uploaded old build
+		{Name: "launcher-v0.6.10.exe", Version: "0.6.10", ModifiedAt: "2026-09-01T10:00:00Z"},
+		{Name: "launcher-v0.6.9.exe", Version: "0.6.9", ModifiedAt: "2026-08-01T10:00:00Z"},
+	}
+	sortNewestFirst(items)
+	got := []string{items[0].Version, items[1].Version, items[2].Version}
+	want := []string{"0.6.10", "0.6.9", "0.6.3"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestNewestPerCategory(t *testing.T) {
+	items := []Artifact{
+		{Name: "w-0.6.5", Category: "launcher-windows", Version: "0.6.5"},
+		{Name: "l-0.6.5", Category: "launcher-linux", Version: "0.6.5"},
+		{Name: "w-0.6.4", Category: "launcher-windows", Version: "0.6.4"},
+		{Name: "l-0.6.4", Category: "launcher-linux", Version: "0.6.4"},
+	}
+	got := newestPerCategory(items)
+	if len(got) != 2 || got[0].Name != "w-0.6.5" || got[1].Name != "l-0.6.5" {
+		t.Fatalf("newestPerCategory = %+v, want newest windows then newest linux", got)
+	}
+	if got := newestPerCategory(nil); got != nil {
+		t.Fatalf("nil in should stay nil, got %+v", got)
+	}
+}
+
+func TestService_LauncherDownloadsNewestPerPlatformOnly(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "launcher/windows/access-workspace-launcher-windows-amd64-v0.6.4.exe")
+	writeFile(t, root, "launcher/windows/access-workspace-launcher-windows-amd64-v0.6.5.exe")
+	writeFile(t, root, "launcher/windows/access-workspace-launcher-windows-amd64-v0.6.3.exe")
+	writeFile(t, root, "launcher/linux/access-workspace-launcher-linux-amd64-v0.6.4.tar.gz")
+	writeFile(t, root, "launcher/linux/access-workspace-launcher-linux-amd64-v0.6.5.tar.gz")
+
+	svc := NewService(NewLocalSource(root, "http://frontend"), "", "")
+	downloads, err := svc.LauncherDownloads(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(downloads) != 2 {
+		t.Fatalf("expected one build per platform, got %d: %+v", len(downloads), downloads)
+	}
+	for _, d := range downloads {
+		if d.Version != "0.6.5" {
+			t.Errorf("%s: version = %q, want 0.6.5", d.Category, d.Version)
+		}
+		if want := "/api/artifacts/download/" + d.Category + "/" + d.Name; d.DownloadURL != want {
+			t.Errorf("downloadURL = %q, want %q", d.DownloadURL, want)
+		}
+	}
+	if got := NewestVersion(downloads); got != "0.6.5" {
+		t.Errorf("NewestVersion = %q, want 0.6.5", got)
+	}
+	// A local directory has no browsable archive.
+	if url := svc.LauncherReleasesURL(); url != "" {
+		t.Errorf("local source releases URL = %q, want empty", url)
+	}
+}
+
+func TestService_ExtensionFilesNewestOnly(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "extensions/chrome/access-workspace-browser-extension-chrome-v0.2.10.zip")
+	writeFile(t, root, "extensions/chrome/access-workspace-browser-extension-chrome-v0.2.11.zip")
+	svc := NewService(NewLocalSource(root, "http://frontend"), "", "")
+	pkgs, err := svc.ExtensionPackages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pkg := range pkgs {
+		if pkg.ID != CategoryExtensionChrome.Key {
+			continue
+		}
+		if len(pkg.Files) != 1 || pkg.Files[0].Version != "0.2.11" {
+			t.Fatalf("expected only the newest chrome package, got %+v", pkg.Files)
+		}
+		if pkg.DownloadURL != pkg.Files[0].DownloadURL {
+			t.Errorf("package downloadUrl = %q, want newest file %q", pkg.DownloadURL, pkg.Files[0].DownloadURL)
+		}
+	}
+}
+
+func TestGitHubSource_ReleasesURL(t *testing.T) {
+	src := NewGitHubSource("owner/repo", "")
+	if got, want := src.ReleasesURL("launcher-v"), "https://github.com/owner/repo/releases?q=launcher-v&expanded=true"; got != want {
+		t.Errorf("ReleasesURL = %q, want %q", got, want)
+	}
+	svc := NewService(src, "", "")
+	if svc.LauncherReleasesURL() == "" {
+		t.Error("github-backed service should expose a releases URL")
+	}
+}

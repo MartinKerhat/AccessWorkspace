@@ -34,3 +34,18 @@ export function matchesLauncherPlatform(artifact: { category?: string; name: str
   }
   return artifact.name.toLowerCase().includes(platform);
 }
+
+// launcherPlatformLabel is the human name for a download artifact's platform,
+// derived from its backend category; falls back to the file name.
+export function launcherPlatformLabel(artifact: { category?: string; name: string }): string {
+  switch (artifact.category) {
+    case "launcher-windows":
+      return "Windows";
+    case "launcher-linux":
+      return "Linux";
+    case "launcher-mac":
+      return "macOS";
+    default:
+      return artifact.name;
+  }
+}

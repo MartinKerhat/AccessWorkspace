@@ -60,8 +60,9 @@ type PackageView struct {
 	Files       []Artifact `json:"files"`
 }
 
-// LauncherDownloads returns every launcher build across launcher categories,
-// newest first.
+// LauncherDownloads returns the newest launcher build of each platform, newest
+// version first. Older builds are not listed (see newestPerCategory); the
+// archive, when the source has one, is linked via LauncherReleasesURL.
 func (s *Service) LauncherDownloads(ctx context.Context) ([]Artifact, error) {
 	var all []Artifact
 	for _, category := range LauncherCategories {
@@ -75,7 +76,16 @@ func (s *Service) LauncherDownloads(ctx context.Context) ([]Artifact, error) {
 		all[i].DownloadURL = proxyDownloadURL(all[i].Category, all[i].Name)
 	}
 	sortNewestFirst(all)
-	return all, nil
+	return newestPerCategory(all), nil
+}
+
+// LauncherReleasesURL is the browsable archive of all published launcher
+// builds, or "" when the configured source has none (local dir, blob).
+func (s *Service) LauncherReleasesURL() string {
+	if archiver, ok := s.source.(ReleaseArchiver); ok {
+		return archiver.ReleasesURL("launcher-v")
+	}
+	return ""
 }
 
 // Open streams a single artifact's bytes for the backend download proxy.
@@ -111,6 +121,9 @@ func (s *Service) ExtensionPackages(ctx context.Context) ([]PackageView, error) 
 }
 
 func (s *Service) packageView(category Category, files []Artifact) PackageView {
+	// Only the newest package per category is offered, same as the launcher.
+	sortNewestFirst(files)
+	files = newestPerCategory(files)
 	for i := range files {
 		files[i].DownloadURL = proxyDownloadURL(files[i].Category, files[i].Name)
 	}

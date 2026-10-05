@@ -157,12 +157,44 @@ func ParseVersion(name string) string {
 	return ""
 }
 
-// sortNewestFirst orders artifacts by modified time descending, then name.
+// sortNewestFirst orders artifacts by version descending, then modified time
+// descending, then name. Version comes first on purpose: a forced re-upload of
+// an old build (release-launcher.yml with --clobber) refreshes its modified
+// time, and that must not make it the recommended download.
 func sortNewestFirst(items []Artifact) {
 	sort.SliceStable(items, func(i, j int) bool {
+		if c := CompareVersions(items[i].Version, items[j].Version); c != 0 {
+			return c > 0
+		}
 		if items[i].ModifiedAt != items[j].ModifiedAt {
 			return items[i].ModifiedAt > items[j].ModifiedAt
 		}
 		return items[i].Name > items[j].Name
 	})
+}
+
+// newestPerCategory keeps only the first (newest, per sortNewestFirst) artifact
+// of each category, preserving order. Older builds are not offered: the app
+// requires the newest published launcher version, so an older download would be
+// refused at the first connection anyway. They stay archived at the source.
+func newestPerCategory(items []Artifact) []Artifact {
+	seen := make(map[string]bool, len(items))
+	kept := items[:0:0]
+	for _, item := range items {
+		if seen[item.Category] {
+			continue
+		}
+		seen[item.Category] = true
+		kept = append(kept, item)
+	}
+	return kept
+}
+
+// ReleaseArchiver is implemented by sources that keep an externally browsable
+// archive of every published build (GitHub Releases). The UI links to it instead
+// of listing old versions itself.
+type ReleaseArchiver interface {
+	// ReleasesURL returns the archive page for releases whose tag starts with
+	// tagPrefix (e.g. "launcher-v"), or "" when none is available.
+	ReleasesURL(tagPrefix string) string
 }

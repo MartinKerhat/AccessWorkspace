@@ -7,8 +7,14 @@ folder is kept locally (gitignored) so `docker compose` can bind-mount it for
 development.
 
 The backend enumerates files by folder; drop a new build in the right folder and
-it appears automatically (old versions are simply the older files in the same
-folder). Files are filtered by the extension each folder expects.
+it appears automatically. Files are filtered by the extension each folder expects.
+
+Only the **newest version per folder** is offered to users. Older files may stay
+in place (they are ignored), but nothing in the app lists them: the app requires
+the newest published launcher version and refuses older launchers at connection
+time, so an older download would be pointless. With the GitHub source the modal
+links to the repository's releases page as the archive, and
+`release-launcher.yml` prunes launcher releases beyond the newest three.
 
 ## Layout
 

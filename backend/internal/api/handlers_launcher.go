@@ -93,6 +93,7 @@ func (s *Server) handleLauncherRuntime(w http.ResponseWriter, r *http.Request) {
 		"launchUrl":       launcherinfo.LaunchURL,
 		"downloadUrl":     recommended,
 		"downloads":       downloads,
+		"releasesUrl":     s.artifacts.LauncherReleasesURL(),
 	})
 }
 

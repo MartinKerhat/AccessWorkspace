@@ -45,8 +45,12 @@ The workspace offers the desktop launcher and browser extension as downloads.
 `ARTIFACTS_SOURCE` decides where that file list comes from: a mounted directory
 (`local`), an Azure Blob container (`blob`), or this repository's GitHub releases
 (`github`, which keeps a deployment current without any per-deployment upload
-step). See [Browser Extension Distribution](browser-extension-distribution.md)
-for how releases are produced.
+step). Whatever the source, users are offered only the newest build per platform;
+older launchers are refused at connection time anyway. With `github`, the
+download dialog links to the repository's releases page for the archive, and the
+launcher release workflow keeps only the newest three launcher releases. See
+[Browser Extension Distribution](browser-extension-distribution.md) for how
+releases are produced.
 
 ## Behind a reverse proxy or ingress
 
