@@ -139,6 +139,39 @@ export type SessionInfo = {
   vaultUnlocked: boolean;
 };
 
+// Generator page: server-made self-signed certificate (the browser cannot
+// package PKCS#12). Nothing is stored server-side.
+export type CertificateInput = {
+  commonName: string;
+  organization: string;
+  organizationalUnit: string;
+  country: string;
+  email: string;
+  validityDays: number;
+  keyAlgorithm: "rsa2048" | "rsa4096" | "ec_p256";
+  profile: "document_signing" | "code_signing" | "tls_server" | "client_auth";
+  dnsNames: string[];
+  pfxPassword: string;
+  pfxEncoding: "modern" | "legacy";
+};
+
+export type CertificateResult = {
+  subject: string;
+  profile: string;
+  keyAlgorithm: string;
+  notBefore: string;
+  notAfter: string;
+  serialNumber: string;
+  thumbprintSha1: string;
+  thumbprintSha256: string;
+  keyUsages: string[];
+  extendedKeyUsages: string[];
+  certificatePem: string;
+  privateKeyPem: string;
+  pfxBase64: string;
+  pfxFileName: string;
+};
+
 export type UserInvite = {
   token: string;
   userId: string;

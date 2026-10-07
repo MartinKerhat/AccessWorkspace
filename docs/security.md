@@ -86,6 +86,10 @@ owner can unlock the private key.
   equivalent headers on its responses.
 - Authentication, vault, unlock-method changes, and session revocations are
   audited alongside resource events.
+- The Generator page produces passwords, keys and keypairs in the browser with
+  the Web Crypto API; nothing is transmitted or stored. Self-signed
+  certificates are produced on the server because the browser cannot package
+  PKCS#12, returned once, and never persisted or logged.
 
 ## Storage and secret modes
 

@@ -313,6 +313,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.auditVault(r, user, audit.EventVaultLocked, "")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	case r.Method == http.MethodPost && r.URL.Path == "/api/tools/certificate":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleGenerateCertificate(w, r, user)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/auth/sessions":
 		if !requireAuth(w, user, authErr) {
 			return

@@ -6,6 +6,7 @@ import { ChangePasswordModal } from "./modals/ChangePasswordModal";
 import { VaultUnlockModal } from "./modals/VaultUnlockModal";
 import { VaultSettingsModal } from "./modals/VaultSettingsModal";
 import { SessionsModal } from "./modals/SessionsModal";
+import { GeneratorPage } from "./pages/GeneratorPage";
 import { useSessions } from "./hooks/useSessions";
 import { NotificationPolicyModal } from "./modals/NotificationPolicyModal";
 import { KeyVaultSourcesModal } from "./modals/KeyVaultSourcesModal";
@@ -608,7 +609,8 @@ export default function App() {
   const visibleCategories = (["connections", "keyvault", "appregistrations", "passwords"] as WorkspaceCategory[]).filter(
     (category) => session?.capabilities.categories[category]?.view
   );
-  const categoryView: WorkspaceCategory | null = view === "activity" || view === "audit" || view === "admin" ? null : view;
+  const categoryView: WorkspaceCategory | null =
+    view === "generator" || view === "activity" || view === "audit" || view === "admin" ? null : view;
   const categoryItems = categoryView ? filterCategoryItems(allResources, categoryView) : [];
   const currentItems = filterCatalogItems(categoryItems, filters);
   const archivedKeyVaultItems = archivedResources.filter((item) => item.type === "key_vault_secret");
@@ -692,7 +694,7 @@ export default function App() {
   }, [categoryView, keyVaultViewMode, currentArchivedKeyVaultItems, selectedArchivedKeyVaultId]);
 
   useEffect(() => {
-    if (view === "activity" || view === "audit" || view === "admin") {
+    if (view === "generator" || view === "activity" || view === "audit" || view === "admin") {
       return;
     }
     if (!visibleCategories.includes(view)) {
@@ -1004,6 +1006,8 @@ export default function App() {
             )}
           </>
         ) : null}
+
+        {view === "generator" ? <GeneratorPage busy={busy} onMessage={setMessage} /> : null}
 
         {view === "activity" && session.capabilities.canViewActivity ? (
           <ActivityPage

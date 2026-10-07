@@ -25,6 +25,9 @@ export function WorkspaceSidebar({ view, visibleCategories, capabilities }: Work
             {categoryLabel(category)}
           </a>
         ))}
+        <a className={view === "generator" ? "active" : ""} href="#generator">
+          Generator
+        </a>
         {capabilities.canViewActivity ? (
           <a className={view === "activity" ? "active" : ""} href="#activity">
             Activity

@@ -31,6 +31,9 @@ const (
 	EventSessionsRevokedAll      EventType = "sessions_revoked_all"
 	EventAdminSessionRevoked     EventType = "admin_session_revoked"
 	EventAdminSessionsRevokedAll EventType = "admin_sessions_revoked_all"
+	// Generator page: a self-signed certificate was produced server-side
+	// (subject/profile only — the material itself is never stored or logged).
+	EventToolCertificateGenerated EventType = "tool_certificate_generated"
 )
 
 type Event struct {
