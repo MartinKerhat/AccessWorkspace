@@ -76,6 +76,10 @@ const availableRights = [
   "passwords.read",
   "passwords.edit",
   "passwords.create",
+  "generator.passwords",
+  "generator.keysandtokens",
+  "generator.keypairs",
+  "generator.certificates",
   "audit.read",
   "admin.access"
 ] as const;
@@ -667,6 +671,7 @@ export default function App() {
       (view === "admin" && !session.capabilities.canViewAdmin) ||
       (view === "audit" && !session.capabilities.canViewAudit) ||
       (view === "activity" && !session.capabilities.canViewActivity) ||
+      (view === "generator" && !session.capabilities.canViewGenerator) ||
       (categoryView !== null && !visibleCategories.includes(categoryView));
     if (forbidden) {
       window.location.hash = `#${landingView(session.capabilities)}`;
@@ -1007,7 +1012,9 @@ export default function App() {
           </>
         ) : null}
 
-        {view === "generator" ? <GeneratorPage busy={busy} onMessage={setMessage} /> : null}
+        {view === "generator" && session.capabilities.canViewGenerator ? (
+          <GeneratorPage busy={busy} onMessage={setMessage} allowed={session.capabilities.generator} />
+        ) : null}
 
         {view === "activity" && session.capabilities.canViewActivity ? (
           <ActivityPage

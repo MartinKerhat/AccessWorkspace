@@ -192,12 +192,28 @@ export type CategoryCapabilities = {
   launch: boolean;
 };
 
+// Which parts of the Generator a user may use (rights generator.passwords,
+// generator.keysandtokens, generator.keypairs, generator.certificates).
+export type GeneratorCapabilities = {
+  passwords: boolean;
+  keysAndTokens: boolean;
+  keypairs: boolean;
+  certificates: boolean;
+};
+
 export type WorkspaceCapabilities = {
   categories: Record<string, CategoryCapabilities>;
   canViewActivity: boolean;
   canViewAudit: boolean;
   canViewAdmin: boolean;
+  generator: GeneratorCapabilities;
+  canViewGenerator: boolean;
 };
+
+// Per-user remembered generator settings, keyed by part ("password",
+// "passphrase", "key", "token", "rsa", "ec", "ssh", "certificate"). The
+// shape of each document is owned by the Generator page.
+export type GeneratorPreferences = Record<string, Record<string, unknown>>;
 
 // The session token itself never reaches page JavaScript — it lives in the
 // httpOnly cookie the backend manages.

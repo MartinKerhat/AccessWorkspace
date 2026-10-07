@@ -30,8 +30,10 @@ platforms:
 ### Frontend (React + TypeScript)
 
 - category-based workspace navigation, derived from rights: users see only
-  categories they may use, `Activity` is visible to every signed-in user, and
-  `Administration` appears only for admin-capable users
+  categories they may use, `Generator` appears when the user holds at least
+  one `generator.*` right (and shows only those parts), `Activity` is visible
+  to every signed-in user, and `Administration` appears only for admin-capable
+  users
 - category-specific list, search, and detail views
 - reveal and copy actions, launcher handoff
 - admin management workflows

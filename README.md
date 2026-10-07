@@ -58,7 +58,7 @@ An admin can open a user and see their **effective access** — which categories
 - **Personal vaults**: per-user keypairs, unlocked by your login password, a passphrase, or a passkey (Windows Hello / Touch ID). Saving never prompts; reading requires an unlocked session.
 - **Hardened sessions**: httpOnly cookies, CSRF origin checks, no tokens in localStorage or redirect URLs, account lockout and per-IP throttling on auth endpoints, CSP and HSTS. Every session is listed and can be ended from the account menu or by an admin; a revoked session also loses its vault key.
 - **Audit trail** across reveal, copy, launch, fill, create/update/archive, sign-in, and vault operations.
-- **Generator**: passwords, passphrases, random keys in hex/base64, API tokens, UUIDs, RSA/EC/SSH keypairs and self-signed certificates with PFX export — the things a guide tells you to make with `openssl` or `ssh-keygen`, without a command line. Generated in the browser (certificates on the server), shown once, never stored.
+- **Generator**: passwords, passphrases, random keys in hex/base64, API tokens, UUIDs, RSA/EC/SSH keypairs and self-signed certificates with PFX export — the things a guide tells you to make with `openssl` or `ssh-keygen`, without a command line. Generated in the browser (certificates on the server), shown once, never stored. Each part is a separate right, so sales sees passwords and engineers see keypairs, and everyone's preferred settings are remembered.
 
 A database dump alone yields no secret material and no session takeover. See [Security](docs/security.md) for how each layer works.
 

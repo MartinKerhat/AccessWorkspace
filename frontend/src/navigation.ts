@@ -68,6 +68,9 @@ export function landingView(capabilities: WorkspaceCapabilities): View {
   if (firstCategory) {
     return firstCategory;
   }
+  if (capabilities.canViewGenerator) {
+    return "generator";
+  }
   if (capabilities.canViewActivity) {
     return "activity";
   }

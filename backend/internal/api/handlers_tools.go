@@ -15,6 +15,10 @@ import (
 // export). Nothing is stored; the response is the only copy. The audit
 // event records the subject and profile, never key material.
 func (s *Server) handleGenerateCertificate(w http.ResponseWriter, r *http.Request, user auth.User) {
+	if !auth.CapabilitiesForUser(user).Generator.Certificates {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
 	var input tools.CertificateInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})

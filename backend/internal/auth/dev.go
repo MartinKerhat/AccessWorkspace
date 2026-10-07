@@ -10,15 +10,15 @@ const (
 )
 
 type User struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Email       string   `json:"email"`
-	Groups      []string `json:"groups"`
-	LocalGroups []string `json:"localGroups"`
-	Rights      []string `json:"rights"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Email        string   `json:"email"`
+	Groups       []string `json:"groups"`
+	LocalGroups  []string `json:"localGroups"`
+	Rights       []string `json:"rights"`
 	DirectRights []string `json:"directRights,omitempty"`
-	IsAdmin     bool     `json:"isAdmin"`
-	Blocked     bool     `json:"blocked,omitempty"`
+	IsAdmin      bool     `json:"isAdmin"`
+	Blocked      bool     `json:"blocked,omitempty"`
 	// HasLocalPassword is true for accounts that sign in with a workspace
 	// username + password (local or invited). Microsoft-backed accounts carry
 	// only a placeholder hash, so "change password" does not apply to them —
@@ -78,17 +78,17 @@ type ResolvedLocalGroup struct {
 }
 
 type UserAccessDetail struct {
-	ID                      string                `json:"id"`
-	Name                    string                `json:"name"`
-	Email                   string                `json:"email"`
-	IsAdmin                 bool                  `json:"isAdmin"`
-	Blocked                 bool                  `json:"blocked"`
-	ExternalGroups          []string              `json:"externalGroups"`
-	ResolvedLocalGroups     []ResolvedLocalGroup  `json:"resolvedLocalGroups"`
-	DirectAssignedLocalGroups []string            `json:"directAssignedLocalGroups"`
-	DirectRights            []string              `json:"directRights"`
-	Rights                  []string              `json:"rights"`
-	Capabilities            WorkspaceCapabilities `json:"capabilities"`
+	ID                        string                `json:"id"`
+	Name                      string                `json:"name"`
+	Email                     string                `json:"email"`
+	IsAdmin                   bool                  `json:"isAdmin"`
+	Blocked                   bool                  `json:"blocked"`
+	ExternalGroups            []string              `json:"externalGroups"`
+	ResolvedLocalGroups       []ResolvedLocalGroup  `json:"resolvedLocalGroups"`
+	DirectAssignedLocalGroups []string              `json:"directAssignedLocalGroups"`
+	DirectRights              []string              `json:"directRights"`
+	Rights                    []string              `json:"rights"`
+	Capabilities              WorkspaceCapabilities `json:"capabilities"`
 }
 
 type UserAccessUpdateInput struct {
@@ -103,10 +103,10 @@ type DeleteUserResult struct {
 }
 
 type CreateUserInput struct {
-	Username          string   `json:"username"`
-	DisplayName       string   `json:"displayName"`
-	Email             string   `json:"email"`
-	Password          string   `json:"password"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
 	// Invite creates the account without a password; the user sets their own
 	// via a one-time invite link (so no admin ever knows it — a requirement
 	// of the personal-vault design).
@@ -125,11 +125,28 @@ type CategoryCapabilities struct {
 	Launch bool `json:"launch"`
 }
 
+// GeneratorCapabilities says which parts of the Generator page (and, later,
+// of the browser extension's password generation) a user may use. Rights:
+// generator.passwords, generator.keysandtokens, generator.keypairs,
+// generator.certificates. No read/edit split — a part is usable or hidden.
+type GeneratorCapabilities struct {
+	Passwords     bool `json:"passwords"`
+	KeysAndTokens bool `json:"keysAndTokens"`
+	Keypairs      bool `json:"keypairs"`
+	Certificates  bool `json:"certificates"`
+}
+
+func (g GeneratorCapabilities) Any() bool {
+	return g.Passwords || g.KeysAndTokens || g.Keypairs || g.Certificates
+}
+
 type WorkspaceCapabilities struct {
-	Categories      map[string]CategoryCapabilities `json:"categories"`
-	CanViewActivity bool                            `json:"canViewActivity"`
-	CanViewAudit    bool                            `json:"canViewAudit"`
-	CanViewAdmin    bool                            `json:"canViewAdmin"`
+	Categories       map[string]CategoryCapabilities `json:"categories"`
+	CanViewActivity  bool                            `json:"canViewActivity"`
+	CanViewAudit     bool                            `json:"canViewAudit"`
+	CanViewAdmin     bool                            `json:"canViewAdmin"`
+	Generator        GeneratorCapabilities           `json:"generator"`
+	CanViewGenerator bool                            `json:"canViewGenerator"`
 }
 
 func CapabilitiesForUser(user User) WorkspaceCapabilities {
@@ -141,14 +158,22 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 				"appregistrations": {View: true, Import: true, Edit: true},
 				"passwords":        {View: true, Create: true, Edit: true, Reveal: true, Launch: true},
 			},
-			CanViewActivity: true,
-			CanViewAudit:    true,
-			CanViewAdmin:    true,
+			CanViewActivity:  true,
+			CanViewAudit:     true,
+			CanViewAdmin:     true,
+			Generator:        GeneratorCapabilities{Passwords: true, KeysAndTokens: true, Keypairs: true, Certificates: true},
+			CanViewGenerator: true,
 		}
 	}
 
 	has := func(right string) bool {
 		return slices.Contains(user.Rights, right)
+	}
+	generator := GeneratorCapabilities{
+		Passwords:     has("generator.passwords"),
+		KeysAndTokens: has("generator.keysandtokens"),
+		Keypairs:      has("generator.keypairs"),
+		Certificates:  has("generator.certificates"),
 	}
 
 	categories := map[string]CategoryCapabilities{
@@ -189,9 +214,11 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 	}
 
 	return WorkspaceCapabilities{
-		Categories:      categories,
-		CanViewActivity: true,
-		CanViewAudit:    has("audit.read"),
-		CanViewAdmin:    has("admin.access"),
+		Categories:       categories,
+		CanViewActivity:  true,
+		CanViewAudit:     has("audit.read"),
+		CanViewAdmin:     has("admin.access"),
+		Generator:        generator,
+		CanViewGenerator: generator.Any(),
 	}
 }

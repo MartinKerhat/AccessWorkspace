@@ -561,6 +561,17 @@ dd {
   margin: 4px 0 0;
 }
 
+.generator-range-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 12px;
+  align-items: center;
+}
+
+.generator-range-row input[type="number"] {
+  text-align: center;
+}
+
 .generator-checks {
   grid-column: 1 / -1;
   display: flex;

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { CertificateInput, CertificateResult } from "../types";
+import type { CertificateInput, CertificateResult, GeneratorCapabilities, GeneratorPreferences } from "../types";
 import { defaultPasswordOptions, generatePassword, passwordEntropyBits, type PasswordOptions } from "../generator/password";
 import { defaultPassphraseOptions, generatePassphrase, passphraseEntropyBits, type PassphraseOptions } from "../generator/passphrase";
 import { generateKeyBytes, generateToken, generateUUID } from "../generator/tokens";
@@ -299,13 +299,86 @@ const defaultCertificateInput: CertificateInput = {
 type Props = {
   busy: boolean;
   onMessage: (message: string | undefined) => void;
+  // Which categories this user may use (rights generator.*). Categories the
+  // user lacks are not rendered at all.
+  allowed: GeneratorCapabilities;
 };
+
+const CATEGORY_ALLOWED: Record<Category, keyof GeneratorCapabilities> = {
+  passwords: "passwords",
+  keys: "keysAndTokens",
+  keypairs: "keypairs",
+  certificates: "certificates"
+};
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+// Slider plus an editable number box for the same value: drag for feel,
+// type for precision.
+function RangeWithNumber({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+  const commit = () => {
+    const next = clampNumber(Number(draft), min, max);
+    setDraft(String(next));
+    onChange(next);
+  };
+  return (
+    <label className="wide">
+      <span>{label}</span>
+      <div className="generator-range-row">
+        <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commit();
+            }
+          }}
+        />
+      </div>
+    </label>
+  );
+}
+
+// Settings documents remembered per user and part. Only generation options
+// are kept — never generated values, names, e-mails or passwords.
+function pick<T extends object>(source: Record<string, unknown> | undefined, keys: (keyof T)[], fallback: T): T {
+  if (!source) {
+    return fallback;
+  }
+  const out = { ...fallback };
+  for (const key of keys) {
+    const value = source[key as string];
+    if (value !== undefined && typeof value === typeof fallback[key]) {
+      (out as Record<string, unknown>)[key as string] = value;
+    }
+  }
+  return out;
+}
 
 // Generator: secrets and keys produced in the browser, plus a server-made
 // self-signed certificate (the one thing the browser cannot package as PFX).
 // Nothing is stored anywhere; the user copies or downloads what they need.
-export function GeneratorPage({ busy, onMessage }: Props) {
-  const [category, setCategory] = useState<Category>("passwords");
+export function GeneratorPage({ busy, onMessage, allowed }: Props) {
+  const categories = CATEGORIES.filter((item) => allowed[CATEGORY_ALLOWED[item.id]]);
+  const [category, setCategory] = useState<Category>(categories[0]?.id ?? "passwords");
+  // Remembered settings: loaded once, applied before the first generation;
+  // saved whenever the user actually uses a part (regenerate, copy, generate).
+  const prefsLoadedRef = useRef(false);
+  const [prefsReady, setPrefsReady] = useState(false);
   const [passwordKind, setPasswordKind] = useState<PasswordKind>("password");
   const [keyKind, setKeyKind] = useState<KeyKind>("key");
   const [pairKind, setPairKind] = useState<PairKind>("rsa");
@@ -338,6 +411,82 @@ export function GeneratorPage({ busy, onMessage }: Props) {
     void ed25519Supported().then(setSshAvailable);
   }, []);
 
+  useEffect(() => {
+    if (prefsLoadedRef.current) {
+      return;
+    }
+    prefsLoadedRef.current = true;
+    void api
+      .generatorPreferences()
+      .then(({ preferences }) => applyPreferences(preferences))
+      .catch(() => {
+        // Non-fatal: defaults stay.
+      })
+      .finally(() => setPrefsReady(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applyPreferences(preferences: GeneratorPreferences) {
+    setPasswordOptions((c) => pick(preferences.password, ["length", "lowercase", "uppercase", "digits", "symbols", "avoidAmbiguous", "safeSymbols"], c));
+    setPassphraseOptions((c) => pick(preferences.passphrase, ["words", "separator", "capitalize", "addDigit"], c));
+    const key = pick(preferences.key, ["bytes", "encoding"], { bytes: keyBytes, encoding: keyEncoding as string });
+    if ([16, 24, 32, 48, 64, 128].includes(key.bytes)) {
+      setKeyBytes(key.bytes);
+    }
+    if (["hex", "base64", "base64url"].includes(key.encoding)) {
+      setKeyEncoding(key.encoding as ByteEncoding);
+    }
+    const token = pick(preferences.token, ["length", "prefix"], { length: tokenLength, prefix: tokenPrefix });
+    setTokenLength(clampNumber(token.length, 16, 96));
+    setTokenPrefix(token.prefix);
+    const rsa = pick(preferences.rsa, ["bits"], { bits: rsaBits as number });
+    if ([2048, 3072, 4096].includes(rsa.bits)) {
+      setRsaBits(rsa.bits as 2048 | 3072 | 4096);
+    }
+    const ec = pick(preferences.ec, ["curve"], { curve: ecCurve as string });
+    if (ec.curve === "P-256" || ec.curve === "P-384") {
+      setEcCurve(ec.curve);
+    }
+    const cert = pick(preferences.certificate, ["keyAlgorithm", "validityDays", "pfxEncoding", "organization", "country", "profile"], {
+      keyAlgorithm: certInput.keyAlgorithm as string,
+      validityDays: certInput.validityDays,
+      pfxEncoding: certInput.pfxEncoding as string,
+      organization: certInput.organization,
+      country: certInput.country,
+      profile: certInput.profile as string
+    });
+    setCertInput((c) => ({
+      ...c,
+      keyAlgorithm: (["rsa2048", "rsa4096", "ec_p256"].includes(cert.keyAlgorithm) ? cert.keyAlgorithm : c.keyAlgorithm) as CertificateInput["keyAlgorithm"],
+      validityDays: clampNumber(cert.validityDays, 1, 3650),
+      pfxEncoding: (cert.pfxEncoding === "legacy" ? "legacy" : "modern") as CertificateInput["pfxEncoding"],
+      organization: cert.organization,
+      country: cert.country,
+      profile: (cert.profile in PURPOSE_GUIDES ? cert.profile : c.profile) as CertificateInput["profile"]
+    }));
+  }
+
+  // Fire-and-forget: the server keeps the last used settings per part.
+  function remember(part: string, settings: Record<string, unknown>) {
+    void api.saveGeneratorPreference(part, settings).catch(() => undefined);
+  }
+
+  function rememberCurrentSimple() {
+    if (category === "passwords") {
+      if (passwordKind === "password") {
+        remember("password", { ...passwordOptions });
+      } else {
+        remember("passphrase", { ...passphraseOptions });
+      }
+    } else if (category === "keys") {
+      if (keyKind === "key") {
+        remember("key", { bytes: keyBytes, encoding: keyEncoding });
+      } else if (keyKind === "token") {
+        remember("token", { length: tokenLength, prefix: tokenPrefix });
+      }
+    }
+  }
+
   // Close an open picker on any click outside it.
   useEffect(() => {
     if (!openPicker) {
@@ -352,6 +501,11 @@ export function GeneratorPage({ busy, onMessage }: Props) {
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openPicker]);
+
+  function regenerateAndRemember() {
+    regenerateSimple();
+    rememberCurrentSimple();
+  }
 
   function regenerateSimple() {
     try {
@@ -381,6 +535,11 @@ export function GeneratorPage({ busy, onMessage }: Props) {
     setWorking(true);
     try {
       if (pairKind === "rsa") {
+        remember("rsa", { bits: rsaBits });
+      } else if (pairKind === "ec") {
+        remember("ec", { curve: ecCurve });
+      }
+      if (pairKind === "rsa") {
         const pair = await generateRSAKeypair(rsaBits);
         setPairOutput({ private: pair.privateKeyPem, public: pair.publicKeyPem, privateName: `rsa-${rsaBits}-private.pem`, publicName: `rsa-${rsaBits}-public.pem` });
       } else if (pairKind === "ec") {
@@ -409,6 +568,14 @@ export function GeneratorPage({ busy, onMessage }: Props) {
           .filter(Boolean)
       };
       setCertResult(await api.generateCertificate(input));
+      remember("certificate", {
+        profile: certInput.profile,
+        keyAlgorithm: certInput.keyAlgorithm,
+        validityDays: certInput.validityDays,
+        pfxEncoding: certInput.pfxEncoding,
+        organization: certInput.organization,
+        country: certInput.country
+      });
     } catch (error) {
       setCertError(error instanceof Error ? error.message : "Generating the certificate failed");
     } finally {
@@ -417,16 +584,24 @@ export function GeneratorPage({ busy, onMessage }: Props) {
   }
 
   const guide = PURPOSE_GUIDES[certInput.profile];
+  const current = categories.find((item) => item.id === category) ?? categories[0];
+  if (!current || !prefsReady) {
+    return (
+      <div className="generator-layout">
+        <section className="panel generator-panel">
+          <p className="section-copy">{current ? "Loading your generator settings…" : "No generator parts are enabled for your account."}</p>
+        </section>
+      </div>
+    );
+  }
   const certReady =
     certInput.commonName.trim() !== "" &&
     certInput.pfxPassword.length >= 8 &&
     (guide.email !== "required" || certInput.email.trim() !== "");
-  const current = CATEGORIES.find((item) => item.id === category) ?? CATEGORIES[0];
-
   return (
     <div className="generator-layout">
       <div className="section-nav-strip" role="tablist" aria-label="Generator categories">
-        {CATEGORIES.map((item) => (
+        {categories.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -487,10 +662,7 @@ export function GeneratorPage({ busy, onMessage }: Props) {
         {category === "passwords" && passwordKind === "password" ? (
           <>
             <div className="form-grid">
-              <label className="wide">
-                <span>Length: {passwordOptions.length} characters</span>
-                <input type="range" min={8} max={64} value={passwordOptions.length} onChange={(event) => setPasswordOptions((c) => ({ ...c, length: Number(event.target.value) }))} />
-              </label>
+              <RangeWithNumber label="Length (characters)" value={passwordOptions.length} min={8} max={64} onChange={(length) => setPasswordOptions((c) => ({ ...c, length }))} />
               <div className="generator-checks">
                 {(
                   [
@@ -509,13 +681,13 @@ export function GeneratorPage({ busy, onMessage }: Props) {
                 ))}
               </div>
             </div>
-            <GeneratedValue value={value} onCopied={onMessage} />
+            <GeneratedValue value={value} onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             <p className="generator-meta">≈ {passwordEntropyBits(passwordOptions)} bits of entropy</p>
             <div className="action-row">
-              <button type="button" className="button primary" onClick={regenerateSimple}>
+              <button type="button" className="button primary" onClick={regenerateAndRemember}>
                 Regenerate
               </button>
-              <CopyButton value={value} label="Copy password" onCopied={onMessage} />
+              <CopyButton value={value} label="Copy password" onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             </div>
           </>
         ) : null}
@@ -523,10 +695,7 @@ export function GeneratorPage({ busy, onMessage }: Props) {
         {category === "passwords" && passwordKind === "passphrase" ? (
           <>
             <div className="form-grid">
-              <label>
-                <span>Words: {passphraseOptions.words}</span>
-                <input type="range" min={3} max={10} value={passphraseOptions.words} onChange={(event) => setPassphraseOptions((c) => ({ ...c, words: Number(event.target.value) }))} />
-              </label>
+              <RangeWithNumber label="Words" value={passphraseOptions.words} min={3} max={10} onChange={(words) => setPassphraseOptions((c) => ({ ...c, words }))} />
               <label>
                 <span>Separator</span>
                 <Picker id="separator" openId={openPicker} setOpenId={setOpenPicker} value={passphraseOptions.separator} options={SEPARATOR_OPTIONS} onSelect={(separator) => setPassphraseOptions((c) => ({ ...c, separator }))} />
@@ -542,13 +711,13 @@ export function GeneratorPage({ busy, onMessage }: Props) {
                 </label>
               </div>
             </div>
-            <GeneratedValue value={value} onCopied={onMessage} />
+            <GeneratedValue value={value} onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             <p className="generator-meta">≈ {passphraseEntropyBits(passphraseOptions)} bits of entropy</p>
             <div className="action-row">
-              <button type="button" className="button primary" onClick={regenerateSimple}>
+              <button type="button" className="button primary" onClick={regenerateAndRemember}>
                 Regenerate
               </button>
-              <CopyButton value={value} label="Copy passphrase" onCopied={onMessage} />
+              <CopyButton value={value} label="Copy passphrase" onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             </div>
           </>
         ) : null}
@@ -565,15 +734,15 @@ export function GeneratorPage({ busy, onMessage }: Props) {
                 <Picker id="encoding" openId={openPicker} setOpenId={setOpenPicker} value={keyEncoding} options={ENCODING_OPTIONS} onSelect={setKeyEncoding} />
               </label>
             </div>
-            <GeneratedValue value={value} onCopied={onMessage} />
+            <GeneratedValue value={value} onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             <p className="generator-meta">
               {value.length} characters · {keyBytes * 8} bits
             </p>
             <div className="action-row">
-              <button type="button" className="button primary" onClick={regenerateSimple}>
+              <button type="button" className="button primary" onClick={regenerateAndRemember}>
                 Regenerate
               </button>
-              <CopyButton value={value} label="Copy key" onCopied={onMessage} />
+              <CopyButton value={value} label="Copy key" onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             </div>
           </>
         ) : null}
@@ -585,28 +754,25 @@ export function GeneratorPage({ busy, onMessage }: Props) {
                 <span>Prefix (optional)</span>
                 <input value={tokenPrefix} placeholder="ak_" onChange={(event) => setTokenPrefix(event.target.value)} />
               </label>
-              <label>
-                <span>Length: {tokenLength} characters</span>
-                <input type="range" min={16} max={96} value={tokenLength} onChange={(event) => setTokenLength(Number(event.target.value))} />
-              </label>
+              <RangeWithNumber label="Length (characters)" value={tokenLength} min={16} max={96} onChange={setTokenLength} />
             </div>
-            <GeneratedValue value={value} onCopied={onMessage} />
+            <GeneratedValue value={value} onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             <p className="generator-meta">Letters and digits only — safe in URLs, headers and environment files.</p>
             <div className="action-row">
-              <button type="button" className="button primary" onClick={regenerateSimple}>
+              <button type="button" className="button primary" onClick={regenerateAndRemember}>
                 Regenerate
               </button>
-              <CopyButton value={value} label="Copy token" onCopied={onMessage} />
+              <CopyButton value={value} label="Copy token" onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             </div>
           </>
         ) : null}
 
         {category === "keys" && keyKind === "uuid" ? (
           <>
-            <GeneratedValue value={value} onCopied={onMessage} />
+            <GeneratedValue value={value} onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             <p className="generator-meta">Version 4 random identifier.</p>
             <div className="action-row">
-              <button type="button" className="button primary" onClick={regenerateSimple}>
+              <button type="button" className="button primary" onClick={regenerateAndRemember}>
                 Regenerate
               </button>
               <CopyButton value={value} label="Copy UUID" onCopied={onMessage} />

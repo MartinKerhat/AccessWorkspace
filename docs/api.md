@@ -44,8 +44,21 @@ unlocked personal-vault key.
   3DES/RC2). Returns the certificate and PKCS#8 key as PEM, the PFX as base64,
   thumbprints and the readable intended purposes the profile wrote into the
   certificate. Nothing is stored; the audit event records subject and profile only.
-  Passwords, passphrases, random keys, tokens, UUIDs and RSA/EC/SSH keypairs on
-  that page are generated in the browser and never touch the API.
+  Requires the `generator.certificates` right (admins have every generator
+  right). Passwords, passphrases, random keys, tokens, UUIDs and RSA/EC/SSH
+  keypairs on that page are generated in the browser and never touch the API.
+- `GET /api/me/generator-preferences` — the caller's remembered generator
+  settings, one JSON object per part (`password`, `passphrase`, `key`,
+  `token`, `rsa`, `ec`, `ssh`, `certificate`)
+- `PUT /api/me/generator-preferences/{part}` — replace one part's settings
+  (JSON object, at most 4 KB). The web app saves whenever a part is used;
+  the browser extension can read the same settings later.
+
+The sign-in and `/api/auth/me` responses carry `capabilities.generator`
+(`passwords`, `keysAndTokens`, `keypairs`, `certificates`) and
+`capabilities.canViewGenerator`, derived from the rights
+`generator.passwords`, `generator.keysandtokens`, `generator.keypairs` and
+`generator.certificates`.
 
 ## Personal vault
 

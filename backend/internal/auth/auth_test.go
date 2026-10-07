@@ -42,6 +42,21 @@ func TestCapabilitiesForAdminEnableAdminAreas(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesForGeneratorRights(t *testing.T) {
+	none := CapabilitiesForUser(User{ID: "u", Rights: []string{"passwords.read"}})
+	if none.CanViewGenerator || none.Generator.Any() {
+		t.Fatalf("no generator rights must hide the generator: %+v", none.Generator)
+	}
+	some := CapabilitiesForUser(User{ID: "u", Rights: []string{"generator.passwords", "generator.keypairs"}})
+	if !some.CanViewGenerator || !some.Generator.Passwords || !some.Generator.Keypairs || some.Generator.KeysAndTokens || some.Generator.Certificates {
+		t.Fatalf("unexpected generator capabilities: %+v", some.Generator)
+	}
+	admin := CapabilitiesForUser(User{ID: "a", IsAdmin: true})
+	if !admin.Generator.Certificates || !admin.CanViewGenerator {
+		t.Fatalf("admin must have every generator part: %+v", admin.Generator)
+	}
+}
+
 func TestCapabilitiesForPasswordsCreateRight(t *testing.T) {
 	capabilities := CapabilitiesForUser(User{
 		ID:     "carl",
