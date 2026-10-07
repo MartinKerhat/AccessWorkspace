@@ -116,6 +116,24 @@ jobs:
           mv "$signed" "$xpi_name"
           echo "XPI_NAME=${xpi_name}" >> "$GITHUB_ENV"
 
+      - name: Create GitHub Release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="extension-v${VERSION}"
+          assets=("$ZIP_NAME")
+          if [ -n "${XPI_NAME:-}" ]; then
+            assets+=("$XPI_NAME")
+          fi
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "Browser extension ${VERSION}" \
+              --notes "Browser extension ${VERSION}. Deployments running ARTIFACTS_SOURCE=github serve these files automatically."
+          fi
+          gh release upload "$tag" "${assets[@]}" --clobber
+          echo "Release $tag updated with: ${assets[*]}"
+
       - name: Publish to Chrome Web Store
         env:
           CLIENT_ID: ${{ secrets.CHROME_WEB_STORE_CLIENT_ID }}
@@ -171,22 +189,11 @@ jobs:
             "https://www.googleapis.com/chromewebstore/v1.1/items/${EXTENSION_ID}/publish")"
           echo "publish response: $publish"
           # Typical statuses: OK, ITEM_PENDING_REVIEW — both mean the version
-          # is submitted; review runs store-side before it goes live.
-
-      - name: Create GitHub Release with artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="extension-v${VERSION}"
-          assets=("$ZIP_NAME")
-          if [ -n "${XPI_NAME:-}" ]; then
-            assets+=("$XPI_NAME")
+          # is submitted; review runs store-side before it goes live. A refused
+          # publish (e.g. "Privacy policy link is not reachable") leaves the
+          # package uploaded as a dashboard draft but NOT submitted — fail the
+          # job so it is visible; fix the listing and re-run with force=true.
+          if echo "$publish" | jq -e '.error' >/dev/null 2>&1; then
+            echo "::error::Chrome Web Store publish refused: $(echo "$publish" | jq -r '.error.message') — package uploaded as a draft only. Fix the listing in the developer dashboard, then re-run this workflow with force=true."
+            exit 1
           fi
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" \
-              --title "Browser extension ${VERSION}" \
-              --notes "Browser extension ${VERSION}. Deployments running ARTIFACTS_SOURCE=github serve these files automatically."
-          fi
-          gh release upload "$tag" "${assets[@]}" --clobber
-          echo "Release $tag updated with: ${assets[*]}"
