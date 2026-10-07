@@ -320,7 +320,7 @@ function clampNumber(value: number, min: number, max: number): number {
 
 // Slider plus an editable number box for the same value: drag for feel,
 // type for precision.
-function RangeWithNumber({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+function RangeWithNumber({ label, value, min, max, onChange, wide = true }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; wide?: boolean }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => {
     setDraft(String(value));
@@ -331,7 +331,7 @@ function RangeWithNumber({ label, value, min, max, onChange }: { label: string; 
     onChange(next);
   };
   return (
-    <label className="wide">
+    <label className={wide ? "wide" : undefined}>
       <span>{label}</span>
       <div className="generator-range-row">
         <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} />
@@ -695,7 +695,7 @@ export function GeneratorPage({ busy, onMessage, allowed }: Props) {
         {category === "passwords" && passwordKind === "passphrase" ? (
           <>
             <div className="form-grid">
-              <RangeWithNumber label="Words" value={passphraseOptions.words} min={3} max={10} onChange={(words) => setPassphraseOptions((c) => ({ ...c, words }))} />
+              <RangeWithNumber label="Words" value={passphraseOptions.words} min={3} max={10} wide={false} onChange={(words) => setPassphraseOptions((c) => ({ ...c, words }))} />
               <label>
                 <span>Separator</span>
                 <Picker id="separator" openId={openPicker} setOpenId={setOpenPicker} value={passphraseOptions.separator} options={SEPARATOR_OPTIONS} onSelect={(separator) => setPassphraseOptions((c) => ({ ...c, separator }))} />
@@ -754,7 +754,7 @@ export function GeneratorPage({ busy, onMessage, allowed }: Props) {
                 <span>Prefix (optional)</span>
                 <input value={tokenPrefix} placeholder="ak_" onChange={(event) => setTokenPrefix(event.target.value)} />
               </label>
-              <RangeWithNumber label="Length (characters)" value={tokenLength} min={16} max={96} onChange={setTokenLength} />
+              <RangeWithNumber label="Length (characters)" value={tokenLength} min={16} max={96} wide={false} onChange={setTokenLength} />
             </div>
             <GeneratedValue value={value} onCopied={(text) => { onMessage(text); rememberCurrentSimple(); }} />
             <p className="generator-meta">Letters and digits only — safe in URLs, headers and environment files.</p>
