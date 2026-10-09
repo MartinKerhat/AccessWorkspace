@@ -66,6 +66,9 @@ type Dependencies struct {
 	LocalGroups      LocalGroupAdminService
 	Notifications    NotificationService
 	Artifacts        ArtifactService
+	// GeneratorPreferences is optional; without it the preference endpoints
+	// answer empty / not found.
+	GeneratorPreferences GeneratorPreferenceStore
 }
 
 type AdminConfigService interface {
@@ -123,6 +126,8 @@ type Server struct {
 	notifications    NotificationService
 	artifacts        ArtifactService
 
+	generatorPreferences GeneratorPreferenceStore
+
 	launcherVersionMu      sync.Mutex
 	launcherVersionCached  string
 	launcherVersionExpires time.Time
@@ -151,6 +156,8 @@ func NewServer(deps Dependencies) *Server {
 		localGroups:      deps.LocalGroups,
 		notifications:    deps.Notifications,
 		artifacts:        deps.Artifacts,
+
+		generatorPreferences: deps.GeneratorPreferences,
 		// 20 auth attempts per minute per source IP: generous for humans,
 		// a hard brake on scripted guessing. Cross-replica protection is the
 		// persistent account lockout in the auth layer.
@@ -313,6 +320,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.auditVault(r, user, audit.EventVaultLocked, "")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	case r.Method == http.MethodPost && r.URL.Path == "/api/tools/certificate":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleGenerateCertificate(w, r, user)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/auth/sessions":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -466,6 +478,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleRecentActivity(w, r, user)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/me/generator-preferences":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleListGeneratorPreferences(w, r, user)
+	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/api/me/generator-preferences/"):
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleSaveGeneratorPreference(w, r, user)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/me/notifications":
 		if !requireAuth(w, user, authErr) {
 			return

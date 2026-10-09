@@ -284,14 +284,16 @@ dd {
   gap: 20px;
 }
 
-.admin-nav-strip {
+.admin-nav-strip,
+.section-nav-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   padding: 4px 0;
 }
 
-.admin-nav-button {
+.admin-nav-button,
+.section-nav-button {
   border: 1px solid transparent;
   border-radius: 16px;
   padding: 11px 14px;
@@ -300,7 +302,8 @@ dd {
   cursor: pointer;
 }
 
-.admin-nav-button.active {
+.admin-nav-button.active,
+.section-nav-button.active {
   border-color: rgba(159, 204, 255, 0.22);
   background: rgba(159, 204, 255, 0.1);
   color: #d8ebff;
@@ -541,6 +544,106 @@ dd {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.03);
+}
+
+/* Generator: category tabs on top (same strip as Administration), one panel
+   with a segmented switch for the variant, pickers for options, output. */
+.generator-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.generator-panel .panel-header {
+  align-items: flex-start;
+}
+
+.generator-panel .panel-header .section-copy {
+  margin: 4px 0 0;
+}
+
+.generator-range-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 12px;
+  align-items: center;
+}
+
+.generator-range-row input[type="number"] {
+  text-align: center;
+}
+
+.generator-checks {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+/* Generated values are buttons: one click copies. */
+.generator-value {
+  display: block;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.1rem;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  word-break: break-all;
+  cursor: pointer;
+}
+
+.generator-value:hover,
+.generator-output:hover {
+  border-color: var(--border-strong);
+}
+
+.generator-meta {
+  margin: -6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.generator-output-block {
+  display: grid;
+  gap: 6px;
+}
+
+.generator-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.generator-output-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.generator-output {
+  cursor: pointer;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.generator-panel .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
 }
 
 /* Sessions & devices: one row per live session, current one highlighted. */
@@ -934,7 +1037,9 @@ dd {
   left: 0;
   right: 0;
   z-index: 10;
-  max-height: 220px;
+  /* Tall enough that a short list (3–5 options) never shows a scrollbar;
+     long lists (users, groups) still scroll. */
+  max-height: min(380px, 60vh);
   overflow: auto;
   display: grid;
   gap: 8px;
@@ -971,6 +1076,9 @@ dd {
   display: grid;
   gap: 4px;
   width: 100%;
+  /* Same height whether or not an option carries a description line. */
+  min-height: 60px;
+  align-content: center;
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -1690,6 +1798,49 @@ textarea {
   background: rgba(255, 255, 255, 0.06);
   color: inherit;
   padding: 12px 14px;
+}
+
+/* Range sliders: no text-field padding (it kept the thumb off the track
+   ends), a thin track and an accent thumb that reaches both edges. */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(7, 17, 28, 0.9);
+  background: var(--accent);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(7, 17, 28, 0.9);
+  background: var(--accent);
 }
 
 select option {

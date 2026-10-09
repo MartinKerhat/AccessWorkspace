@@ -32,6 +32,9 @@ import type {
   Directory,
   UserInvite,
   SessionInfo,
+  CertificateInput,
+  CertificateResult,
+  GeneratorPreferences,
   VaultStatus,
   UserNotification,
   VisibleResourceSummary,
@@ -228,6 +231,18 @@ export const api = {
   },
   sessions() {
     return request<{ sessions: SessionInfo[] }>("/auth/sessions");
+  },
+  generateCertificate(input: CertificateInput) {
+    return request<CertificateResult>("/tools/certificate", { method: "POST", body: JSON.stringify(input) });
+  },
+  generatorPreferences() {
+    return request<{ preferences: GeneratorPreferences }>("/me/generator-preferences");
+  },
+  saveGeneratorPreference(part: string, settings: Record<string, unknown>) {
+    return request<{ status: string }>(`/me/generator-preferences/${encodeURIComponent(part)}`, {
+      method: "PUT",
+      body: JSON.stringify(settings)
+    });
   },
   revokeSession(id: string) {
     return request<{ status: string; current?: boolean; kind?: string }>(`/auth/sessions/${encodeURIComponent(id)}`, {

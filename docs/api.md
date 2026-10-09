@@ -34,6 +34,32 @@ unlocked personal-vault key.
 - `POST /api/auth/sessions/revoke-others` — end every session except the
   current one, plus any pending extension connect tokens
 
+## Tools
+
+- `POST /api/tools/certificate` — generates a self-signed X.509 certificate for
+  the Generator page: subject (common name, organisation, department, country,
+  e-mail), validity, key (RSA 2048/4096 or EC P-256), profile (document
+  signing — requires the e-mail —, code signing, TLS server with SANs, client
+  authentication), PFX password and PFX format (modern AES-256 or legacy
+  3DES/RC2). Returns the certificate and PKCS#8 key as PEM, the PFX as base64,
+  thumbprints and the readable intended purposes the profile wrote into the
+  certificate. Nothing is stored; the audit event records subject and profile only.
+  Requires the `generator.certificates` right (admins have every generator
+  right). Passwords, passphrases, random keys, tokens, UUIDs and RSA/EC/SSH
+  keypairs on that page are generated in the browser and never touch the API.
+- `GET /api/me/generator-preferences` — the caller's remembered generator
+  settings, one JSON object per part (`password`, `passphrase`, `key`,
+  `token`, `rsa`, `ec`, `ssh`, `certificate`)
+- `PUT /api/me/generator-preferences/{part}` — replace one part's settings
+  (JSON object, at most 4 KB). The web app saves whenever a part is used;
+  the browser extension can read the same settings later.
+
+The sign-in and `/api/auth/me` responses carry `capabilities.generator`
+(`passwords`, `keysAndTokens`, `keypairs`, `certificates`) and
+`capabilities.canViewGenerator`, derived from the rights
+`generator.passwords`, `generator.keysandtokens`, `generator.keypairs` and
+`generator.certificates`.
+
 ## Personal vault
 
 - `GET /api/auth/vault` — status: has-vault, unlocked, methods, passkeys

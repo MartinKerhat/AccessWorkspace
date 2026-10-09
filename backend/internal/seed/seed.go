@@ -108,12 +108,12 @@ func seedUsers(ctx context.Context, pool *pgxpool.Pool) error {
 func seedLocalGroups(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
 		insert into local_groups (name, description, rights, mapped_external_groups, assigned_user_ids) values
-			('ops-admins', 'Workspace administrators with full operational access.', '{"connections.read","connections.edit","keyvault.read","keyvault.edit","appregistrations.read","appregistrations.edit","passwords.read","passwords.edit","audit.read","admin.access"}', '{}', '{"alice"}'),
-			('platform', 'Platform operators for shared infrastructure access.', '{"connections.read","keyvault.read","appregistrations.read","passwords.read"}', '{}', '{}'),
-			('engineering', 'Engineering teams with app registration and shared password visibility.', '{"connections.read","appregistrations.read","passwords.read"}', '{}', '{}'),
-			('support', 'Support users for shared passwords and supported connections.', '{"connections.read","passwords.read"}', '{}', '{}'),
-			('network', 'Network operations users for infrastructure and portal access.', '{"connections.read","passwords.read"}', '{}', '{}'),
-			('web', 'Web and portal operators for shared password access.', '{"passwords.read"}', '{}', '{}')
+			('ops-admins', 'Workspace administrators with full operational access.', '{"connections.read","connections.edit","keyvault.read","keyvault.edit","appregistrations.read","appregistrations.edit","passwords.read","passwords.edit","audit.read","admin.access","generator.passwords","generator.keysandtokens","generator.keypairs","generator.certificates"}', '{}', '{"alice"}'),
+			('platform', 'Platform operators for shared infrastructure access.', '{"connections.read","keyvault.read","appregistrations.read","passwords.read","generator.passwords","generator.keysandtokens","generator.keypairs","generator.certificates"}', '{}', '{}'),
+			('engineering', 'Engineering teams with app registration and shared password visibility.', '{"connections.read","appregistrations.read","passwords.read","generator.passwords","generator.keysandtokens","generator.keypairs"}', '{}', '{}'),
+			('support', 'Support users for shared passwords and supported connections.', '{"connections.read","passwords.read","generator.passwords"}', '{}', '{}'),
+			('network', 'Network operations users for infrastructure and portal access.', '{"connections.read","passwords.read","generator.passwords","generator.keysandtokens"}', '{}', '{}'),
+			('web', 'Web and portal operators for shared password access.', '{"passwords.read","generator.passwords"}', '{}', '{}')
 	`)
 	return err
 }

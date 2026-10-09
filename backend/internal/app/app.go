@@ -16,6 +16,7 @@ import (
 	"github.com/MartinKerhat/AccessWorkspace/backend/internal/notifications"
 	"github.com/MartinKerhat/AccessWorkspace/backend/internal/resources"
 	"github.com/MartinKerhat/AccessWorkspace/backend/internal/seed"
+	"github.com/MartinKerhat/AccessWorkspace/backend/internal/tools"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -246,6 +247,8 @@ func New(cfg Config) (*App, error) {
 		LocalGroups:      authService,
 		Notifications:    notificationService,
 		Artifacts:        artifactService,
+
+		GeneratorPreferences: tools.NewPreferenceStore(pool),
 	})
 
 	application := &App{

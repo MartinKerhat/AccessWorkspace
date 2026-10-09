@@ -36,6 +36,7 @@ func resolveAuthorizationFromInputs(user User, localGroups []LocalGroup, directR
 			"keyvault.read", "keyvault.edit",
 			"appregistrations.read", "appregistrations.edit",
 			"passwords.read", "passwords.edit", "passwords.create",
+			"generator.passwords", "generator.keysandtokens", "generator.keypairs", "generator.certificates",
 			"audit.read", "admin.access",
 		)
 	}

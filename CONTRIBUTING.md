@@ -43,9 +43,22 @@ nothing:
 
 Backend and frontend images build from every push and need no version bump.
 
-**Migrations are append-only and run once.** Add a new numbered file in
-`backend/migrations/`; never edit one that has shipped, because applied versions
-are recorded and will not re-run.
+**Migrations are append-only, timestamped, and run once.** Add a new file in
+`backend/migrations/` named `<YYYYMMDDHHMM>_<description>.sql` (UTC stamp,
+lower-case, underscores) — for example `202610071510_generator_preferences.sql`.
+The runner applies files in name order and records each file name once, so:
+
+- never edit or rename a migration that has been applied anywhere (a renamed
+  file counts as new and would run again);
+- keep migrations idempotent (`create table if not exists`, `add column if not
+  exists`) and self-contained — do not depend on a migration that is not yet
+  on `main`;
+- the baseline `202610071500_baseline.sql` is the schema as of October 2026
+  and replaces the historical numbered series; databases migrated by that
+  series are adopted automatically, nothing to do by hand.
+
+`go test ./internal/db/` fails on a badly named file or two files with the same
+stamp, so a mistake is caught in the pull request.
 
 **Secrets never enter the repository.** No credentials, vault names, tenant ids,
 host names, or real screenshots in code, tests, fixtures, or documentation.

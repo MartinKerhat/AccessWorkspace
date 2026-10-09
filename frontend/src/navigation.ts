@@ -1,7 +1,7 @@
 import { categoryLabel, type WorkspaceCategory } from "./workspaceCategories";
 import type { WorkspaceCapabilities } from "./types";
 
-export type View = WorkspaceCategory | "activity" | "audit" | "admin";
+export type View = WorkspaceCategory | "generator" | "activity" | "audit" | "admin";
 
 export function currentView(): View {
   const hash = window.location.hash.replace("#", "");
@@ -10,6 +10,7 @@ export function currentView(): View {
     hash === "keyvault" ||
     hash === "appregistrations" ||
     hash === "passwords" ||
+    hash === "generator" ||
     hash === "activity" ||
     hash === "audit" ||
     hash === "admin"
@@ -26,6 +27,8 @@ export function pageTitle(view: View): string {
     case "appregistrations":
     case "passwords":
       return categoryLabel(view);
+    case "generator":
+      return "Generator";
     case "activity":
       return "Recent activity";
     case "audit":
@@ -64,6 +67,9 @@ export function landingView(capabilities: WorkspaceCapabilities): View {
   const firstCategory = categories.find((category) => capabilities.categories[category]?.view);
   if (firstCategory) {
     return firstCategory;
+  }
+  if (capabilities.canViewGenerator) {
+    return "generator";
   }
   if (capabilities.canViewActivity) {
     return "activity";
