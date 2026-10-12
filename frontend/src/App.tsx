@@ -1342,6 +1342,8 @@ export default function App() {
             visiblePackages={visibleBrowserPackages}
             currentPackage={currentBrowserPackage}
             busy={busy}
+            canSuggestPasswords={session.capabilities.generator.passwords}
+            onMessage={setMessage}
             onClose={() => setBrowserExtensionManagerOpen(false)}
             onConnect={() => void handlePrepareBrowserExtensionSession()}
           />

@@ -17,7 +17,8 @@ The extension keeps the following in the browser's local extension storage:
   revoke connected browsers)
 - your preference for credential save prompts
 - a pending "save this login?" candidate (site address, username, password)
-  for at most 10 minutes after you submit a login form, only so the save
+  for at most 10 minutes after you submit a login form — or after you accept
+  a password the extension generated for a sign-up form — only so the save
   prompt can be shown; it is discarded afterwards or when you dismiss it
 - short-lived "don't suggest again on this site" dismissals (15 minutes)
 

@@ -70,6 +70,22 @@ npm run dev
 
 Then open <http://localhost:5173>.
 
+### Browser extension
+
+The extension is plain JavaScript with no build step; load the source folder
+directly:
+
+- Edge / Chrome: `edge://extensions` (or `chrome://extensions`) → enable
+  *Developer mode* → *Load unpacked* → select `browser-extension/chrome`.
+  After changing a file, press *Reload* on the extension card.
+- Firefox: `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* →
+  select `browser-extension/firefox/manifest.json`.
+
+Then open the running workspace, choose *Browser extensions* in the account
+menu and connect; the extension stores the workspace URL it was connected
+from, so a local stack on `http://localhost:8080` works without any extra
+configuration.
+
 ## Tests
 
 Backend unit tests cover auth and capability behavior, permission filtering,

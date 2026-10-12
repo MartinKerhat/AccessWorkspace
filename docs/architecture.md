@@ -78,6 +78,12 @@ arguments) are derived by the platform adapter, never sent by the backend.
 
 - connects through a one-time exchange token and holds its own session
 - requests approved portal credentials from backend flows
+- tells login forms from sign-up / change-password forms (autocomplete
+  tokens, two password boxes, field hints): login forms get fill
+  suggestions, new-password forms get a generated password (for users with
+  `generator.passwords` who switched the offer on in the Browser extensions
+  dialog, using their remembered settings) that is registered for saving the
+  moment it is used
 - fills credentials on allowed websites and can save new personal logins back
   into the workspace
 - logs sensitive fill actions to the audit trail

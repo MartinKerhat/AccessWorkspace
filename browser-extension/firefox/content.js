@@ -3,9 +3,52 @@
   const PANEL_STYLE_ID = "access-workspace-fill-panel-style";
   const PANEL_MODE_FILL = "fill";
   const PANEL_MODE_SAVE = "save";
+  const PANEL_MODE_GENERATE = "generate";
   let scheduled = false;
   let savePanelDraft = null;
   let fillPanelDraft = null;
+  // Sign-up generation state: the chip's own options and the last value the
+  // user accepted (so the submit capture can mark the candidate as generated).
+  let generatePanelDraft = null;
+  let lastGenerated = "";
+  // Closing the chip hides only the chip, on this page; it never touches the
+  // pending save (a generated password must always be offered for saving).
+  let generateDismissedKey = "";
+
+  const SUBMIT_TEXT_HINT = /(register|sign ?up|create|continue|next|save|submit|confirm|finish|done|pokra|zaregistr|vytvo|ulo|zalo|dokon|potvrd|odesl)/i;
+
+  // A generated password is on the page and the user is pressing something
+  // that looks like it submits the form — real <form> submit or not.
+  function reportGeneratedOnSubmitIntent(target) {
+    if (!lastGenerated || !(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest('button, input[type="submit"], input[type="button"], [role="button"]');
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+    const text = `${button.textContent || ""} ${button.getAttribute("value") || ""} ${button.getAttribute("aria-label") || ""}`.trim();
+    const isSubmit = (button instanceof HTMLButtonElement && button.type === "submit") || (button instanceof HTMLInputElement && button.type === "submit");
+    if (!isSubmit && !SUBMIT_TEXT_HINT.test(text)) {
+      return;
+    }
+    const stillOnPage = Array.from(document.querySelectorAll('input[type="password"]')).some((field) => field instanceof HTMLInputElement && field.value === lastGenerated);
+    if (!stillOnPage) {
+      return;
+    }
+    const usernameField = loginFieldForPassword(generatedPasswordField(), true);
+    void sendMessage({
+      type: "report-save-candidate",
+      candidate: {
+        name: document.title || window.location.hostname,
+        title: document.title || "",
+        url: window.location.href,
+        username: usernameField instanceof HTMLInputElement ? String(usernameField.value || "").trim() : "",
+        password: lastGenerated,
+        generated: true
+      }
+    }).catch(() => null);
+  }
   let recentAutofill = null;
   let dismissedURL = "";
   let observedURL = "";
@@ -23,6 +66,12 @@
     if (observedURL !== currentPageKey()) {
       observedURL = currentPageKey();
       dismissedURL = "";
+      generateDismissedKey = "";
+      if (lastGenerated) {
+        // The page moved on after a generated password was used: whatever
+        // submitted it, the save card must come up now.
+        void sendMessage({ type: "lift-pending-save-deferral" }).catch(() => null);
+      }
     }
   }
 
@@ -77,6 +126,67 @@
     return Array.from(document.querySelectorAll('input[type="password"]')).find(visible);
   }
 
+  // ---- password context: login vs sign-up / change ----
+  // The fill panel belongs to login forms only; the generate chip to forms
+  // that ask for a NEW password. Signals, in order of trust: autocomplete
+  // tokens, then two password inputs in one form, then name/id/label hints.
+  const NEW_PASSWORD_HINT = /(new|confirm|repeat|retype|verify|create|register|signup|sign-up|sign_up)/i;
+  const CURRENT_PASSWORD_HINT = /(current|old|existing)/i;
+
+  function fieldHint(input) {
+    const labels = input.labels && input.labels.length ? Array.from(input.labels).map((label) => label.textContent || "").join(" ") : "";
+    return `${input.name} ${input.id} ${input.autocomplete} ${input.placeholder} ${input.getAttribute("aria-label") || ""} ${labels}`;
+  }
+
+  function isCurrentPasswordField(input) {
+    const autocomplete = String(input.autocomplete || "").toLowerCase();
+    if (autocomplete === "current-password") {
+      return true;
+    }
+    if (autocomplete === "new-password") {
+      return false;
+    }
+    return CURRENT_PASSWORD_HINT.test(fieldHint(input));
+  }
+
+  function isNewPasswordField(input) {
+    const autocomplete = String(input.autocomplete || "").toLowerCase();
+    if (autocomplete === "new-password") {
+      return true;
+    }
+    if (autocomplete === "current-password") {
+      return false;
+    }
+    const hint = fieldHint(input);
+    return NEW_PASSWORD_HINT.test(hint) && !CURRENT_PASSWORD_HINT.test(hint);
+  }
+
+  function passwordContext() {
+    const fields = Array.from(document.querySelectorAll('input[type="password"]')).filter(visible);
+    if (fields.length === 0) {
+      return { kind: "none", newFields: [], currentField: null };
+    }
+    const form = fields[0].closest("form");
+    const inForm = form ? fields.filter((field) => field.closest("form") === form) : fields;
+    const current = inForm.filter(isCurrentPasswordField);
+    const explicitNew = inForm.filter(isNewPasswordField);
+    const others = inForm.filter((field) => !current.includes(field));
+    let newFields = [];
+    if (inForm.length >= 2 && others.length > 0 && (explicitNew.length > 0 || current.length < inForm.length)) {
+      // Two or more password boxes: every box that is not the current
+      // password is a new-password box (new + confirm), even when only one
+      // of them carries an explicit hint — a form labelled "Password" /
+      // "Confirm password" must get both filled.
+      newFields = others;
+    } else if (explicitNew.length > 0) {
+      newFields = explicitNew;
+    }
+    if (newFields.length === 0) {
+      return { kind: "login", newFields: [], currentField: inForm[0] };
+    }
+    return { kind: current.length > 0 ? "change" : "signup", newFields, currentField: current[0] || null };
+  }
+
   function candidateUsernameFields() {
     return Array.from(document.querySelectorAll('input'))
       .filter((input) => {
@@ -94,6 +204,87 @@
 
   function firstVisibleUsernameField() {
     return candidateUsernameFields()[0] || null;
+  }
+
+  // ---- which field is the LOGIN on a sign-up form ----
+  // Page order is a poor guide: an e-mail box often sits far above the real
+  // login name. Rank by what the field says it is, then by closeness to the
+  // password box; at save time only boxes that actually hold a value count.
+  const LOGIN_HINT = /(login|user ?name|username|account ?name|screen ?name|nick|p[rř]ihla[sš]|u[zž]ivatelsk[eé] jm|\buser\b|\buid\b)/i;
+  const EMAIL_HINT = /(e-?mail)/i;
+
+  function labelsText(input) {
+    const own = input.labels && input.labels.length ? Array.from(input.labels).map((label) => label.textContent || "").join(" ") : "";
+    // Table layouts put the caption in the preceding cell without a <label for>.
+    const cell = input.closest("td, th");
+    const caption = cell && cell.previousElementSibling ? cell.previousElementSibling.textContent || "" : "";
+    const wrapper = input.closest("label");
+    const wrapped = wrapper ? wrapper.textContent || "" : "";
+    return `${own} ${caption.length < 80 ? caption : ""} ${wrapped.length < 80 ? wrapped : ""}`;
+  }
+
+  function loginFieldScore(input) {
+    const autocomplete = String(input.autocomplete || "").toLowerCase();
+    if (autocomplete === "username") {
+      return 3;
+    }
+    const identity = `${input.name} ${input.id} ${input.placeholder} ${input.getAttribute("aria-label") || ""} ${labelsText(input)}`;
+    const type = String(input.type || "text").toLowerCase();
+    const looksEmail = autocomplete === "email" || type === "email" || EMAIL_HINT.test(identity);
+    const looksLogin = LOGIN_HINT.test(identity);
+    if (looksLogin && !looksEmail) {
+      return 2;
+    }
+    if (looksEmail) {
+      return 1;
+    }
+    return 0;
+  }
+
+  // The login box for the given password box: highest score wins, ties go to
+  // the nearest box above the password. With requireValue only filled boxes
+  // qualify. Returns null when nothing plausible exists.
+  function loginFieldForPassword(passwordField, requireValue) {
+    const anchor = passwordField instanceof HTMLInputElement ? passwordField : firstVisiblePasswordField();
+    const form = anchor ? anchor.closest("form") : null;
+    const scope = form || document;
+    const anchorTop = anchor ? anchor.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
+    const candidates = Array.from(scope.querySelectorAll("input"))
+      .filter((input) => {
+        if (!(input instanceof HTMLInputElement) || !visible(input) || input.disabled || input.readOnly) {
+          return false;
+        }
+        const type = String(input.type || "text").toLowerCase();
+        if (!["text", "email", "tel", "url", "search"].includes(type)) {
+          return false;
+        }
+        return !requireValue || String(input.value || "").trim() !== "";
+      })
+      .map((input) => {
+        const top = input.getBoundingClientRect().top;
+        return { input, score: loginFieldScore(input), distance: Math.abs(anchorTop - top), above: top <= anchorTop + 4 };
+      })
+      .filter((item) => item.score > 0 || (item.above && item.distance < 160));
+    if (candidates.length === 0) {
+      return null;
+    }
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      if (a.above !== b.above) {
+        return a.above ? -1 : 1;
+      }
+      return a.distance - b.distance;
+    });
+    return candidates[0].input;
+  }
+
+  function generatedPasswordField() {
+    return (
+      Array.from(document.querySelectorAll('input[type="password"]')).find((field) => field instanceof HTMLInputElement && field.value === lastGenerated) ||
+      null
+    );
   }
 
   function firstFilledInput(form, selectorList) {
@@ -177,6 +368,288 @@
       fillPanelDraft = null;
     }
     document.getElementById(PANEL_ID)?.remove();
+  }
+
+  // ---- generate chip (sign-up / password-change forms) ----
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) {
+      node.className = className;
+    }
+    if (text !== undefined) {
+      node.textContent = text;
+    }
+    return node;
+  }
+
+  async function injectGeneratePanel(context) {
+    if (!isTopLevelFrame() && (window.innerWidth < 260 || window.innerHeight < 200)) {
+      removePanel();
+      return;
+    }
+    const existing = document.getElementById(PANEL_ID);
+    if (existing?.dataset.mode === PANEL_MODE_GENERATE && generatePanelDraft) {
+      // Already shown; keep the user's current candidate and options.
+      return;
+    }
+    let suggestion = null;
+    try {
+      suggestion = await sendMessage({ type: "generate-password", kind: "password", overrides: {} });
+    } catch {
+      suggestion = null;
+    }
+    if (!suggestion?.allowed) {
+      if (existing?.dataset.mode === PANEL_MODE_GENERATE) {
+        removePanel();
+      }
+      return;
+    }
+    generatePanelDraft = {
+      kind: "password",
+      value: suggestion.value,
+      password: suggestion.options,
+      passphrase: null,
+      used: false
+    };
+    renderGeneratePanel(context);
+  }
+
+  // Current options of the chip as a settings document for the kind in use.
+  function draftOverrides() {
+    if (generatePanelDraft.kind === "passphrase") {
+      return generatePanelDraft.passphrase ? { ...generatePanelDraft.passphrase } : {};
+    }
+    return generatePanelDraft.password ? { ...generatePanelDraft.password } : {};
+  }
+
+  function renderGeneratePanel(context) {
+    const panel = ensurePanel();
+    panel.dataset.mode = PANEL_MODE_GENERATE;
+    panel.replaceChildren();
+    const draft = generatePanelDraft;
+
+    const card = element("div", "aw-fill-card");
+    const header = element("div", "aw-fill-header");
+    const title = element("strong", "", "Access Workspace");
+    const closeButton = element("button", "aw-fill-close", "x");
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "Dismiss");
+    header.append(title, closeButton);
+
+    const copy = element(
+      "p",
+      "aw-fill-copy",
+      context.kind === "change" ? "Use a strong new password for this change." : "Use a strong password for this sign-up."
+    );
+
+    // Password | Passphrase
+    const kindRow = element("div", "aw-gen-segmented");
+    const kindPassword = element("button", "aw-gen-kind", "Password");
+    kindPassword.type = "button";
+    const kindPassphrase = element("button", "aw-gen-kind", "Passphrase");
+    kindPassphrase.type = "button";
+    kindRow.append(kindPassword, kindPassphrase);
+
+    // Length / words + no-symbols
+    const optionsRow = element("div", "aw-gen-options");
+    const numberLabel = element("label", "aw-gen-number-label");
+    const numberText = element("span", "", "Length");
+    const numberInput = document.createElement("input");
+    numberInput.type = "number";
+    numberInput.className = "aw-gen-number";
+    numberLabel.append(numberText, numberInput);
+    const toggleLabel = element("label", "aw-save-checkbox aw-gen-toggle");
+    const toggleInput = document.createElement("input");
+    toggleInput.type = "checkbox";
+    toggleInput.className = "aw-gen-nosymbols";
+    toggleLabel.append(toggleInput, element("span", "", "No symbols"));
+    optionsRow.append(numberLabel, toggleLabel);
+
+    const value = element("div", "aw-gen-value", draft.value);
+    value.title = "Generated value";
+
+    const actions = element("div", "aw-gen-row");
+    const useButton = element("button", "aw-fill-action aw-gen-use", "Use");
+    useButton.type = "button";
+    const regenerateButton = element("button", "aw-save-cancel aw-gen-regenerate", "Regenerate");
+    regenerateButton.type = "button";
+    actions.append(useButton, regenerateButton);
+
+    const saveRow = element("div", "aw-gen-row");
+    const saveNowButton = element("button", "aw-save-cancel aw-gen-save-now", "Save now");
+    saveNowButton.type = "button";
+    saveRow.append(saveNowButton);
+    saveRow.hidden = !draft.used;
+
+    const status = element("p", "aw-fill-status", draft.used ? "Filled. The save card appears when you submit the form." : "");
+    status.setAttribute("aria-live", "polite");
+
+    card.append(header, copy, kindRow, optionsRow, value, actions, saveRow, status);
+    panel.appendChild(card);
+
+    const syncControls = () => {
+      const passphrase = draft.kind === "passphrase";
+      kindPassword.classList.toggle("active", !passphrase);
+      kindPassphrase.classList.toggle("active", passphrase);
+      numberText.textContent = passphrase ? "Words" : "Length";
+      numberInput.min = passphrase ? "3" : "8";
+      numberInput.max = passphrase ? "10" : "64";
+      numberInput.value = String(passphrase ? draft.passphrase?.words ?? 5 : draft.password?.length ?? 20);
+      toggleLabel.hidden = passphrase;
+      toggleInput.checked = !passphrase && draft.password ? !draft.password.symbols : false;
+      value.textContent = draft.value;
+    };
+
+    // Never disable the Regenerate button while generating: a click that
+    // blurs the number box fires its change handler first, and a click on a
+    // button disabled by that handler is swallowed. Re-entrancy is ignored.
+    let regenerating = false;
+    let lastAppliedNumber = null;
+    const regenerate = async () => {
+      if (regenerating) {
+        return;
+      }
+      regenerating = true;
+      try {
+        const next = await sendMessage({ type: "generate-password", kind: draft.kind, overrides: draftOverrides() });
+        if (next?.allowed && next.value) {
+          draft.value = next.value;
+          if (next.kind === "passphrase") {
+            draft.passphrase = next.options;
+          } else {
+            draft.password = next.options;
+          }
+          syncControls();
+        }
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "Generating failed.";
+      } finally {
+        regenerating = false;
+      }
+    };
+
+    // Remember the chip's settings the way the web page does: when the
+    // user acts on them (Regenerate / Use), not on every keystroke.
+    const remember = () => {
+      void sendMessage({
+        type: "remember-generator-preference",
+        part: draft.kind,
+        settings: draftOverrides()
+      }).catch(() => null);
+    };
+
+    syncControls();
+
+    closeButton.onclick = () => {
+      generatePanelDraft = null;
+      generateDismissedKey = currentPageKey();
+      removePanel();
+    };
+    kindPassword.onclick = () => {
+      if (draft.kind !== "password") {
+        draft.kind = "password";
+        lastAppliedNumber = null;
+        void regenerate();
+      }
+    };
+    kindPassphrase.onclick = () => {
+      if (draft.kind !== "passphrase") {
+        draft.kind = "passphrase";
+        lastAppliedNumber = null;
+        void regenerate();
+      }
+    };
+    const applyNumber = () => {
+      const n = Math.floor(Number(numberInput.value));
+      if (!Number.isFinite(n)) {
+        syncControls();
+        return;
+      }
+      if (n === lastAppliedNumber) {
+        // Enter already applied it; the blur-triggered change is a repeat.
+        return;
+      }
+      lastAppliedNumber = n;
+      if (draft.kind === "passphrase") {
+        draft.passphrase = { ...(draft.passphrase || {}), words: Math.min(10, Math.max(3, n)) };
+      } else {
+        draft.password = { ...(draft.password || {}), length: Math.min(64, Math.max(8, n)) };
+      }
+      void regenerate();
+    };
+    numberInput.onchange = applyNumber;
+    numberInput.onkeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyNumber();
+      }
+    };
+    toggleInput.onchange = () => {
+      draft.password = { ...(draft.password || {}), symbols: !toggleInput.checked };
+      void regenerate();
+    };
+    regenerateButton.onclick = () => {
+      remember();
+      void regenerate();
+    };
+    useButton.onclick = async () => {
+      const current = passwordContext();
+      const targets = current.newFields.length > 0 ? current.newFields : context.newFields.filter(visible);
+      if (targets.length === 0) {
+        status.textContent = "No password field found on this page any more.";
+        return;
+      }
+      const password = draft.value;
+      for (const field of targets) {
+        dispatchValue(field, password);
+      }
+      lastGenerated = password;
+      draft.used = true;
+      remember();
+      const usernameField = loginFieldForPassword(targets[0], true);
+      void sendMessage({
+        type: "report-save-candidate",
+        candidate: {
+          name: document.title || window.location.hostname,
+          title: document.title || "",
+          url: window.location.href,
+          username: usernameField instanceof HTMLInputElement ? String(usernameField.value || "").trim() : "",
+          password,
+          generated: true,
+          deferred: true
+        }
+      }).catch(() => null);
+      saveRow.hidden = false;
+      status.textContent = "Filled. The save card appears when you submit the form — or save it right away.";
+    };
+    saveNowButton.onclick = async () => {
+      saveNowButton.disabled = true;
+      try {
+        const usernameField = loginFieldForPassword(generatedPasswordField() || passwordContext().newFields[0] || null, true);
+        await sendMessage({
+          type: "report-save-candidate",
+          candidate: {
+            name: document.title || window.location.hostname,
+            title: document.title || "",
+            url: window.location.href,
+            username: usernameField instanceof HTMLInputElement ? String(usernameField.value || "").trim() : "",
+            password: draft.value,
+            generated: true
+          }
+        });
+        const pending = await sendMessage({ type: "get-pending-save", url: window.location.href });
+        if (pending) {
+          generatePanelDraft = null;
+          await injectSavePanel(pending);
+          return;
+        }
+        status.textContent = "Could not open the save card. Submit the form and it will appear.";
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "Opening the save card failed.";
+      } finally {
+        saveNowButton.disabled = false;
+      }
+    };
   }
 
   function sendMessage(message) {
@@ -549,6 +1022,101 @@
         padding: 10px 12px;
         font: inherit;
       }
+      #${PANEL_ID} .aw-gen-value {
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        border: 1px solid #3b5775;
+        border-radius: 12px;
+        background: #152334;
+        color: #edf4ff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        word-break: break-all;
+        user-select: all;
+      }
+      #${PANEL_ID} .aw-gen-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      #${PANEL_ID} .aw-gen-row .aw-fill-action {
+        flex: 1;
+      }
+      #${PANEL_ID} .aw-gen-row[hidden] {
+        display: none !important;
+      }
+      /* Pages hide native checkboxes for their own skins (opacity 0,
+         zero size, off-screen); our controls must stay visible anyway. */
+      #${PANEL_ID} input[type="checkbox"] {
+        appearance: auto !important;
+        -webkit-appearance: checkbox !important;
+        opacity: 1 !important;
+        position: static !important;
+        width: 16px !important;
+        height: 16px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: auto !important;
+        accent-color: #ffb86a;
+      }
+      #${PANEL_ID} .aw-gen-segmented {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        margin: 0 0 10px;
+        border: 1px solid #3b5775;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+      #${PANEL_ID} .aw-gen-kind {
+        flex: 1;
+        border: 0;
+        border-radius: 9px;
+        padding: 7px 10px;
+        background: transparent;
+        color: #c6d6eb;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+      }
+      #${PANEL_ID} .aw-gen-kind.active {
+        background: rgba(159, 204, 255, 0.14);
+        color: #edf4ff;
+      }
+      #${PANEL_ID} .aw-gen-options {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0 0 10px;
+      }
+      #${PANEL_ID} .aw-gen-number-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #edf4ff;
+      }
+      #${PANEL_ID} .aw-gen-number {
+        width: 64px !important;
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid #3b5775;
+        padding: 6px 8px;
+        background: #152334;
+        color: #edf4ff;
+        font: inherit;
+        font-size: 13px;
+        text-align: center;
+        opacity: 1 !important;
+        position: static !important;
+      }
+      #${PANEL_ID} .aw-gen-toggle {
+        margin: 0;
+      }
+      #${PANEL_ID} .aw-gen-toggle[hidden] {
+        display: none !important;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -745,8 +1313,11 @@
     if (!(form instanceof HTMLFormElement)) {
       return null;
     }
-    const passwordField = firstFilledInput(form, ['input[type="password"]']);
-    const usernameField = firstFilledInput(form, [
+    const filledPasswords = Array.from(form.querySelectorAll('input[type="password"]')).filter(
+      (element) => element instanceof HTMLInputElement && String(element.value || "") !== ""
+    );
+    const passwordField = filledPasswords.find(isNewPasswordField) || filledPasswords[0] || null;
+    const usernameField = loginFieldForPassword(passwordField, true) || firstFilledInput(form, [
       'input[type="email"]',
       'input[autocomplete="username"]',
       'input[name*="user" i]',
@@ -755,12 +1326,15 @@
       'input[id*="email" i]',
       'input[type="text"]'
     ]);
-    if (!(passwordField instanceof HTMLInputElement) || !(usernameField instanceof HTMLInputElement)) {
+    if (!(passwordField instanceof HTMLInputElement)) {
       return null;
     }
-    const username = String(usernameField.value || "").trim();
+    const username = usernameField instanceof HTMLInputElement ? String(usernameField.value || "").trim() : "";
     const password = String(passwordField.value || "");
-    if (!username || !password) {
+    const generated = password !== "" && password === lastGenerated;
+    // A password we generated is worth saving even when no username field
+    // was recognised; the save card lets the user fill it in.
+    if (!password || (!username && !generated)) {
       return null;
     }
     return {
@@ -768,7 +1342,8 @@
       title: document.title || "",
       url: window.location.href,
       username,
-      password
+      password,
+      generated
     };
   }
 
@@ -779,10 +1354,8 @@
       removePanel();
       return;
     }
-    if (dismissedURL === currentPageKey()) {
-      removePanel();
-      return;
-    }
+    // The save card comes first and ignores every dismissal: a credential
+    // (above all a generated one) waiting to be saved must always surface.
     try {
       const pendingSave = await sendMessage({
         type: "get-pending-save",
@@ -796,11 +1369,33 @@
         if (document.getElementById(PANEL_ID)?.dataset.mode === PANEL_MODE_SAVE) {
           return;
         }
+        generatePanelDraft = null;
         await injectSavePanel(pendingSave);
         return;
       }
     } catch {
       // ignore save-prompt lookup failures and keep normal fill flow
+    }
+    if (dismissedURL === currentPageKey()) {
+      removePanel();
+      return;
+    }
+    const context = passwordContext();
+    if (context.kind === "signup" || context.kind === "change") {
+      // A form asking for a NEW password gets the generate chip, never the
+      // login fill suggestions.
+      if (generateDismissedKey === currentPageKey()) {
+        if (document.getElementById(PANEL_ID)?.dataset.mode === PANEL_MODE_GENERATE) {
+          removePanel();
+        }
+        return;
+      }
+      await injectGeneratePanel(context);
+      return;
+    }
+    if (document.getElementById(PANEL_ID)?.dataset.mode === PANEL_MODE_GENERATE) {
+      generatePanelDraft = null;
+      removePanel();
     }
     if (!firstVisiblePasswordField() && !firstVisibleUsernameField()) {
       removePanel();
@@ -867,6 +1462,9 @@
         }, window.location.origin);
       });
   });
+  document.addEventListener("click", (event) => {
+    reportGeneratedOnSubmitIntent(event.target);
+  }, true);
   document.addEventListener("submit", (event) => {
     const candidate = loginCandidateFromForm(event.target);
     if (!candidate) {

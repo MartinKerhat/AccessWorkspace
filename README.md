@@ -46,7 +46,7 @@ Reusable saved credentials for websites, tools, and legacy systems, shared with 
 
 ### Browser extension — fill on approved portals
 
-A companion extension for Chrome, Edge, and Firefox connects to your workspace, offers the credentials your workspace has approved for the site you are on, fills them on request, and can save new portal logins back into your personal vault. Fills are audited like any other sensitive action.
+A companion extension for Chrome, Edge, and Firefox connects to your workspace, offers the credentials your workspace has approved for the site you are on, fills them on request, and can save new portal logins back into your personal vault. If you switch it on in the Browser extensions dialog, it also offers a strong password on sign-up and change-password forms, generated with your own Generator settings, fills both password boxes, and saves the new login for you. Fills are audited like any other sensitive action.
 
 ### Administration you can actually answer questions with
 

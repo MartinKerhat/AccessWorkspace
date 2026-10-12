@@ -49,7 +49,8 @@ unlocked personal-vault key.
   keypairs on that page are generated in the browser and never touch the API.
 - `GET /api/me/generator-preferences` — the caller's remembered generator
   settings, one JSON object per part (`password`, `passphrase`, `key`,
-  `token`, `rsa`, `ec`, `ssh`, `certificate`)
+  `token`, `rsa`, `ec`, `ssh`, `certificate`, and `extension` for
+  browser-extension behaviour such as `{"suggestPasswords": true}`)
 - `PUT /api/me/generator-preferences/{part}` — replace one part's settings
   (JSON object, at most 4 KB). The web app saves whenever a part is used;
   the browser extension can read the same settings later.

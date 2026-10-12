@@ -21,6 +21,10 @@ var preferenceParts = map[string]bool{
 	"ec":          true,
 	"ssh":         true,
 	"certificate": true,
+	// Browser-extension behaviour the user opts into from the web app, e.g.
+	// {"suggestPasswords": true} — the extension offers generated passwords
+	// on sign-up forms only when this is set.
+	"extension": true,
 }
 
 const maxPreferenceBytes = 4096
