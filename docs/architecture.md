@@ -78,12 +78,16 @@ arguments) are derived by the platform adapter, never sent by the backend.
 
 - connects through a one-time exchange token and holds its own session
 - requests approved portal credentials from backend flows
+- stays silent on the workspace's own pages — the app marks its HTML with a
+  `<meta name="access-workspace-app">` tag and the extension also remembers
+  the origin it was connected from — so the workspace's forms never get fill
+  suggestions, generated passwords or save prompts
 - tells login forms from sign-up / change-password forms (autocomplete
   tokens, two password boxes, field hints): login forms get fill
   suggestions, new-password forms get a generated password (for users with
   `generator.passwords` who switched the offer on in the Browser extensions
-  dialog, using their remembered settings) that is registered for saving the
-  moment it is used
+  dialog, using their remembered settings and last-chosen kind, password or
+  passphrase) that is registered for saving the moment it is used
 - fills credentials on allowed websites and can save new personal logins back
   into the workspace
 - logs sensitive fill actions to the audit trail

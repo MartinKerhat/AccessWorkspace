@@ -6,12 +6,17 @@ const CREDENTIAL_SAVE_PROMPTS_ENABLED_KEY = "credentialSavePromptsEnabled";
 async function getConfig() {
   const stored = await chrome.storage.local.get([
     "workspaceBaseUrl",
+    "webAppOrigin",
     "sessionToken",
     INSTALLATION_ID_KEY,
     CREDENTIAL_SAVE_PROMPTS_ENABLED_KEY
   ]);
   return {
     workspaceBaseUrl: normalizeBaseUrl(stored.workspaceBaseUrl || DEFAULT_BASE_URL),
+    // Origin of the web app the extension was connected from (may differ
+    // from the API origin in development); the content script stays quiet
+    // on pages of that origin.
+    webAppOrigin: String(stored.webAppOrigin || "").trim(),
     sessionToken: (stored.sessionToken || "").trim(),
     installationId: String(stored[INSTALLATION_ID_KEY] || "").trim(),
     credentialSavePromptsEnabled: stored[CREDENTIAL_SAVE_PROMPTS_ENABLED_KEY] === true
@@ -253,7 +258,8 @@ async function generatorAllowed() {
   return generatorCache.allowed;
 }
 
-// request: { kind: "password" | "passphrase", overrides: {...} }.
+// request: { kind?: "password" | "passphrase", overrides: {...} }; without a
+// kind the one the user last chose in the Generator (part "passwords") is used.
 // Returns { allowed:false } when not connected or the user lacks the right,
 // otherwise the value plus the effective options so the chip can show them.
 async function generateForPage(request) {
@@ -265,8 +271,10 @@ async function generateForPage(request) {
   if (!allowed) {
     return { allowed: false };
   }
-  const kind = request?.kind === "passphrase" ? "passphrase" : "password";
   const prefs = await requestJSON("/me/generator-preferences").catch(() => null);
+  const requested = request?.kind === "passphrase" || request?.kind === "password" ? request.kind : null;
+  const remembered = prefs?.preferences?.passwords?.kind === "passphrase" ? "passphrase" : "password";
+  const kind = requested || remembered;
   // Opt-in: the user switches this on in the web app's Browser extensions
   // dialog; without it the extension never offers a generated password.
   if (prefs?.preferences?.extension?.suggestPasswords !== true) {
@@ -284,7 +292,9 @@ async function generateForPage(request) {
 
 // The chip's adjustments are remembered like the web page remembers them.
 async function rememberGeneratorPreference(part, settings) {
-  if (part !== "password" && part !== "passphrase") {
+  // Only what the chip itself edits: the two kinds' options and which kind
+  // was chosen last. The opt-in (part "extension") is set from the web app.
+  if (part !== "password" && part !== "passphrase" && part !== "passwords") {
     return { saved: false };
   }
   await requestJSON(`/me/generator-preferences/${part}`, { method: "PUT", body: settings && typeof settings === "object" ? settings : {} });
@@ -311,8 +321,11 @@ async function getInstallationId() {
   return next;
 }
 
-async function connectWorkspace(workspaceBaseUrl, connectToken) {
+async function connectWorkspace(workspaceBaseUrl, connectToken, webAppOrigin) {
   const installationId = await getInstallationId();
+  if (webAppOrigin) {
+    await chrome.storage.local.set({ webAppOrigin: String(webAppOrigin).trim() });
+  }
   const normalizedBaseUrl = normalizeBaseUrl(workspaceBaseUrl);
   const response = await fetch(`${normalizedBaseUrl}/api/auth/browser-extension-connect-exchange`, {
     method: "POST",
@@ -725,7 +738,7 @@ async function handleMessage(message, sender) {
       }
     }
     case "connect-workspace":
-      return connectWorkspace(message.workspaceBaseUrl, message.connectToken);
+      return connectWorkspace(message.workspaceBaseUrl, message.connectToken, message.webAppOrigin);
     case "generate-password":
       return generateForPage({ kind: message.kind, overrides: message.overrides });
     case "remember-generator-preference":

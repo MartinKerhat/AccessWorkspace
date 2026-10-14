@@ -109,6 +109,29 @@
     return window.location.protocol === "http:" || window.location.protocol === "https:";
   }
 
+  // ---- the workspace itself is never a target ----
+  // Two signals, no configured URL: the web app marks its own HTML with
+  // <meta name="access-workspace-app">, and the origin the extension was
+  // connected from is remembered (webAppOrigin). Either one silences every
+  // panel here; the connect handshake listener keeps working regardless.
+  let workspaceOriginKnown = null;
+
+  function isWorkspaceAppPage() {
+    if (document.querySelector('meta[name="access-workspace-app"]')) {
+      return true;
+    }
+    return workspaceOriginKnown === window.location.origin;
+  }
+
+  async function refreshWorkspaceOrigin() {
+    try {
+      const config = await sendMessage({ type: "get-config" });
+      workspaceOriginKnown = String(config?.webAppOrigin || "");
+    } catch {
+      workspaceOriginKnown = null;
+    }
+  }
+
   function isTopLevelFrame() {
     return window.self === window.top;
   }
@@ -394,7 +417,7 @@
     }
     let suggestion = null;
     try {
-      suggestion = await sendMessage({ type: "generate-password", kind: "password", overrides: {} });
+      suggestion = await sendMessage({ type: "generate-password", overrides: {} });
     } catch {
       suggestion = null;
     }
@@ -404,11 +427,12 @@
       }
       return;
     }
+    const passphraseFirst = suggestion.kind === "passphrase";
     generatePanelDraft = {
-      kind: "password",
+      kind: passphraseFirst ? "passphrase" : "password",
       value: suggestion.value,
-      password: suggestion.options,
-      passphrase: null,
+      password: passphraseFirst ? null : suggestion.options,
+      passphrase: passphraseFirst ? suggestion.options : null,
       used: false
     };
     renderGeneratePanel(context);
@@ -545,20 +569,18 @@
       generateDismissedKey = currentPageKey();
       removePanel();
     };
-    kindPassword.onclick = () => {
-      if (draft.kind !== "password") {
-        draft.kind = "password";
-        lastAppliedNumber = null;
-        void regenerate();
+    const switchKind = (kind) => {
+      if (draft.kind === kind) {
+        return;
       }
+      draft.kind = kind;
+      lastAppliedNumber = null;
+      void regenerate();
+      // Same as switching on the Generator page: the choice is remembered.
+      void sendMessage({ type: "remember-generator-preference", part: "passwords", settings: { kind } }).catch(() => null);
     };
-    kindPassphrase.onclick = () => {
-      if (draft.kind !== "passphrase") {
-        draft.kind = "passphrase";
-        lastAppliedNumber = null;
-        void regenerate();
-      }
-    };
+    kindPassword.onclick = () => switchKind("password");
+    kindPassphrase.onclick = () => switchKind("passphrase");
     const applyNumber = () => {
       const n = Math.floor(Number(numberInput.value));
       if (!Number.isFinite(n)) {
@@ -1354,6 +1376,13 @@
       removePanel();
       return;
     }
+    if (workspaceOriginKnown === null) {
+      await refreshWorkspaceOrigin();
+    }
+    if (isWorkspaceAppPage()) {
+      removePanel();
+      return;
+    }
     // The save card comes first and ignores every dismissal: a credential
     // (above all a generated one) waiting to be saved must always surface.
     try {
@@ -1443,7 +1472,8 @@
     void sendMessage({
       type: "connect-workspace",
       workspaceBaseUrl: data.payload?.workspaceBaseUrl,
-      connectToken: data.payload?.connectToken
+      connectToken: data.payload?.connectToken,
+      webAppOrigin: window.location.origin
     })
       .then((result) => {
         window.postMessage({
@@ -1463,9 +1493,15 @@
       });
   });
   document.addEventListener("click", (event) => {
+    if (isWorkspaceAppPage()) {
+      return;
+    }
     reportGeneratedOnSubmitIntent(event.target);
   }, true);
   document.addEventListener("submit", (event) => {
+    if (isWorkspaceAppPage()) {
+      return;
+    }
     const candidate = loginCandidateFromForm(event.target);
     if (!candidate) {
       return;

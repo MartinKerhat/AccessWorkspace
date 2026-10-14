@@ -48,7 +48,8 @@ unlocked personal-vault key.
   right). Passwords, passphrases, random keys, tokens, UUIDs and RSA/EC/SSH
   keypairs on that page are generated in the browser and never touch the API.
 - `GET /api/me/generator-preferences` — the caller's remembered generator
-  settings, one JSON object per part (`password`, `passphrase`, `key`,
+  settings, one JSON object per part (`password`, `passphrase`, `passwords`
+  for the choice between the two such as `{"kind": "passphrase"}`, `key`,
   `token`, `rsa`, `ec`, `ssh`, `certificate`, and `extension` for
   browser-extension behaviour such as `{"suggestPasswords": true}`)
 - `PUT /api/me/generator-preferences/{part}` — replace one part's settings

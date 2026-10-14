@@ -1167,6 +1167,7 @@ export default function App() {
             }
             message={message}
             loading={busy}
+            canGeneratePassword={session.capabilities.generator.passwords}
             onSubmit={formState.mode === "create" ? handleCreate : handleUpdate}
             onRevealStoredPassword={
               formState.mode === "edit" &&

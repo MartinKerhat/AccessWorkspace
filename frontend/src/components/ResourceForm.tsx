@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { api } from "../api/client";
 import type { DirectoryUser, Resource, ResourceForm, UserSummary } from "../types";
+import { defaultPassphraseOptions, generatePassphrase, type PassphraseOptions } from "../generator/passphrase";
+import { defaultPasswordOptions, generatePassword, type PasswordOptions } from "../generator/password";
 import { MentionNotesField } from "./MentionNotesField";
 
 const defaultForm: ResourceForm = {
@@ -87,6 +90,21 @@ function fromDateTimeInputValue(value: string) {
 // and with different placeholder behaviour from passwords. autoComplete is
 // "new-password" so the browser's own password manager does not autofill a
 // credential field and get it saved over the real secret on submit.
+// Stored settings are opaque JSON; only keys of the right type replace the
+// current value.
+function mergeStoredOptions<T extends object>(current: T, stored: Record<string, unknown> | undefined): T {
+  if (!stored) {
+    return current;
+  }
+  const next = { ...current } as Record<string, unknown>;
+  for (const key of Object.keys(current)) {
+    if (typeof stored[key] === typeof (current as Record<string, unknown>)[key]) {
+      next[key] = stored[key];
+    }
+  }
+  return next as T;
+}
+
 function SecretField({
   label,
   value,
@@ -97,7 +115,8 @@ function SecretField({
   revealLoading,
   wide,
   onChange,
-  onToggleVisibility
+  onToggleVisibility,
+  onGenerate
 }: {
   label: string;
   value: string;
@@ -109,11 +128,12 @@ function SecretField({
   wide?: boolean;
   onChange: (value: string) => void;
   onToggleVisibility: () => void;
+  onGenerate?: () => void;
 }) {
   return (
     <label className={wide ? "wide" : undefined}>
       <span>{label}</span>
-      <div className={revealAvailable ? "password-field-row" : undefined}>
+      <div className={revealAvailable || onGenerate ? "password-field-row" : undefined}>
         <input
           disabled={disabled}
           value={value}
@@ -146,6 +166,11 @@ function SecretField({
             </svg>
           </button>
         ) : null}
+        {onGenerate ? (
+          <button type="button" className="button ghost compact-button password-generate-button" disabled={disabled} onClick={onGenerate} title="Generate with your Generator settings">
+            Generate
+          </button>
+        ) : null}
       </div>
     </label>
   );
@@ -168,6 +193,10 @@ type Props = {
   onSubmit: (input: ResourceForm) => Promise<void>;
   onArchive?: () => Promise<void>;
   onRevealStoredPassword?: () => Promise<string | undefined>;
+  // True when the user holds generator.passwords: the password field of
+  // saved passwords, web logins and SSH/RDP connections gets a Generate
+  // button that uses the user's remembered Generator settings.
+  canGeneratePassword?: boolean;
 };
 
 type PickerOption<T extends string> = {
@@ -203,7 +232,8 @@ export function ResourceFormCard({
   loading,
   onSubmit,
   onArchive,
-  onRevealStoredPassword
+  onRevealStoredPassword,
+  canGeneratePassword = false
 }: Props) {
   // Non-owners editing a shared object may change only descriptive metadata
   // (description, notes, folder path, environment); everything else is locked.
@@ -212,6 +242,40 @@ export function ResourceFormCard({
   const [form, setForm] = useState<ResourceForm>(defaultForm);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [passwordRevealLoading, setPasswordRevealLoading] = useState(false);
+  // The user's remembered Generator settings: which kind the Passwords
+  // section was last switched to, and the options of each kind. Loaded once
+  // per form; defaults until then.
+  const [generatorKind, setGeneratorKind] = useState<"password" | "passphrase">("password");
+  const [passwordOptions, setPasswordOptions] = useState<PasswordOptions>(defaultPasswordOptions);
+  const [passphraseOptions, setPassphraseOptions] = useState<PassphraseOptions>(defaultPassphraseOptions);
+  useEffect(() => {
+    if (!canGeneratePassword) {
+      return;
+    }
+    void api
+      .generatorPreferences()
+      .then(({ preferences }) => {
+        if (preferences.passwords?.kind === "passphrase" || preferences.passwords?.kind === "password") {
+          setGeneratorKind(preferences.passwords.kind);
+        }
+        setPasswordOptions((current) => mergeStoredOptions(current, preferences.password));
+        setPassphraseOptions((current) => mergeStoredOptions(current, preferences.passphrase));
+      })
+      .catch(() => undefined);
+  }, [canGeneratePassword]);
+
+  // Generate straight into the secret field and show it, so the user sees
+  // what will be stored (and can hand it over to whoever needs it).
+  function generateIntoSecretField() {
+    let value: string;
+    try {
+      value = generatorKind === "passphrase" ? generatePassphrase(passphraseOptions) : generatePassword(passwordOptions);
+    } catch {
+      value = generatorKind === "passphrase" ? generatePassphrase(defaultPassphraseOptions) : generatePassword(defaultPasswordOptions);
+    }
+    update("secretValue", value);
+    setPasswordVisible(true);
+  }
   const [groupPickerOpen, setGroupPickerOpen] = useState(false);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
@@ -886,6 +950,7 @@ export function ResourceFormCard({
                 revealLoading={loading || passwordRevealLoading}
                 onChange={(next) => update("secretValue", next)}
                 onToggleVisibility={() => void handlePasswordVisibilityToggle()}
+                onGenerate={canGeneratePassword && form.secretMode === "inline" && !coreLocked ? generateIntoSecretField : undefined}
               />
             </div>
             <label>
@@ -1053,6 +1118,7 @@ export function ResourceFormCard({
             revealLoading={loading || passwordRevealLoading}
             onChange={(next) => update("secretValue", next)}
             onToggleVisibility={() => void handlePasswordVisibilityToggle()}
+            onGenerate={canGeneratePassword && form.secretMode === "inline" && !isManagedExternalSource && !coreLocked ? generateIntoSecretField : undefined}
           />
         ) : null}
         {!isPasswordResource ? (

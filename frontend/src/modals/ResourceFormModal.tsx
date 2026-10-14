@@ -22,6 +22,7 @@ type Props = {
   onRevealStoredPassword?: () => Promise<string | undefined>;
   onArchive?: () => Promise<void>;
   onClose: () => void;
+  canGeneratePassword?: boolean;
 };
 
 export function ResourceFormModal({
@@ -40,7 +41,8 @@ export function ResourceFormModal({
   onSubmit,
   onRevealStoredPassword,
   onArchive,
-  onClose
+  onClose,
+  canGeneratePassword = false
 }: Props) {
   return (
     <div className="modal-scrim" {...scrimDismissProps(onClose)}>
@@ -68,6 +70,7 @@ export function ResourceFormModal({
           onSubmit={onSubmit}
           onRevealStoredPassword={onRevealStoredPassword}
           onArchive={onArchive}
+          canGeneratePassword={canGeneratePassword}
         />
       </div>
     </div>

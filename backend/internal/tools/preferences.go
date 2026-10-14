@@ -13,8 +13,12 @@ import (
 // opaque to the server (the UI owns its shape); the server only bounds its
 // size and makes sure it is a JSON object.
 var preferenceParts = map[string]bool{
-	"password":    true,
-	"passphrase":  true,
+	"password":   true,
+	"passphrase": true,
+	// The Passwords section's choice between the two above, e.g.
+	// {"kind": "passphrase"}; the Generate buttons in the object form and the
+	// extension chip start from it.
+	"passwords":   true,
 	"key":         true,
 	"token":       true,
 	"rsa":         true,

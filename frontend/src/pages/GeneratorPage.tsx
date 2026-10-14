@@ -427,6 +427,9 @@ export function GeneratorPage({ busy, onMessage, allowed }: Props) {
   }, []);
 
   function applyPreferences(preferences: GeneratorPreferences) {
+    if (preferences.passwords?.kind === "passphrase" || preferences.passwords?.kind === "password") {
+      setPasswordKind(preferences.passwords.kind);
+    }
     setPasswordOptions((c) => pick(preferences.password, ["length", "lowercase", "uppercase", "digits", "symbols", "avoidAmbiguous", "safeSymbols"], c));
     setPassphraseOptions((c) => pick(preferences.passphrase, ["words", "separator", "capitalize", "addDigit"], c));
     const key = pick(preferences.key, ["bytes", "encoding"], { bytes: keyBytes, encoding: keyEncoding as string });
@@ -626,7 +629,10 @@ export function GeneratorPage({ busy, onMessage, allowed }: Props) {
             <Segmented
               label="Password type"
               value={passwordKind}
-              onChange={setPasswordKind}
+              onChange={(kind) => {
+                setPasswordKind(kind);
+                remember("passwords", { kind });
+              }}
               options={[
                 { value: "password", label: "Password" },
                 { value: "passphrase", label: "Passphrase" }

@@ -9,7 +9,7 @@ import (
 
 func TestValidatePreference(t *testing.T) {
 	ok := json.RawMessage(`{"length":12,"symbols":false}`)
-	for _, part := range []string{"password", "passphrase", "key", "token", "rsa", "ec", "ssh", "certificate", "extension"} {
+	for _, part := range []string{"password", "passphrase", "passwords", "key", "token", "rsa", "ec", "ssh", "certificate", "extension"} {
 		if err := ValidatePreference(part, ok); err != nil {
 			t.Errorf("%s: unexpected error %v", part, err)
 		}
