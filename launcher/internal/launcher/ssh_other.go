@@ -1,4 +1,4 @@
-//go:build !windows && !linux
+//go:build !windows && !linux && !darwin
 
 package launcher
 
@@ -11,7 +11,7 @@ import (
 	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
-// Preview fallback for platforms without a dedicated SSH flow yet (macOS):
+// Preview fallback for platforms without a dedicated SSH flow (e.g. BSDs):
 // hand off to the native ssh client on the launcher's own stdio.
 func runSSHPlatform(item payload.LaunchPayload) error {
 	host := strings.TrimSpace(item.Target)

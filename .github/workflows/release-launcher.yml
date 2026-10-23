@@ -2,7 +2,7 @@ name: Release launcher
 
 # Publishes the desktop launcher when its compiled version changes on main
 # (launcher/internal/launcherinfo/launcherinfo.go, `Version = "x.y.z"`).
-# Builds Windows (.exe) and Linux (.tar.gz) binaries and attaches them to a
+# Builds Windows (.exe), Linux (.tar.gz) and macOS (.dmg) builds and attaches them to a
 # GitHub Release tagged launcher-v<version> — a neutral distribution point.
 # Deployments running ARTIFACTS_SOURCE=github serve the new build
 # automatically; nothing is ever pushed into a deployment from here.
@@ -111,7 +111,7 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --title "Launcher ${VERSION}" \
-              --notes "Desktop launcher ${VERSION} (Windows + Linux). Deployments running ARTIFACTS_SOURCE=github serve these files automatically."
+              --notes "Desktop launcher ${VERSION} (Windows, Linux, macOS). Deployments running ARTIFACTS_SOURCE=github serve these files automatically."
           fi
           gh release upload "$tag" \
             "access-workspace-launcher-windows-amd64-v${VERSION}.exe" \
@@ -151,3 +151,93 @@ jobs:
             echo "Pruning $tag and its tag."
             gh release delete "$tag" --cleanup-tag --yes
           done
+
+  # macOS needs a Mac to build (cgo + Cocoa) and Apple's signing and
+  # notarization, so it runs on its own runner after the release exists and
+  # adds its .dmg to it. Without the Apple secrets the job skips with a
+  # warning instead of failing, so Windows and Linux releases never wait on it.
+  release-macos:
+    needs: [version, release]
+    if: needs.version.outputs.release == 'true'
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - name: Check Apple signing secrets
+        id: apple
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        working-directory: .
+        run: |
+          if [ -n "$P12" ] && [ -n "$P12_PASSWORD" ] && [ -n "$API_KEY_ID" ] && [ -n "$API_ISSUER_ID" ] && [ -n "$API_KEY_P8" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Apple signing secrets are not configured; launcher ${VERSION} ships without a macOS build."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.apple.outputs.ready == 'true'
+
+      - uses: actions/setup-go@v5
+        if: steps.apple.outputs.ready == 'true'
+        with:
+          go-version-file: launcher/go.mod
+
+      - name: Import Developer ID certificate
+        if: steps.apple.outputs.ready == 'true'
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/developer-id.p12"
+          identity="$(security find-identity -v -p codesigning "$keychain" | grep -o '"Developer ID Application: [^"]*"' | head -n 1 | tr -d '"')"
+          if [ -z "$identity" ]; then
+            echo "No Developer ID Application identity in the imported certificate." >&2
+            exit 1
+          fi
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Build, sign and notarize
+        if: steps.apple.outputs.ready == 'true'
+        env:
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          export NOTARY_KEY_PATH="$RUNNER_TEMP/notary-key.p8"
+          printf '%s\n' "$API_KEY_P8" > "$NOTARY_KEY_PATH"
+          bash scripts/build_macos.sh "$RUNNER_TEMP/out"
+          rm "$NOTARY_KEY_PATH"
+
+      - name: Add the macOS build to the release
+        if: steps.apple.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "launcher-v${VERSION}" \
+            "$RUNNER_TEMP/out/access-workspace-launcher-macos-universal-v${VERSION}.dmg" \
+            --clobber
+
+      - name: Remove signing keychain
+        if: always() && steps.apple.outputs.ready == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

@@ -37,6 +37,11 @@ func main() {
 	flag.BoolVar(&backgroundOnly, "background", false, "run the local launcher bridge")
 	flag.Parse()
 
+	if rawURI == "" && encodedPayload == "" && sshSessionFile == "" && machineTrustPackage == "" &&
+		!syncPrereqs && !printOnly && !installOnly && !backgroundOnly && len(flag.Args()) == 0 {
+		rawURI = waitForLaunchURL()
+	}
+
 	if strings.TrimSpace(machineTrustPackage) != "" {
 		if err := install.InstallMachineRDPPublisherTrustFromFile(machineTrustPackage); err != nil {
 			exitWithError(err)
@@ -103,7 +108,7 @@ func main() {
 }
 
 func shouldInstallByDefault(rawURI string, encodedPayload string, args []string) bool {
-	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		return false
 	}
 	if strings.TrimSpace(rawURI) != "" || strings.TrimSpace(encodedPayload) != "" {
