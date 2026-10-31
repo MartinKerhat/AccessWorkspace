@@ -43,6 +43,7 @@ type Config struct {
 	ArtifactsGitHubTok  string
 	ChromeWebStoreURL   string
 	FirefoxExtensionURL string
+	SafariExtensionURL  string
 	EntraTenantID       string
 	EntraClientID       string
 	EntraAuthority      string
@@ -84,6 +85,7 @@ func ConfigFromEnv() Config {
 		ArtifactsGitHubTok:  strings.TrimSpace(os.Getenv("ARTIFACTS_GITHUB_TOKEN")),
 		ChromeWebStoreURL:   strings.TrimSpace(os.Getenv("CHROME_WEB_STORE_URL")),
 		FirefoxExtensionURL: strings.TrimSpace(os.Getenv("FIREFOX_EXTENSION_URL")),
+		SafariExtensionURL:  strings.TrimSpace(os.Getenv("SAFARI_EXTENSION_URL")),
 		EntraTenantID:       envOrDefault("ENTRA_TENANT_ID", ""),
 		EntraClientID:       envOrDefault("ENTRA_CLIENT_ID", ""),
 		EntraAuthority:      envOrDefault("ENTRA_AUTHORITY", "https://login.microsoftonline.com"),

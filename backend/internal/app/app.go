@@ -234,7 +234,7 @@ func New(cfg Config) (*App, error) {
 	if localSource, ok := artifactSource.(*artifacts.LocalSource); ok {
 		localSource.EnsureLayout(append(append([]artifacts.Category{}, artifacts.LauncherCategories...), artifacts.ExtensionCategories...)...)
 	}
-	artifactService := artifacts.NewService(artifactSource, cfg.ChromeWebStoreURL, cfg.FirefoxExtensionURL)
+	artifactService := artifacts.NewService(artifactSource, cfg.ChromeWebStoreURL, cfg.FirefoxExtensionURL, cfg.SafariExtensionURL)
 
 	server := api.NewServer(api.Dependencies{
 		Authenticator:    authService,

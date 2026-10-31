@@ -72,7 +72,7 @@ func TestService_ExtensionStorePrimary(t *testing.T) {
 	src := NewLocalSource(root, "http://frontend")
 
 	// With a store URL, chrome is store-primary.
-	svc := NewService(src, "https://chromewebstore.example/abc", "")
+	svc := NewService(src, "https://chromewebstore.example/abc", "", "")
 	pkgs, err := svc.ExtensionPackages(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestService_ExtensionStorePrimary(t *testing.T) {
 func TestService_ExtensionDirectDownloadWhenNoStore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "extensions/chrome/ext-v0.2.5.zip")
-	svc := NewService(NewLocalSource(root, "http://frontend"), "", "")
+	svc := NewService(NewLocalSource(root, "http://frontend"), "", "", "")
 	pkgs, err := svc.ExtensionPackages(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ func TestService_LauncherDownloadsNewestPerPlatformOnly(t *testing.T) {
 	writeFile(t, root, "launcher/linux/access-workspace-launcher-linux-amd64-v0.6.4.tar.gz")
 	writeFile(t, root, "launcher/linux/access-workspace-launcher-linux-amd64-v0.6.5.tar.gz")
 
-	svc := NewService(NewLocalSource(root, "http://frontend"), "", "")
+	svc := NewService(NewLocalSource(root, "http://frontend"), "", "", "")
 	downloads, err := svc.LauncherDownloads(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -181,7 +181,7 @@ func TestService_ExtensionFilesNewestOnly(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "extensions/chrome/access-workspace-browser-extension-chrome-v0.2.10.zip")
 	writeFile(t, root, "extensions/chrome/access-workspace-browser-extension-chrome-v0.2.11.zip")
-	svc := NewService(NewLocalSource(root, "http://frontend"), "", "")
+	svc := NewService(NewLocalSource(root, "http://frontend"), "", "", "")
 	pkgs, err := svc.ExtensionPackages(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -204,8 +204,57 @@ func TestGitHubSource_ReleasesURL(t *testing.T) {
 	if got, want := src.ReleasesURL("launcher-v"), "https://github.com/owner/repo/releases?q=launcher-v&expanded=true"; got != want {
 		t.Errorf("ReleasesURL = %q, want %q", got, want)
 	}
-	svc := NewService(src, "", "")
+	svc := NewService(src, "", "", "")
 	if svc.LauncherReleasesURL() == "" {
 		t.Error("github-backed service should expose a releases URL")
+	}
+}
+
+func TestService_SafariPackage(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "extensions/safari/access-workspace-browser-extension-safari-v0.3.0.dmg")
+	svc := NewService(NewLocalSource(root, "http://frontend"), "", "", "")
+	pkgs, err := svc.ExtensionPackages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var safari *PackageView
+	for i := range pkgs {
+		if pkgs[i].ID == CategoryExtensionSafari.Key {
+			safari = &pkgs[i]
+		}
+	}
+	if safari == nil {
+		t.Fatal("safari package missing")
+	}
+	if safari.Browser != "safari" || safari.PackageType != "dmg" || safari.Status != "available" {
+		t.Errorf("expected an available safari dmg, got browser=%q type=%q status=%q", safari.Browser, safari.PackageType, safari.Status)
+	}
+	if len(safari.Files) != 1 || safari.Files[0].Version != "0.3.0" {
+		t.Errorf("expected the 0.3.0 dmg, got %+v", safari.Files)
+	}
+
+	// With a Mac App Store listing the store is primary, like the other browsers.
+	store := NewService(NewLocalSource(root, "http://frontend"), "", "", "https://apps.apple.com/app/id1")
+	pkgs, err = store.ExtensionPackages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pkg := range pkgs {
+		if pkg.ID == CategoryExtensionSafari.Key && (pkg.PackageType != "store" || pkg.InstallURL == "") {
+			t.Errorf("expected store-primary safari, got type=%q installURL=%q", pkg.PackageType, pkg.InstallURL)
+		}
+	}
+}
+
+func TestCategoryExtensionSafari_MatchesReleaseAsset(t *testing.T) {
+	if !CategoryExtensionSafari.MatchesAsset("access-workspace-browser-extension-safari-v0.3.0.dmg") {
+		t.Error("safari dmg release asset should match the safari category")
+	}
+	if CategoryExtensionChrome.MatchesAsset("access-workspace-browser-extension-safari-v0.3.0.dmg") {
+		t.Error("safari dmg must not match the chrome category")
+	}
+	if !CategoryLauncherMac.MatchesAsset("access-workspace-launcher-macos-universal-v0.7.0.dmg") {
+		t.Error("macos launcher dmg release asset should match the mac launcher category")
 	}
 }

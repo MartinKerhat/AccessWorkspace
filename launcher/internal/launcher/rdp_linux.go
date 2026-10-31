@@ -4,19 +4,15 @@ package launcher
 
 import (
 	"fmt"
-	"io"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
 
-// Linux RDP goes through FreeRDP (the de-facto standard client, packaged by
-// every major distribution). Unlike mstsc there is no profile file, no
-// Credential Manager and no profile signing: everything — including the
-// credential — is passed as arguments/stdin from this trusted local process,
-// which is exactly the semantic-payload model the launcher uses.
+// Linux RDP goes through the system FreeRDP client — the de-facto standard,
+// packaged by every major distribution — which the user installs; the
+// capability report tells the web app when it is missing.
 var freeRDPClientCandidates = []string{"xfreerdp3", "xfreerdp", "sdl-freerdp3", "sdl-freerdp", "wlfreerdp"}
 
 // findFreeRDPClient returns the first FreeRDP client binary on PATH.
@@ -36,36 +32,9 @@ func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewa
 		return err
 	}
 
-	username := strings.TrimSpace(payload.MetadataString(item.Metadata, "username"))
-	domain := strings.TrimSpace(payload.MetadataString(item.Metadata, "connectionDomain"))
+	// Fullscreen and resizing with the window, like the Windows profile.
+	args := append(buildFreeRDPArgs(item, host, port, gatewayHost), "/f", "/dynamic-resolution")
 	secret := payload.MetadataSecret(item.Metadata, "secretValue")
-
-	args := []string{fmt.Sprintf("/v:%s:%s", host, port)}
-	if username != "" {
-		args = append(args, "/u:"+username)
-	}
-	if domain != "" {
-		args = append(args, "/d:"+domain)
-	}
-	if gatewayHost != "" {
-		// FreeRDP reuses the connection credentials for the gateway hop when no
-		// separate /gu:/gp: are given — same behavior the Windows flow arranges
-		// via cmdkey (promptcredentialonce).
-		args = append(args, "/g:"+gatewayHost)
-	}
-	if payload.MetadataBool(item.Metadata, "connectionAdminSession") {
-		args = append(args, "/admin")
-	}
-	// Title the session window after the connection so several open sessions
-	// stay tellable-apart in the taskbar.
-	if name := strings.TrimSpace(payload.MetadataString(item.Metadata, "connectionName")); name != "" {
-		args = append(args, "/t:"+name)
-	}
-	// Parity with the Windows baseline: fullscreen, resize with the window,
-	// clipboard on, and accept the server certificate on first use (mstsc
-	// profiles ship "authentication level:i:0").
-	args = append(args, "/f", "/dynamic-resolution", "+clipboard", "/cert:tofu")
-
 	if strings.TrimSpace(secret) == "" {
 		// No stored credential: run inside a terminal so FreeRDP's interactive
 		// password/certificate prompts are actually answerable (the launcher
@@ -76,41 +45,5 @@ func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewa
 		}
 		return nil
 	}
-
-	// Stored credential: hand the password over stdin (/from-stdin) so it never
-	// appears in the process list the way /p: would.
-	args = append(args, "/from-stdin")
-	command := exec.Command(client, args...)
-	stdin, err := command.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("prepare rdp credential handoff: %w", err)
-	}
-	if err := command.Start(); err != nil {
-		return fmt.Errorf("start %s: %w", client, err)
-	}
-	go func() {
-		_, _ = io.WriteString(stdin, secret+"\n")
-		_ = stdin.Close()
-	}()
-	Logf("rdp: %s started (pid=%d, args=%v)", client, command.Process.Pid, sanitizeRDPArgsForLog(args))
-
-	// Same early-exit watch as Windows: the client dying within the window
-	// means no session window ever appeared (bad credentials, refused cert...).
-	if err := waitForEarlyRDPExit(command, 2500*time.Millisecond); err != nil {
-		return err
-	}
-	return nil
-}
-
-// sanitizeRDPArgsForLog keeps credentials out of the launcher log.
-func sanitizeRDPArgsForLog(args []string) []string {
-	out := make([]string, 0, len(args))
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "/p:") || strings.HasPrefix(arg, "/gp:") {
-			out = append(out, "/p:***")
-			continue
-		}
-		out = append(out, arg)
-	}
-	return out
+	return startFreeRDPWithStoredCredential(client, args, secret)
 }

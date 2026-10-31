@@ -19,5 +19,9 @@ frontend/*.tsbuildinfo
 /artifacts/**
 !/artifacts/README.md
 
+# Xcode per-user state and build output in the Safari wrapper project.
+browser-extension/safari-app/**/xcuserdata/
+browser-extension/safari-app/build/
+
 # Internal working notes for the assistant (not for publication).
 /.dev-notes/

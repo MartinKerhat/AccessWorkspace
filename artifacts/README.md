@@ -23,11 +23,14 @@ artifacts/
   launcher/
     windows/                 *.exe
     linux/                   *.tar.gz  (binary self-installs on first run)
+    mac/                     *.dmg     (drag to Applications, open once)
+    mac-deps/                build cache: the FreeRDP client bundled into the macOS launcher
   extensions/
     chrome/                  *.zip
     firefox/
       signed/                *.xpi   (Mozilla-signed; recommended)
       unsigned/              *.xpi   (developer build; sign via Mozilla before use)
+    safari/                  *.dmg   (notarized Mac app wrapping the extension)
 ```
 
 ## Sources
@@ -45,6 +48,7 @@ artifacts/
   and proxies downloads, so every deployment automatically serves the newest
   builds this project publishes. No per-deployment uploads.
 
-Once the extensions are published to the Chrome Web Store / Firefox Add-ons,
-set `CHROME_WEB_STORE_URL` / `FIREFOX_EXTENSION_URL` and the app makes the store
-listing the primary install action, with direct download as a fallback.
+Once the extensions are published to the Chrome Web Store / Firefox Add-ons /
+Mac App Store, set `CHROME_WEB_STORE_URL` / `FIREFOX_EXTENSION_URL` /
+`SAFARI_EXTENSION_URL` and the app makes the store listing the primary install
+action, with direct download as a fallback.

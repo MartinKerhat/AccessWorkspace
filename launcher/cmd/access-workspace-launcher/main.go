@@ -37,6 +37,18 @@ func main() {
 	flag.BoolVar(&backgroundOnly, "background", false, "run the local launcher bridge")
 	flag.Parse()
 
+	if rawURI == "" && encodedPayload == "" && sshSessionFile == "" && machineTrustPackage == "" &&
+		!syncPrereqs && !printOnly && !installOnly && !backgroundOnly && len(flag.Args()) == 0 {
+		// macOS: URL-scheme launches arrive as Apple Events, one per click, for
+		// as long as this process is the running instance of the app.
+		if handled, err := serveLaunchURLs(launchProtocolURL); handled {
+			if err != nil {
+				exitWithError(err)
+			}
+			return
+		}
+	}
+
 	if strings.TrimSpace(machineTrustPackage) != "" {
 		if err := install.InstallMachineRDPPublisherTrustFromFile(machineTrustPackage); err != nil {
 			exitWithError(err)
@@ -102,8 +114,25 @@ func main() {
 	}
 }
 
+// launchProtocolURL runs one access-workspace:// launch end to end. In a
+// protocol launch the launcher is a GUI process (stderr goes nowhere), so a
+// dialog is the only way the user sees a failure; the log keeps the detail.
+func launchProtocolURL(rawURI string) error {
+	item, err := payload.DecodeProtocolURI(rawURI)
+	if err != nil {
+		launcher.Logf("decode launch payload failed: %v", err)
+		launcher.ShowLaunchFailure(err)
+		return err
+	}
+	if err := launcher.Run(item); err != nil {
+		launcher.ShowLaunchFailure(err)
+		return err
+	}
+	return nil
+}
+
 func shouldInstallByDefault(rawURI string, encodedPayload string, args []string) bool {
-	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		return false
 	}
 	if strings.TrimSpace(rawURI) != "" || strings.TrimSpace(encodedPayload) != "" {
@@ -154,7 +183,12 @@ func runBackgroundServer() error {
 	if err != nil {
 		lower := strings.ToLower(err.Error())
 		if strings.Contains(lower, "only one usage") || strings.Contains(lower, "address already in use") {
-			return nil
+			// Another bridge already serves the port. Fail rather than exit
+			// cleanly: the macOS LaunchAgent restarts on failure only, and must
+			// take over once that other instance (a terminal run, a leftover
+			// of an old install) is gone. Windows and Linux have no supervisor
+			// and only see the line on stderr.
+			return fmt.Errorf("another launcher bridge is already listening on %s", launcherinfo.ListenURL)
 		}
 		return err
 	}

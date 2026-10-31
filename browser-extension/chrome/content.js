@@ -1157,29 +1157,94 @@
     };
     const panel = ensurePanel();
     panel.dataset.mode = PANEL_MODE_SAVE;
-    panel.innerHTML = `
-      <div class="aw-fill-card">
-        <div class="aw-fill-header">
-          <strong>Access Workspace</strong>
-          <button type="button" class="aw-fill-close" aria-label="Dismiss">x</button>
-        </div>
-        <p class="aw-fill-copy">${isUpdate ? "Update the stored password for this portal credential." : "Save the credential you just used for this portal."}</p>
-        <input class="aw-save-input aw-save-name" placeholder="Name">
-        <input class="aw-save-input aw-save-url" placeholder="Portal URL">
-        <input class="aw-save-input aw-save-username" placeholder="Username or email">
-        <input class="aw-save-input aw-save-password" type="password" placeholder="Password">
-        <label class="aw-save-checkbox">
-          <input class="aw-save-personal" type="checkbox" ${draft.personal ? "checked" : ""} ${(isUpdate || !candidate.canSaveShared) ? "disabled" : ""}>
-          <span>Save as personal password</span>
-        </label>
-        <p class="aw-fill-note"></p>
-        <div class="aw-save-actions">
-          <button type="button" class="aw-fill-action aw-save-submit">${isUpdate ? "Update password" : "Save credential"}</button>
-          <button type="button" class="aw-save-cancel">Dismiss</button>
-        </div>
-        <p class="aw-fill-status" aria-live="polite"></p>
-      </div>
-    `;
+    panel.replaceChildren();
+
+    const card = document.createElement("div");
+    card.className = "aw-fill-card";
+
+    const header = document.createElement("div");
+    header.className = "aw-fill-header";
+
+    const title = document.createElement("strong");
+    title.textContent = "Access Workspace";
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "aw-fill-close";
+    closeButton.setAttribute("aria-label", "Dismiss");
+    closeButton.textContent = "x";
+
+    header.append(title, closeButton);
+
+    const copy = document.createElement("p");
+    copy.className = "aw-fill-copy";
+    copy.textContent = isUpdate ? "Update the stored password for this portal credential." : "Save the credential you just used for this portal.";
+
+    const nameInput = document.createElement("input");
+    nameInput.className = "aw-save-input aw-save-name";
+    nameInput.placeholder = "Name";
+
+    const urlInput = document.createElement("input");
+    urlInput.className = "aw-save-input aw-save-url";
+    urlInput.placeholder = "Portal URL";
+
+    const usernameInput = document.createElement("input");
+    usernameInput.className = "aw-save-input aw-save-username";
+    usernameInput.placeholder = "Username or email";
+
+    const passwordInput = document.createElement("input");
+    passwordInput.className = "aw-save-input aw-save-password";
+    passwordInput.type = "password";
+    passwordInput.placeholder = "Password";
+
+    const personalLabel = document.createElement("label");
+    personalLabel.className = "aw-save-checkbox";
+
+    const personalInput = document.createElement("input");
+    personalInput.className = "aw-save-personal";
+    personalInput.type = "checkbox";
+    personalInput.checked = draft.personal;
+    personalInput.disabled = isUpdate || !candidate.canSaveShared;
+
+    const personalText = document.createElement("span");
+    personalText.textContent = "Save as personal password";
+    personalLabel.append(personalInput, personalText);
+
+    const noteText = document.createElement("p");
+    noteText.className = "aw-fill-note";
+
+    const actions = document.createElement("div");
+    actions.className = "aw-save-actions";
+
+    const submitButton = document.createElement("button");
+    submitButton.type = "button";
+    submitButton.className = "aw-fill-action aw-save-submit";
+    submitButton.textContent = isUpdate ? "Update password" : "Save credential";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "aw-save-cancel";
+    cancelButton.textContent = "Dismiss";
+
+    actions.append(submitButton, cancelButton);
+
+    const statusText = document.createElement("p");
+    statusText.className = "aw-fill-status";
+    statusText.setAttribute("aria-live", "polite");
+
+    card.append(
+      header,
+      copy,
+      nameInput,
+      urlInput,
+      usernameInput,
+      passwordInput,
+      personalLabel,
+      noteText,
+      actions,
+      statusText
+    );
+    panel.appendChild(card);
 
     const close = panel.querySelector(".aw-fill-close");
     const cancel = panel.querySelector(".aw-save-cancel");

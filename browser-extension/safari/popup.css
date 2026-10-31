@@ -1,0 +1,120 @@
+body {
+  margin: 0;
+  background: #0d1724;
+  color: #edf4ff;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.popup {
+  width: 360px;
+  padding: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: #7ea2c6;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.copy,
+.status {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c6d6eb;
+}
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.static-field {
+  padding: 10px 12px;
+  border: 1px solid #304a66;
+  border-radius: 12px;
+  background: #162333;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #9eb7d3;
+}
+
+.field-value {
+  color: #edf4ff;
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.toggle-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid #304a66;
+  border-radius: 12px;
+  background: #111d2a;
+  cursor: pointer;
+}
+
+.toggle-row input {
+  margin-top: 3px;
+  accent-color: #ffbd77;
+}
+
+.toggle-row strong,
+.toggle-row small {
+  display: block;
+}
+
+.toggle-row strong {
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #edf4ff;
+}
+
+.toggle-row small {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #9eb7d3;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+button {
+  border: 1px solid #304a66;
+  border-radius: 12px;
+  background: #162333;
+  color: #edf4ff;
+  padding: 10px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.actions button {
+  flex: 1 1 0;
+}
+
+button.primary {
+  border-color: #f2ad66;
+  background: linear-gradient(135deg, #ffb86a, #ffd39d);
+  color: #201000;
+  font-weight: 700;
+}

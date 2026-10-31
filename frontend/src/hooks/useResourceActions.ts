@@ -55,6 +55,17 @@ type UseResourceActionsDeps = {
 // Actions on the selected resource: reveal, launch (browser + desktop
 // launcher hand-off), personal connection overrides, create/update/archive/
 // restore, and the selection-driven side state (password options, override).
+function launcherCapabilityMessage(launchType: "rdp" | "ssh", platform: string | undefined): string {
+  if (launchType === "rdp") {
+    return platform === "darwin"
+      ? "This launcher build is missing its bundled remote desktop client — reinstall Access Workspace Launcher from the download dialog and try again."
+      : "This machine's launcher cannot open RDP yet — install the FreeRDP client (e.g. the freerdp package) and try again.";
+  }
+  return platform === "darwin"
+    ? "This machine's launcher cannot open SSH — macOS ships the OpenSSH client under /usr/bin; check that it has not been removed."
+    : "This machine's launcher cannot open SSH yet — install an OpenSSH client and a terminal emulator, then try again.";
+}
+
 export function useResourceActions({
   session,
   setBusy,
@@ -314,13 +325,10 @@ export function useResourceActions({
         }
         // Launchers report per-capability support (e.g. Linux RDP needs a
         // FreeRDP client installed) so missing prerequisites surface as a
-        // clear message instead of a failed hand-off.
+        // clear message instead of a failed hand-off. On macOS the RDP client
+        // ships inside the launcher, so a missing one means a broken install.
         if (status.capabilities && status.capabilities[launchType] === false) {
-          setMessage(
-            launchType === "rdp"
-              ? "This machine's launcher cannot open RDP yet — install the FreeRDP client (e.g. the freerdp package) and try again."
-              : "This machine's launcher cannot open SSH yet — install an OpenSSH client and a terminal emulator, then try again."
-          );
+          setMessage(launcherCapabilityMessage(launchType, status.platform));
           return;
         }
         const launcherTicket = typeof response.metadata.launcherTicket === "string" ? response.metadata.launcherTicket : "";
