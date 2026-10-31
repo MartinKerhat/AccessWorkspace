@@ -12,7 +12,9 @@ name: Release launcher
 # it does not matter which commit of a push carries the bump. Use
 # workflow_dispatch with force=true to rebuild and re-upload an existing version.
 #
-# Local fallback: launcher/build.ps1 (writes into artifacts/launcher/).
+# Local fallback: launcher/build.ps1 (Windows + Linux) and
+# launcher/scripts/build_macos.sh (macOS, needs a Mac); both write into
+# artifacts/launcher/.
 
 on:
   push:
@@ -152,10 +154,14 @@ jobs:
             gh release delete "$tag" --cleanup-tag --yes
           done
 
-  # macOS needs a Mac to build (cgo + Cocoa) and Apple's signing and
-  # notarization, so it runs on its own runner after the release exists and
-  # adds its .dmg to it. Without the Apple secrets the job skips with a
-  # warning instead of failing, so Windows and Linux releases never wait on it.
+  # macOS needs a Mac to build (cgo + Cocoa, plus the bundled FreeRDP client)
+  # and Apple's signing and notarization, so it runs on its own runner after
+  # the release exists and adds its .dmg to it. Without the Apple secrets the
+  # job skips with a warning instead of failing, so Windows and Linux releases
+  # never wait on it. Secrets: APPLE_DEVELOPER_ID_P12 (base64 of the
+  # "Developer ID Application" certificate export), APPLE_DEVELOPER_ID_P12_PASSWORD,
+  # and an App Store Connect API key for notarization: APPLE_API_KEY_ID,
+  # APPLE_API_ISSUER_ID, APPLE_API_KEY_P8 (the .p8 file's text).
   release-macos:
     needs: [version, release]
     if: needs.version.outputs.release == 'true'
@@ -190,6 +196,20 @@ jobs:
         if: steps.apple.outputs.ready == 'true'
         with:
           go-version-file: launcher/go.mod
+
+      # The RDP client bundled into the .app (FreeRDP + OpenSSL, both
+      # architectures) takes a while to compile; its build script pins the
+      # versions, so the output is cached on that script's content.
+      - name: Cache the bundled FreeRDP client
+        if: steps.apple.outputs.ready == 'true'
+        uses: actions/cache@v4
+        with:
+          path: artifacts/launcher/mac-deps
+          key: macfreerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('launcher/scripts/build_freerdp_macos.sh') }}
+
+      - name: Build the bundled FreeRDP client
+        if: steps.apple.outputs.ready == 'true'
+        run: bash scripts/build_freerdp_macos.sh "$GITHUB_WORKSPACE/artifacts/launcher/mac-deps"
 
       - name: Import Developer ID certificate
         if: steps.apple.outputs.ready == 'true'

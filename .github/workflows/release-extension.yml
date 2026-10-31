@@ -6,7 +6,8 @@ name: Release browser extension
 #   - Chrome Web Store (existing unlisted item; first listing was created
 #     manually in the dashboard)
 #   - a GitHub Release on this repo (tag extension-v<version>) carrying the
-#     Chrome ZIP and the Mozilla-signed Firefox XPI
+#     Chrome ZIP, the Mozilla-signed Firefox XPI and the signed, notarized
+#     Safari app (.dmg, built on a Mac runner in its own job)
 # Deployments consume the release automatically by running the backend with
 # ARTIFACTS_SOURCE=github + ARTIFACTS_GITHUB_REPO=<owner>/<repo>; nothing is
 # ever pushed into a deployment from here.
@@ -51,8 +52,9 @@ jobs:
           set -euo pipefail
           version="$(jq -r .version browser-extension/chrome/manifest.json)"
           firefox_version="$(jq -r .version browser-extension/firefox/manifest.json)"
-          if [ "$version" != "$firefox_version" ]; then
-            echo "::error::Manifest versions differ: chrome=$version firefox=$firefox_version — bump both together."
+          safari_version="$(jq -r .version browser-extension/safari/manifest.json)"
+          if [ "$version" != "$firefox_version" ] || [ "$version" != "$safari_version" ]; then
+            echo "::error::Manifest versions differ: chrome=$version firefox=$firefox_version safari=$safari_version — bump all three together."
             exit 1
           fi
           # Release when this version has NOT been published yet — not when it
@@ -197,3 +199,87 @@ jobs:
             echo "::error::Chrome Web Store publish refused: $(echo "$publish" | jq -r '.error.message') — package uploaded as a draft only. Fix the listing in the developer dashboard, then re-run this workflow with force=true."
             exit 1
           fi
+
+  # Safari extensions live inside a Mac app, which needs Xcode, a Developer ID
+  # and notarization — so this runs on a Mac runner after the release exists
+  # and adds the .dmg to it. The same Apple secrets as the launcher workflow;
+  # without them the job skips with a warning, never blocking the other
+  # browsers.
+  release-safari:
+    needs: [version, release]
+    if: needs.version.outputs.release == 'true'
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Check Apple signing secrets
+        id: apple
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "$P12" ] && [ -n "$P12_PASSWORD" ] && [ -n "$API_KEY_ID" ] && [ -n "$API_ISSUER_ID" ] && [ -n "$API_KEY_P8" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Apple signing secrets are not configured; extension ${VERSION} ships without a Safari build."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.apple.outputs.ready == 'true'
+
+      - name: Import Developer ID certificate
+        if: steps.apple.outputs.ready == 'true'
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/developer-id.p12"
+          identity="$(security find-identity -v -p codesigning "$keychain" | grep -o '"Developer ID Application: [^"]*"' | head -n 1 | tr -d '"')"
+          if [ -z "$identity" ]; then
+            echo "No Developer ID Application identity in the imported certificate." >&2
+            exit 1
+          fi
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          # "Developer ID Application: Name (TEAMID)" -> TEAMID, which xcodebuild wants separately.
+          echo "MACOS_TEAM_ID=$(echo "$identity" | sed -nE 's/.*\(([A-Z0-9]+)\)$/\1/p')" >> "$GITHUB_ENV"
+
+      - name: Build, sign and notarize the Safari app
+        if: steps.apple.outputs.ready == 'true'
+        env:
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          export NOTARY_KEY_PATH="$RUNNER_TEMP/notary-key.p8"
+          printf '%s\n' "$API_KEY_P8" > "$NOTARY_KEY_PATH"
+          bash scripts/build-safari-extension.sh "$RUNNER_TEMP/out"
+          rm "$NOTARY_KEY_PATH"
+
+      - name: Add the Safari build to the release
+        if: steps.apple.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "extension-v${VERSION}" \
+            "$RUNNER_TEMP/out/access-workspace-browser-extension-safari-v${VERSION}.dmg" \
+            --clobber
+
+      - name: Remove signing keychain
+        if: always() && steps.apple.outputs.ready == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

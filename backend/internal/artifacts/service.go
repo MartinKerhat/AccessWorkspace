@@ -35,13 +35,18 @@ type Service struct {
 	source          Source
 	chromeStoreURL  string
 	firefoxStoreURL string
+	safariStoreURL  string
 }
 
-func NewService(source Source, chromeStoreURL, firefoxStoreURL string) *Service {
+// NewService wires the artifact source and the optional store listings
+// (Chrome Web Store, Firefox Add-ons, Mac App Store); an empty URL means
+// direct download for that browser.
+func NewService(source Source, chromeStoreURL, firefoxStoreURL, safariStoreURL string) *Service {
 	return &Service{
 		source:          source,
 		chromeStoreURL:  strings.TrimSpace(chromeStoreURL),
 		firefoxStoreURL: strings.TrimSpace(firefoxStoreURL),
+		safariStoreURL:  strings.TrimSpace(safariStoreURL),
 	}
 }
 
@@ -51,8 +56,8 @@ type PackageView struct {
 	Browser     string     `json:"browser"`
 	Variant     string     `json:"variant,omitempty"`
 	Label       string     `json:"label"`
-	PackageType string     `json:"packageType"` // "store" | "zip" | "xpi" | "app"
-	Status      string     `json:"status"`      // "available" | "unavailable" | "planned"
+	PackageType string     `json:"packageType"` // "store" | "zip" | "xpi" | "dmg"
+	Status      string     `json:"status"`      // "available" | "unavailable"
 	InstallURL  string     `json:"installUrl,omitempty"`
 	ActionLabel string     `json:"actionLabel"`
 	Notes       string     `json:"notes"`
@@ -100,7 +105,7 @@ func (s *Service) Open(ctx context.Context, categoryKey, name string) (io.ReadCl
 // ExtensionPackages returns the browser-extension options, store-primary where a
 // store URL is configured.
 func (s *Service) ExtensionPackages(ctx context.Context) ([]PackageView, error) {
-	views := make([]PackageView, 0, len(ExtensionCategories)+1)
+	views := make([]PackageView, 0, len(ExtensionCategories))
 
 	for _, category := range ExtensionCategories {
 		files, err := s.source.List(ctx, category)
@@ -109,13 +114,6 @@ func (s *Service) ExtensionPackages(ctx context.Context) ([]PackageView, error) 
 		}
 		views = append(views, s.packageView(category, files))
 	}
-
-	// Safari has no downloadable package yet.
-	views = append(views, PackageView{
-		ID: "extension-safari", Browser: "safari", Label: "Safari",
-		PackageType: "app", Status: "planned", Files: []Artifact{},
-		Notes: "Planned. Safari needs a native Safari Web Extension wrapper plus Apple signing and notarization.",
-	})
 
 	return views, nil
 }
@@ -145,6 +143,8 @@ func (s *Service) packageView(category Category, files []Artifact) PackageView {
 		if category.Variant == "signed" {
 			storeURL = s.firefoxStoreURL
 		}
+	case "safari":
+		storeURL = s.safariStoreURL
 	}
 
 	switch category.Key {
@@ -178,6 +178,18 @@ func (s *Service) packageView(category Category, files []Artifact) PackageView {
 		view.Status = availabilityFor(files)
 		view.ActionLabel = "Download unsigned XPI"
 		view.Notes = "Developer build. Sign it through Mozilla before distributing to normal Firefox users."
+	case CategoryExtensionSafari.Key:
+		view.Label = "Safari"
+		if storeURL != "" {
+			view.PackageType, view.Status = "store", "available"
+			view.InstallURL, view.ActionLabel = storeURL, "Install from the Mac App Store"
+			view.Notes = "Install the Mac app from the App Store, open it once and turn the extension on in Safari Settings › Extensions, then connect the browser from the app."
+		} else {
+			view.PackageType = "dmg"
+			view.Status = availabilityFor(files)
+			view.ActionLabel = "Download for macOS"
+			view.Notes = "Safari extensions ship inside a small Mac app. Open the disk image, drag the app to Applications, open it once, then turn the extension on in Safari Settings › Extensions and allow it on this site when Safari asks."
+		}
 	}
 
 	return view

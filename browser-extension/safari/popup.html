@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Access Workspace</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <p class="eyebrow">Access Workspace</p>
+      <h1>Browser extension</h1>
+      <p class="copy">Connect this extension from the Access Workspace web app. After the first handshake, the extension keeps its own workspace session.</p>
+
+      <div class="field static-field">
+        <span>Workspace URL</span>
+        <div id="workspace-url" class="field-value">Not connected</div>
+      </div>
+
+      <div class="field static-field">
+        <span>Status</span>
+        <div id="connection-state" class="field-value">Waiting for connection</div>
+      </div>
+
+      <label class="toggle-row">
+        <input id="credential-save-prompts" type="checkbox">
+        <span>
+          <strong>Offer to save portal credentials</strong>
+          <small>When off, the extension only suggests credentials already stored in Access Workspace.</small>
+        </span>
+      </label>
+
+      <div class="actions">
+        <button id="check" class="primary" type="button">Check connection</button>
+        <button id="disconnect" type="button">Disconnect</button>
+      </div>
+
+      <p id="status" class="status" aria-live="polite"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

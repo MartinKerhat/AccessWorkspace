@@ -11,7 +11,7 @@ modular monolith, not microservices.
 Two companion clients talk to the same backend rather than being separate
 platforms:
 
-- a local desktop **launcher** for SSH and RDP (Windows and Linux)
+- a local desktop **launcher** for SSH and RDP (Windows, Linux and macOS; on macOS with the RDP client bundled inside)
 - a **browser extension** for portal credential fill (Chrome, Edge, Firefox)
 
 ## Components

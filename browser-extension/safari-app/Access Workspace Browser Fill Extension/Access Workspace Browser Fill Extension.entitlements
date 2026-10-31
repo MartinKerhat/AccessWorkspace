@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Safari only loads sandboxed web extensions; the host app is sandboxed
+	     too, as Apple's converter intends. Kept in an explicit file because the
+	     release build signs with CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO (to drop
+	     the debugger entitlement notarization rejects), which would otherwise
+	     drop the sandbox as well. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+</dict>
+</plist>

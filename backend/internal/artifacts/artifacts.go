@@ -24,9 +24,9 @@ type Category struct {
 	Key      string   // stable identifier used in the API and URL paths
 	Prefix   string   // folder / blob prefix, e.g. "extensions/firefox/signed"
 	Kind     string   // "launcher" or "extension"
-	Browser  string   // "", "chrome", or "firefox"
+	Browser  string   // "", "chrome", "firefox", or "safari"
 	Variant  string   // "", "signed", or "unsigned"
-	Platform string   // "", "windows", ...
+	Platform string   // "", "windows", "linux", or "mac"
 	Exts     []string // allowed file extensions (lowercase, with dot)
 	// Flat-namespace matching for sources without folders (GitHub release
 	// assets): a filename belongs to the category when it starts with
@@ -142,6 +142,13 @@ var (
 		Kind: "extension", Browser: "firefox", Variant: "unsigned", Exts: []string{".xpi"},
 		AssetPrefix: "access-workspace-browser-extension-firefox", AssetExclude: "-signed-",
 	}
+	// Safari extensions ship inside a signed, notarized Mac app (Apple's Web
+	// Extension wrapper), distributed as a disk image like the launcher.
+	CategoryExtensionSafari = Category{
+		Key: "extension-safari", Prefix: "extensions/safari",
+		Kind: "extension", Browser: "safari", Exts: []string{".dmg"},
+		AssetPrefix: "access-workspace-browser-extension-safari",
+	}
 )
 
 // LauncherCategories and ExtensionCategories group the standard categories.
@@ -151,6 +158,7 @@ var (
 		CategoryExtensionChrome,
 		CategoryExtensionFirefoxSigned,
 		CategoryExtensionFirefoxUnsigned,
+		CategoryExtensionSafari,
 	}
 )
 

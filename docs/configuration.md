@@ -40,7 +40,7 @@ backend fails fast at startup if a required one is missing.
 | `ARTIFACTS_DIR` | when `local` | `/data/downloads` | Filesystem root of the artifact folders. Dev bind-mounts `./artifacts`; prod mounts a volume. |
 | `ARTIFACTS_BLOB_CONTAINER_URL` / `ARTIFACTS_BLOB_SAS` | when `blob` | — | Azure Blob container URL and optional SAS token (list + read). |
 | `ARTIFACTS_GITHUB_REPO` / `ARTIFACTS_GITHUB_TOKEN` | when `github` | — | Repository to serve launcher and extension builds from, and an optional token for higher rate limits. |
-| `CHROME_WEB_STORE_URL` / `FIREFOX_EXTENSION_URL` | no | — | Browser-extension store listings. When set, the store becomes the primary install action and direct download the fallback. |
+| `CHROME_WEB_STORE_URL` / `FIREFOX_EXTENSION_URL` / `SAFARI_EXTENSION_URL` | no | — | Browser-extension store listings (Chrome Web Store, Firefox Add-ons, Mac App Store). When set, the store becomes the primary install action and direct download the fallback. |
 | `VITE_API_BASE_URL` | no (build) | dev value | Frontend build-time API base URL. |
 
 ## Runtime settings that are not environment variables

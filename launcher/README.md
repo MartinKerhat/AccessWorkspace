@@ -1,7 +1,7 @@
 # Access Workspace Launcher
 
 This folder contains the local desktop launcher for the Connections module
-(Windows and Linux; macOS is planned).
+(Windows, Linux and macOS).
 
 Shared behavior on every platform:
 
@@ -26,16 +26,27 @@ Linux specifics:
 - installs per-user with XDG conventions: binary in `~/.local/bin`, URI-handler `.desktop` entry, autostart entry, state under `~/.local/share/access-workspace-launcher`
 - install from the tarball: `tar -xzf access-workspace-launcher-linux-amd64-v*.tar.gz && ./access-workspace-launcher`
 
+macOS specifics:
+
+- ships as one signed, notarized `.dmg` with everything inside: the universal (Apple silicon + Intel) launcher app and, under `Contents/Helpers`, FreeRDP's native Cocoa client (`MacFreeRDP`, built from source with OpenSSL linked statically by `scripts/build_freerdp_macos.sh`). Mac users are not asked to find and install an RDP client — the opposite of the Linux model.
+- starts RDP through that bundled client with the same argument mapping as Linux (target, credentials, domain, gateway, admin session, window title; password on stdin via `/from-stdin`), in a window sized to the display with smart sizing; the green button goes fullscreen
+- starts launcher-managed SSH sessions in Terminal.app (part of macOS, next to the system OpenSSH client), through a self-deleting `.command` script so no Automation permission prompt appears
+- installs the platform way: drag the app from the `.dmg` to Applications and open it once. That first open registers a per-user LaunchAgent (`~/Library/LaunchAgents/io.github.martinkerhat.accessworkspace.launcher.plist`) that keeps the localhost bridge running and restarts it at login; the `access-workspace://` scheme comes from the bundle's `Info.plist`, registered by LaunchServices. Upgrading is the same gesture: replace the app, open it once.
+- state lives under `~/Library/Application Support/access-workspace-launcher` (logs, payloads)
+- no Dock icon or menu bar (`LSUIElement`): the launcher is a background bridge; the RDP session window is a normal app window
+
 Current limits:
 
-- macOS is not supported yet
 - SSH still assumes password-based auth for the managed flow and falls back to the native client for key-driven setups
 - RDP signing (Windows) currently assumes a workspace-managed test or uploaded certificate package instead of a production enterprise PKI workflow
 
 ## Build
 
-From this folder, `.\build.ps1` builds and packages both platform artifacts
-into `../artifacts/launcher/`. For a quick local Windows build:
+From this folder, `.\build.ps1` builds and packages the Windows and Linux
+artifacts into `../artifacts/launcher/`; on a Mac, `scripts/build_macos.sh`
+builds the macOS `.dmg` (first run also compiles the bundled FreeRDP client,
+see `scripts/build_freerdp_macos.sh`; `MACOS_SKIP_FREERDP=1` for a quick
+SSH-only build). For a quick local Windows build:
 
 ```powershell
 go build -o dist\access-workspace-launcher.exe .\cmd\access-workspace-launcher
@@ -85,3 +96,14 @@ Run the `.exe` once. On Windows, that first run now:
 - shows a confirmation dialog
 
 After that, `Connect` from the web app first checks the local launcher version through the background bridge and only then hands the connection into the installed helper.
+
+## macOS install
+
+- `access-workspace-launcher-macos-universal-v<version>.dmg`
+
+Open the disk image, drag **Access Workspace Launcher** to Applications and open it once (Gatekeeper accepts it: the build is signed with a Developer ID and notarized). That first open:
+
+- registers the per-user LaunchAgent that runs the background bridge (`--background`) now and at every login
+- shows a confirmation dialog
+
+The `access-workspace://` handler needs no registration step — LaunchServices picks it up from the app bundle. Opening the app while it sits in the `.dmg` or outside Applications is refused with a hint, because a LaunchAgent pointing there would break as soon as the image is ejected.

@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# Builds the macOS launcher: universal binary -> .app -> .dmg, optionally
-# signed with a Developer ID and notarized. Runs on macOS only (cgo + Cocoa,
-# codesign, hdiutil); CI and local builds on a Mac use this same script.
+# Builds the macOS launcher: universal binary -> .app (with the FreeRDP client
+# bundled inside) -> .dmg, optionally signed with a Developer ID and
+# notarized. Runs on macOS only (cgo + Cocoa, codesign, hdiutil); CI and local
+# builds on a Mac use this same script.
 #
 # Usage: launcher/scripts/build_macos.sh [output-dir]   (default: artifacts/launcher/mac)
 #
+# The bundled RDP client comes from scripts/build_freerdp_macos.sh, which is
+# run here when its output is missing (slow the first time: it compiles
+# OpenSSL and FreeRDP for both architectures; CI caches the result).
+#
 # Optional environment:
+#   MACFREERDP_APP       path to a prebuilt MacFreeRDP.app (default:
+#                        artifacts/launcher/mac-deps/MacFreeRDP.app, built on demand).
+#   MACOS_SKIP_FREERDP   set to 1 to build a launcher without the RDP client
+#                        (SSH-only dev build; RDP reports as unavailable).
 #   MACOS_SIGN_IDENTITY  codesign identity, e.g. "Developer ID Application: Name (TEAMID)".
 #                        Unset: ad-hoc signature — runs on this Mac only, Gatekeeper
 #                        rejects it elsewhere.
@@ -30,6 +39,12 @@ app_name="Access Workspace Launcher"
 binary_name="access-workspace-launcher"
 dmg_path="$out_dir/access-workspace-launcher-macos-universal-v${version}.dmg"
 
+macfreerdp="${MACFREERDP_APP:-$repo_dir/artifacts/launcher/mac-deps/MacFreeRDP.app}"
+if [ "${MACOS_SKIP_FREERDP:-0}" != "1" ] && [ ! -d "$macfreerdp" ]; then
+  echo "Bundled RDP client not found at $macfreerdp; building it"
+  bash "$launcher_dir/scripts/build_freerdp_macos.sh" "$(dirname "$macfreerdp")"
+fi
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 app="$work/staging/$app_name.app"
@@ -49,14 +64,35 @@ if [ -f "$launcher_dir/macos/AppIcon.icns" ]; then
   plutil -insert CFBundleIconFile -string AppIcon "$app/Contents/Info.plist"
 fi
 
+# The RDP client is a nested app under Contents/Helpers (one of the places
+# codesign and notarization accept nested code). It carries its own licenses.
+if [ "${MACOS_SKIP_FREERDP:-0}" != "1" ]; then
+  mkdir -p "$app/Contents/Helpers"
+  cp -R "$macfreerdp" "$app/Contents/Helpers/MacFreeRDP.app"
+  echo "Bundled $(basename "$macfreerdp") ($(lipo -archs "$app/Contents/Helpers/MacFreeRDP.app/Contents/MacOS/MacFreeRDP"))"
+else
+  echo "MACOS_SKIP_FREERDP=1: building without the RDP client"
+fi
+
+# Sign inside-out: nested code first, then the outer bundle (--deep is
+# discouraged by Apple and gets nested entitlements wrong).
+sign() {
+  if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
+    codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$@"
+  else
+    codesign --force --sign - "$@"
+  fi
+}
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
   echo "Signing with: $MACOS_SIGN_IDENTITY"
-  codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$app"
 else
   echo "MACOS_SIGN_IDENTITY not set: ad-hoc signature (local testing only)"
-  codesign --force --sign - "$app"
 fi
-codesign --verify --strict --verbose=2 "$app"
+if [ -d "$app/Contents/Helpers/MacFreeRDP.app" ]; then
+  sign "$app/Contents/Helpers/MacFreeRDP.app"
+fi
+sign "$app"
+codesign --verify --strict --deep --verbose=2 "$app"
 
 ln -s /Applications "$work/staging/Applications"
 rm -f "$dmg_path"
