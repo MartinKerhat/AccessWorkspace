@@ -50,6 +50,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # The three copies share every file but the manifest; a change that
+          # lands in one copy only would ship a different extension per browser.
+          for browser in firefox safari; do
+            if ! diff -rq --exclude=manifest.json browser-extension/chrome "browser-extension/$browser"; then
+              echo "::error::browser-extension/chrome and browser-extension/$browser differ beyond manifest.json — apply the change to all three copies."
+              exit 1
+            fi
+          done
           version="$(jq -r .version browser-extension/chrome/manifest.json)"
           firefox_version="$(jq -r .version browser-extension/firefox/manifest.json)"
           safari_version="$(jq -r .version browser-extension/safari/manifest.json)"
@@ -230,6 +238,17 @@ jobs:
 
       - uses: actions/checkout@v4
         if: steps.apple.outputs.ready == 'true'
+
+      # The Xcode project was last saved by Xcode 27 and uses Xcode 26+ Swift
+      # settings; the runner image keeps several Xcodes and defaults to an
+      # older one, so build with the newest it has.
+      - name: Select the newest Xcode on the runner
+        if: steps.apple.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          newest="$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
 
       - name: Import Developer ID certificate
         if: steps.apple.outputs.ready == 'true'

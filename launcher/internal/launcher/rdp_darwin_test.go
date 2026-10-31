@@ -45,12 +45,18 @@ func TestFindFreeRDPClientDarwin(t *testing.T) {
 	}
 }
 
-func TestCurrentDisplaySizeDarwinIsSaneForASessionWindow(t *testing.T) {
-	width, height := currentDisplaySize()
+// currentDisplaySize answers (0, 0) without a WindowServer session (go test
+// over SSH, a headless CI job) and preferredRDPDesktopSize then substitutes a
+// fixed size; the session window must be usable either way.
+func TestPreferredRDPDesktopSizeDarwinIsSaneForASessionWindow(t *testing.T) {
+	if w, h := currentDisplaySize(); w == 0 && h == 0 {
+		t.Log("no display in this session; checking the fallback size")
+	}
+	width, height := preferredRDPDesktopSize()
 	if width < 1024 || height < 768 {
-		t.Fatalf("display size %dx%d below the minimum session size", width, height)
+		t.Fatalf("desktop size %dx%d below the minimum session size", width, height)
 	}
 	if width%2 != 0 || height%2 != 0 {
-		t.Fatalf("display size %dx%d must be even", width, height)
+		t.Fatalf("desktop size %dx%d must be even", width, height)
 	}
 }

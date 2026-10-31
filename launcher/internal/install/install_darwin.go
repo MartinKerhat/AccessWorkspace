@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/macdialog"
 )
 
 // macOS install follows the platform's own model instead of copying itself
@@ -105,6 +107,8 @@ func writeLaunchAgent(exePath string) (string, error) {
 		`  </array>`,
 		`  <key>RunAtLoad</key>`,
 		`  <true/>`,
+		// The bridge exits non-zero when its port is taken, so launchd keeps
+		// retrying (every ThrottleInterval, 10 s) until it can take over.
 		`  <key>KeepAlive</key>`,
 		`  <dict>`,
 		`    <key>SuccessfulExit</key>`,
@@ -160,12 +164,5 @@ func ShowInstallFailure(err error) {
 // showDialog blocks until the user dismisses it, so the app does not quit
 // from under its own message.
 func showDialog(message string, icon string) {
-	script := fmt.Sprintf(`display dialog %s with title "Access Workspace Launcher" buttons {"OK"} default button "OK" with icon %s`, appleScriptString(message), icon)
-	_ = exec.Command("osascript", "-e", script).Run()
-}
-
-// appleScriptString renders value as an AppleScript string expression.
-func appleScriptString(value string) string {
-	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(value)
-	return `"` + strings.ReplaceAll(escaped, "\n", `" & linefeed & "`) + `"`
+	_ = macdialog.Show(message, "Access Workspace Launcher", icon)
 }
