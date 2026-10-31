@@ -332,6 +332,21 @@ jobs:
           export NOTARY_KEY_PATH="$RUNNER_TEMP/notary-key.p8"
           printf '%s\n' "$API_KEY_P8" > "$NOTARY_KEY_PATH"
           APP_STORE_UPLOAD=1 bash scripts/build-safari-extension.sh --app-store "$RUNNER_TEMP/app-store"
+          # Carry the version through to "Waiting for Review": wait for Apple to
+          # process the upload, attach it, set the release notes from
+          # browser-extension/whats-new.txt, copy the review contact forward and
+          # submit. Listing, screenshots and ratings carry over from the previous
+          # version. Set the repository variable APP_STORE_AUTO_SUBMIT=false to
+          # stop at the upload and submit by hand.
+          if [ "${{ vars.APP_STORE_AUTO_SUBMIT || 'true' }}" = "false" ]; then
+            echo "APP_STORE_AUTO_SUBMIT=false: uploaded only; submit for review in App Store Connect."
+          else
+            python3 scripts/asc-submit.py \
+              --bundle-id io.github.martinkerhat.accessworkspace.browserfill \
+              --version "$VERSION" \
+              --build-number "$(cat "$RUNNER_TEMP/app-store/build-number.txt")" \
+              --whats-new browser-extension/whats-new.txt
+          fi
           rm "$NOTARY_KEY_PATH"
 
       - name: Remove signing keychain

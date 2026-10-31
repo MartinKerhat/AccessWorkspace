@@ -147,6 +147,9 @@ PLIST
     -exportOptionsPlist "$work/ExportOptions.plist" \
     -exportPath "$out_dir" \
     "${api_auth[@]}" >"$work/xcodebuild-export.log" 2>&1 || { tail -n 80 "$work/xcodebuild-export.log" >&2; exit 1; }
+  # The build number identifies this upload in App Store Connect; scripts/asc-submit.py
+  # (CI) uses it to attach the processed build to the version and submit it for review.
+  printf '%s\n' "$build_number" > "$out_dir/build-number.txt"
   if [ "$destination" = "upload" ]; then
     echo "Uploaded $app_name $version ($build_number) to App Store Connect; it appears under TestFlight/Builds after processing."
   else

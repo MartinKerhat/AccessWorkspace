@@ -35,9 +35,14 @@ backend serves artifacts locally vs from Azure Blob in production).
     missing). The two Mac App Store provisioning profiles are created and
     refreshed by `scripts/asc-profiles.py` through the App Store Connect API
     at build time, so no profile is stored anywhere and a renewed certificate
-    just works. Each uploaded version is submitted for Apple's review in App
+    just works. After the upload, `scripts/asc-submit.py` waits for Apple's
+    processing, attaches the build to the version, sets the release notes
+    from `browser-extension/whats-new.txt` (update that file with every
+    version bump; Apple requires it for updates), carries the App Review
+    contact forward and submits for review. The repository variable
+    `APP_STORE_AUTO_SUBMIT=false` stops at the upload instead. Each uploaded version is submitted for Apple's review in App
     Store Connect — a day or three — while the notarized `.dmg` is available
-    immediately. Set `SAFARI_EXTENSION_URL` to the App Store listing to make
+    immediately. Every version goes through that review, not only the first. Set `SAFARI_EXTENSION_URL` to the App Store listing to make
     it the primary action, like the other stores.
 
 ## How the app decides what to offer
