@@ -1,0 +1,17 @@
+# Keep host-side state out of the image build context. Without this,
+# `COPY frontend/ ./` in frontend.Dockerfile drops a macOS/Windows
+# node_modules (native rolldown binary for the wrong platform) over the
+# one npm just installed inside the image, and the Vite build fails with
+# a cryptic "failed to load config from vite.config.ts".
+.git
+frontend/node_modules
+frontend/dist
+frontend/*.tsbuildinfo
+artifacts
+browser-extension/safari-app
+.env
+.env.*
+!.env.example
+.dev-notes
+.gocache
+.gomodcache
