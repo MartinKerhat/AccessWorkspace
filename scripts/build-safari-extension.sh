@@ -96,6 +96,12 @@ if [ "$mode" = "app-store" ]; then
     "CODE_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" \
     "DEVELOPMENT_TEAM=$MACOS_TEAM_ID" \
     archive >"$work/xcodebuild-archive.log" 2>&1 || { tail -n 80 "$work/xcodebuild-archive.log" >&2; exit 1; }
+  # Same stale-LaunchServices-entry problem as the dmg build (see below):
+  # archiving registers the intermediate app too.
+  lsregister=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
+  if [ -x "$lsregister" ]; then
+    find "$work/derived" -type d -name "$app_name.app" -prune 2>/dev/null | while IFS= read -r built; do "$lsregister" -u "$built" >/dev/null 2>&1 || true; done
+  fi
 
   # Store provisioning profiles: Xcode's automatic provisioning needs Apple's
   # cloud-managed signing, which an App Manager API key is not allowed to

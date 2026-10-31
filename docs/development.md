@@ -86,7 +86,12 @@ directly:
   `browser-extension/safari-app/Access Workspace Browser Fill.xcodeproj` in
   Xcode and run it. Then enable *Develop → Allow Unsigned Extensions* in
   Safari, turn the extension on under *Settings → Extensions*, and allow it
-  on the workspace site when Safari asks. The Xcode project references
+  on the workspace site when Safari asks. Without that developer setting,
+  current Safari lists an extension only when its app passes Gatekeeper,
+  i.e. a Developer ID-signed **and notarized** build; a signed-only build
+  silently never appears. The build script also unregisters its temporary
+  build products from LaunchServices, because a stale entry for the same
+  bundle id (from a deleted build folder) has the same silent effect. The Xcode project references
   `browser-extension/safari` directly, so edits there are picked up on the
   next build. If you add files to the extension or change the manifest's
   structure, regenerate the wrapper with

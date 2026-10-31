@@ -455,7 +455,7 @@
     const card = element("div", "aw-fill-card");
     const header = element("div", "aw-fill-header");
     const title = element("strong", "", "Access Workspace");
-    const closeButton = element("button", "aw-fill-close", "x");
+    const closeButton = element("button", "aw-fill-close", "×");
     closeButton.type = "button";
     closeButton.setAttribute("aria-label", "Dismiss");
     header.append(title, closeButton);
@@ -710,7 +710,7 @@
         <div class="aw-fill-card">
           <div class="aw-fill-header">
             <strong>Access Workspace</strong>
-            <button type="button" class="aw-fill-close" aria-label="Dismiss">x</button>
+            <button type="button" class="aw-fill-close" aria-label="Dismiss">×</button>
           </div>
           <p class="aw-fill-copy">Suggested portal credential for this page.</p>
           <div class="aw-fill-picker">
@@ -883,15 +883,28 @@
     const style = document.createElement("style");
     style.id = PANEL_STYLE_ID;
     style.textContent = `
+      /* The panel lives in the page's DOM, so the page's own rules (a global
+         "button { width: 100%; margin-top: 22px }" is common on login pages)
+         would restyle it. Revert everything to browser defaults first; the
+         rules below are more specific and win over this reset. */
+      #${PANEL_ID},
+      #${PANEL_ID} * {
+        all: revert;
+        box-sizing: border-box;
+      }
       #${PANEL_ID} {
         position: fixed;
         right: 16px;
         top: 16px;
         z-index: 2147483647;
-        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.4;
+        color: #edf4ff;
+        text-align: left;
       }
       #${PANEL_ID} .aw-fill-card {
-        width: 320px;
+        width: 340px;
         border: 1px solid #29415c;
         background: #0e1826;
         color: #edf4ff;
@@ -916,6 +929,11 @@
         align-items: center;
         gap: 12px;
         margin-bottom: 8px;
+      }
+      #${PANEL_ID} .aw-fill-header strong {
+        font-size: 15px;
+        font-weight: 600;
+        white-space: nowrap;
       }
       #${PANEL_ID} .aw-fill-copy,
       #${PANEL_ID} .aw-fill-status,
@@ -1016,11 +1034,23 @@
         font-weight: 600;
       }
       #${PANEL_ID} .aw-fill-close {
+        flex: none;
+        width: 28px;
+        height: 28px;
+        margin: 0;
+        padding: 0;
         border: 0;
+        border-radius: 8px;
         background: transparent;
         color: #c6d6eb;
         cursor: pointer;
         font: inherit;
+        font-size: 18px;
+        line-height: 1;
+      }
+      #${PANEL_ID} .aw-fill-close:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #ffffff;
       }
       #${PANEL_ID} .aw-save-checkbox {
         display: flex;
@@ -1172,7 +1202,7 @@
     closeButton.type = "button";
     closeButton.className = "aw-fill-close";
     closeButton.setAttribute("aria-label", "Dismiss");
-    closeButton.textContent = "x";
+    closeButton.textContent = "×";
 
     header.append(title, closeButton);
 
