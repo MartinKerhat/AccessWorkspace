@@ -145,6 +145,13 @@ that built it: drag it into `/Applications` and open it once, as a user would.
 `MACOS_SKIP_FREERDP=1` builds an SSH-only launcher in seconds when RDP is not
 what you are working on.
 
+The Safari app has two build modes: `scripts/build-safari-extension.sh`
+(notarized `.dmg`) and `scripts/build-safari-extension.sh --app-store`
+(Mac App Store `.pkg`, uploaded with `APP_STORE_UPLOAD=1`). The store mode
+needs the "Apple Distribution" and "Mac Installer Distribution" identities,
+`MACOS_TEAM_ID`, and the App Store Connect key in the `NOTARY_*` variables,
+which also lets `scripts/asc-profiles.py` manage the provisioning profiles.
+
 ### What cannot be tested headlessly
 
 - The WebAuthn passkey ceremony (Windows Hello / Touch ID). Its server-side

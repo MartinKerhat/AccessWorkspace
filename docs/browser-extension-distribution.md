@@ -27,8 +27,18 @@ backend serves artifacts locally vs from Azure Blob in production).
     `artifacts/extensions/safari/…-safari-v<version>.dmg` to the release.
     Users drag the app to Applications, open it once and turn the extension
     on in Safari Settings → Extensions.
-  - Optional Mac App Store path: `SAFARI_EXTENSION_URL` makes the listing
-    the primary action, like the other stores.
+  - Mac App Store (Safari's own extension store): the same job also archives
+    the app with the "Apple Distribution" / "Mac Installer Distribution"
+    certificates and uploads it to App Store Connect
+    (`scripts/build-safari-extension.sh --app-store`, secrets
+    `APPLE_APP_STORE_P12` / `APPLE_APP_STORE_P12_PASSWORD`; skipped when
+    missing). The two Mac App Store provisioning profiles are created and
+    refreshed by `scripts/asc-profiles.py` through the App Store Connect API
+    at build time, so no profile is stored anywhere and a renewed certificate
+    just works. Each uploaded version is submitted for Apple's review in App
+    Store Connect — a day or three — while the notarized `.dmg` is available
+    immediately. Set `SAFARI_EXTENSION_URL` to the App Store listing to make
+    it the primary action, like the other stores.
 
 ## How the app decides what to offer
 
@@ -109,6 +119,10 @@ and `launcher/scripts/build_macos.sh` stay as the local dev builds).
 
 - The first Chrome Web Store listing needs a real publisher account and a
   one-time manual dashboard submission.
+- The first Mac App Store listing likewise: an app record for the bundle id
+  `io.github.martinkerhat.accessworkspace.browserfill` in App Store Connect
+  with description, screenshots and the privacy policy URL, and a manual
+  "Submit for Review" of the first uploaded build.
 - Firefox signing needs Mozilla API credentials.
 - Safari and the macOS launcher need an Apple Developer Program membership:
   a "Developer ID Application" certificate (exported as .p12) and an App

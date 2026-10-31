@@ -6,22 +6,48 @@
 # builds on a Mac use this same script.
 #
 # Usage: scripts/build-safari-extension.sh [output-dir]   (default: artifacts/extensions/safari)
+#        scripts/build-safari-extension.sh --app-store [output-dir]   (default: artifacts/extensions/safari/app-store)
+#
+# Without --app-store: the direct-download path. A Developer ID-signed,
+# notarized .dmg that users drag to Applications.
+#
+# With --app-store: the Mac App Store path (Safari's own extension store).
+# Archives the app, exports a Mac App Store .pkg signed with the "Apple
+# Distribution" and "Mac Installer Distribution" identities, with Xcode
+# creating the App Store provisioning profiles through the App Store Connect
+# API key, and uploads it to App Store Connect when APP_STORE_UPLOAD=1. The
+# first submission for review is done by hand in App Store Connect (listing,
+# screenshots, privacy policy); later versions can be submitted there too or
+# automatically. Needs an existing app record with this bundle id.
 #
 # The version comes from browser-extension/safari/manifest.json (kept equal
 # to the Chrome and Firefox manifests by release-extension.yml).
 #
 # Optional environment:
-#   MACOS_SIGN_IDENTITY  "Developer ID Application: Name (TEAMID)". Unset: the
+#   MACOS_SIGN_IDENTITY  "Developer ID Application: Name (TEAMID)" (dmg mode). Unset: the
 #                        build is signed ad hoc and only runs on this Mac with
 #                        Safari's "Allow unsigned extensions" developer setting.
-#   MACOS_TEAM_ID        Apple team id for the signing identity (CI sets it).
+#   MACOS_TEAM_ID        Apple team id (required for --app-store; CI sets it).
 #   NOTARY_KEY_PATH, NOTARY_KEY_ID, NOTARY_ISSUER_ID
-#                        App Store Connect API key; with an identity, notarize and staple.
+#                        App Store Connect API key. dmg mode: notarize and staple.
+#                        --app-store: required, authenticates provisioning and upload.
+#   APP_STORE_UPLOAD     --app-store only: 1 uploads the build to App Store Connect,
+#                        otherwise the .pkg is just written to the output dir.
 set -euo pipefail
+
+mode=dmg
+if [ "${1:-}" = "--app-store" ]; then
+  mode=app-store
+  shift
+fi
 
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 project_dir="$repo_dir/browser-extension/safari-app"
-out_dir="${1:-$repo_dir/artifacts/extensions/safari}"
+if [ "$mode" = "app-store" ]; then
+  out_dir="${1:-$repo_dir/artifacts/extensions/safari/app-store}"
+else
+  out_dir="${1:-$repo_dir/artifacts/extensions/safari}"
+fi
 mkdir -p "$out_dir"
 out_dir="$(cd "$out_dir" && pwd)"
 
@@ -38,6 +64,91 @@ trap 'rm -rf "$work"' EXIT
 # Build number: Apple wants CFBundleVersion to increase on every upload; the
 # semantic version alone would collide on a rebuild, so append the UTC minute.
 build_number="$(date -u +%Y%m%d%H%M)"
+
+if [ "$mode" = "app-store" ]; then
+  for required in MACOS_SIGN_IDENTITY MACOS_TEAM_ID NOTARY_KEY_PATH NOTARY_KEY_ID NOTARY_ISSUER_ID; do
+    [ -n "${!required:-}" ] || { echo "--app-store needs $required" >&2; exit 1; }
+  done
+  security find-identity -v -p codesigning | grep -q "Apple Distribution" || { echo "no \"Apple Distribution\" identity in the keychain" >&2; exit 1; }
+  # Apple issues the installer certificate under either of two names.
+  security find-identity -v | grep -qE "Mac Installer Distribution|3rd Party Mac Developer Installer" || { echo "no Mac installer distribution identity in the keychain" >&2; exit 1; }
+  api_auth=(-allowProvisioningUpdates -authenticationKeyPath "$NOTARY_KEY_PATH" -authenticationKeyID "$NOTARY_KEY_ID" -authenticationKeyIssuerID "$NOTARY_ISSUER_ID")
+
+  echo "Archiving Safari extension $version (build $build_number) for the Mac App Store"
+  archive="$work/$app_name.xcarchive"
+  # The archive is signed like the direct-download build (manual, Developer
+  # ID, no profiles); the export step re-signs it for the store with the
+  # distribution identities and the App Store provisioning profiles Xcode
+  # fetches or creates through the API key. Archiving with a store identity
+  # directly is refused by Xcode when signing is automatic.
+  xcodebuild \
+    -project "$project_dir/$app_name.xcodeproj" \
+    -scheme "$app_name" \
+    -configuration Release \
+    -derivedDataPath "$work/derived" \
+    -archivePath "$archive" \
+    -destination "generic/platform=macOS" \
+    ONLY_ACTIVE_ARCH=NO \
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+    "MARKETING_VERSION=$version" \
+    "CURRENT_PROJECT_VERSION=$build_number" \
+    CODE_SIGN_STYLE=Manual \
+    "CODE_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" \
+    "DEVELOPMENT_TEAM=$MACOS_TEAM_ID" \
+    archive >"$work/xcodebuild-archive.log" 2>&1 || { tail -n 80 "$work/xcodebuild-archive.log" >&2; exit 1; }
+
+  # Store provisioning profiles: Xcode's automatic provisioning needs Apple's
+  # cloud-managed signing, which an App Manager API key is not allowed to
+  # use. scripts/asc-profiles.py creates or refreshes the two Mac App Store
+  # profiles (one per bundle id) for the distribution certificate through the
+  # App Store Connect API and installs them, so the export signs manually.
+  app_bundle_id=io.github.martinkerhat.accessworkspace.browserfill
+  extension_bundle_id=io.github.martinkerhat.accessworkspace.browserfill.Extension
+  security find-certificate -c "Apple Distribution" -p > "$work/apple-distribution.pem"
+  profiles="$(python3 "$repo_dir/scripts/asc-profiles.py" ensure --cert-pem "$work/apple-distribution.pem" \
+    --bundle-id "$app_bundle_id" --bundle-id "$extension_bundle_id")"
+  app_profile="$(printf '%s\n' "$profiles" | awk -F'\t' -v id="$app_bundle_id" '$1 == id {print $2}')"
+  extension_profile="$(printf '%s\n' "$profiles" | awk -F'\t' -v id="$extension_bundle_id" '$1 == id {print $2}')"
+  installer_identity="$(security find-identity -v | grep -oE '"(Mac Installer Distribution|3rd Party Mac Developer Installer): [^"]*"' | head -n 1 | tr -d '"')"
+
+  destination=export
+  [ "${APP_STORE_UPLOAD:-0}" = "1" ] && destination=upload
+  cat > "$work/ExportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key><string>app-store-connect</string>
+  <key>destination</key><string>$destination</string>
+  <key>signingStyle</key><string>manual</string>
+  <key>teamID</key><string>$MACOS_TEAM_ID</string>
+  <key>signingCertificate</key><string>Apple Distribution</string>
+  <key>installerSigningCertificate</key><string>$installer_identity</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>$app_bundle_id</key><string>$app_profile</string>
+    <key>$extension_bundle_id</key><string>$extension_profile</string>
+  </dict>
+  <key>uploadSymbols</key><false/>
+  <key>manageAppVersionAndBuildNumber</key><false/>
+</dict>
+</plist>
+PLIST
+  echo "Exporting ($destination) through App Store Connect"
+  xcodebuild \
+    -exportArchive \
+    -archivePath "$archive" \
+    -exportOptionsPlist "$work/ExportOptions.plist" \
+    -exportPath "$out_dir" \
+    "${api_auth[@]}" >"$work/xcodebuild-export.log" 2>&1 || { tail -n 80 "$work/xcodebuild-export.log" >&2; exit 1; }
+  if [ "$destination" = "upload" ]; then
+    echo "Uploaded $app_name $version ($build_number) to App Store Connect; it appears under TestFlight/Builds after processing."
+  else
+    pkg="$(ls "$out_dir"/*.pkg 2>/dev/null | head -n 1 || true)"
+    echo "Exported ${pkg:-$out_dir} (not uploaded; set APP_STORE_UPLOAD=1 to upload)"
+  fi
+  exit 0
+fi
 
 echo "Building Safari extension $version (build $build_number)"
 sign_args=()

@@ -256,6 +256,10 @@ jobs:
           echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
           # "Developer ID Application: Name (TEAMID)" -> TEAMID, which xcodebuild wants separately.
           echo "MACOS_TEAM_ID=$(echo "$identity" | sed -nE 's/.*\(([A-Z0-9]+)\)$/\1/p')" >> "$GITHUB_ENV"
+          # The App Store step imports more keys into this throwaway keychain
+          # and must open their access list the same way (see below).
+          echo "::add-mask::$keychain_password"
+          echo "SIGNING_KEYCHAIN_PASSWORD=$keychain_password" >> "$GITHUB_ENV"
 
       - name: Build, sign and notarize the Safari app
         if: steps.apple.outputs.ready == 'true'
@@ -279,6 +283,37 @@ jobs:
           gh release upload "extension-v${VERSION}" \
             "$RUNNER_TEMP/out/access-workspace-browser-extension-safari-v${VERSION}.dmg" \
             --clobber
+
+      # Mac App Store (Safari's own extension store): a separate certificate
+      # pair ("Apple Distribution" + "Mac Installer Distribution", exported
+      # together as APPLE_APP_STORE_P12 / APPLE_APP_STORE_P12_PASSWORD). The
+      # upload lands in App Store Connect; submitting it for review stays a
+      # dashboard step (the first time it also needs the listing). Without the
+      # secret the step skips, like the Chrome Web Store step.
+      - name: Upload to the Mac App Store
+        if: steps.apple.outputs.ready == 'true'
+        env:
+          APP_STORE_P12: ${{ secrets.APPLE_APP_STORE_P12 }}
+          APP_STORE_P12_PASSWORD: ${{ secrets.APPLE_APP_STORE_P12_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APP_STORE_P12" ]; then
+            echo "::warning::APPLE_APP_STORE_P12 not configured — skipping the Mac App Store upload."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          echo "$APP_STORE_P12" | base64 --decode > "$RUNNER_TEMP/app-store.p12"
+          security import "$RUNNER_TEMP/app-store.p12" -k "$keychain" -P "$APP_STORE_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/xcodebuild
+          rm "$RUNNER_TEMP/app-store.p12"
+          # Without this, codesign fails on the new keys with errSecInternalComponent.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$SIGNING_KEYCHAIN_PASSWORD" "$keychain" >/dev/null
+          export NOTARY_KEY_PATH="$RUNNER_TEMP/notary-key.p8"
+          printf '%s\n' "$API_KEY_P8" > "$NOTARY_KEY_PATH"
+          APP_STORE_UPLOAD=1 bash scripts/build-safari-extension.sh --app-store "$RUNNER_TEMP/app-store"
+          rm "$NOTARY_KEY_PATH"
 
       - name: Remove signing keychain
         if: always() && steps.apple.outputs.ready == 'true'
