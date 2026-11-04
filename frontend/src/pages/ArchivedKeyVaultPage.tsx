@@ -32,9 +32,11 @@ function formatDateTime(value?: string) {
 function archivedReasonLabel(reason: string) {
   switch (reason) {
     case "removed_from_app":
-      return "Removed from app";
+      return "Archived by a user";
     case "key_vault_secret_not_found":
       return "Missing in Azure Key Vault during sync";
+    case "duplicate_key_vault_object":
+      return "Second object for the same secret";
     case "":
       return "Archived";
     default:

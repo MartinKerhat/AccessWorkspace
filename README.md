@@ -24,7 +24,9 @@ Users can attach **their own saved credentials** to a shared connection, so a ju
 
 ### Key Vault — a usable operational surface for Azure
 
-Discover secrets in your vaults, import them in batches, and browse them with the metadata that matters: owner, environment, content type, expiry, enabled state. Values are **never copied into the database** — a reveal fetches the live value from Azure on demand, under policy, and is audited. Sync runs on a schedule, auto-import can apply default ownership, and a secret that genuinely disappears from Azure is archived only after a direct lookup confirms it is gone.
+Discover secrets in your vaults, import them in batches, and browse them with the metadata that matters: owner, environment, content type, active window, expiry, enabled state. Values are **never copied into the database** — a reveal fetches the live value from Azure on demand, under policy, and is audited. Sync runs on a schedule, auto-import can apply default ownership, and a secret that genuinely disappears from Azure is archived only after a direct lookup confirms it is gone — and restored with its metadata if it comes back. An object you archive stays archived: auto-import does not bring it back as a copy, and there is only ever one active object per secret.
+
+Where an administrator allows it per vault, the workspace also **writes** to Key Vault: create a secret, set a new value on an existing one (typed, made with the Generator, or uploaded from a file the way `az keyvault secret set --file` stores it), and see every version of a secret, newest first, to reveal it or to enable, disable or date it. The value goes straight to Azure and is never stored in the workspace; every write is audited, including which version changed and how. The workspace never deletes anything in Azure.
 
 ![A Key Vault secret in the workspace: local metadata and ownership, with the value still held in Azure](docs/images/keyvault.png)
 

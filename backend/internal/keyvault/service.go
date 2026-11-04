@@ -1,6 +1,7 @@
 package keyvault
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,11 +9,37 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
 
 const vaultScope = "https://vault.azure.net/.default"
+
+// apiVersion is the Key Vault data-plane version for every call. 7.4 is GA;
+// keeping it in one place makes a move to a newer GA version a one-line change.
+const apiVersion = "7.4"
+
+// MaxSecretValueBytes is Key Vault's limit for one secret value (25 KB).
+const MaxSecretValueBytes = 25 * 1024
+
+// FileEncodingTag is the tag the az CLI writes on `secret set --file
+// --encoding`, so `az keyvault secret download` can turn the stored string
+// back into the original bytes. Uploads from the workspace write the same tag.
+const FileEncodingTag = "file-encoding"
+
+var (
+	// ErrSourceNotWritable: the vault is configured, but an admin has not
+	// allowed the workspace to write to it.
+	ErrSourceNotWritable = errors.New("this key vault source does not allow writes from the workspace")
+	// ErrSecretExists: create refused because the name is taken. A PUT on an
+	// existing name would silently add a new version instead.
+	ErrSecretExists = errors.New("a secret with this name already exists in the vault")
+	// ErrInvalidSecret wraps every validation failure of a write request.
+	ErrInvalidSecret = errors.New("invalid secret")
+)
+
+var secretNamePattern = regexp.MustCompile(`^[0-9A-Za-z-]{1,127}$`)
 
 type RuntimeConfig struct {
 	Authority    string
@@ -25,17 +52,42 @@ type RuntimeConfig struct {
 type Source struct {
 	Name     string `json:"name"`
 	VaultURL string `json:"vaultUrl"`
+	// WriteEnabled is the admin's per-vault switch for every write the
+	// workspace can make (create, new value, enabled/active window).
+	WriteEnabled bool `json:"writeEnabled"`
 }
 
 type SecretItem struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	VaultName   string     `json:"vaultName"`
-	VaultURL    string     `json:"vaultUrl"`
-	ContentType string     `json:"contentType"`
-	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
-	Enabled     bool       `json:"enabled"`
-	Version     string     `json:"version"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	VaultName   string            `json:"vaultName"`
+	VaultURL    string            `json:"vaultUrl"`
+	ContentType string            `json:"contentType"`
+	NotBefore   *time.Time        `json:"notBefore,omitempty"`
+	ExpiresAt   *time.Time        `json:"expiresAt,omitempty"`
+	Enabled     bool              `json:"enabled"`
+	Version     string            `json:"version"`
+	Tags        map[string]string `json:"tags,omitempty"`
+}
+
+// SecretAttributes are the Azure attributes the workspace manages. NotBefore
+// and ExpiresAt are informational for secrets (Key Vault still returns the
+// value outside the window); only Enabled=false blocks reads.
+type SecretAttributes struct {
+	Enabled   bool
+	NotBefore *time.Time
+	ExpiresAt *time.Time
+}
+
+// SecretWrite is one value written to Azure. The value only ever passes
+// through memory on its way to the vault.
+type SecretWrite struct {
+	Value       string
+	ContentType string
+	// FileEncoding is "utf-8" or "base64" for a value that came from a file
+	// upload, empty for a typed or generated value.
+	FileEncoding string
+	Attributes   SecretAttributes
 }
 
 type DiscoverSourceResult struct {
@@ -140,8 +192,7 @@ func (s *Service) RevealSecret(ctx context.Context, reference string) (string, e
 		return "", err
 	}
 
-	endpoint := reference + "?api-version=7.4"
-	payload, err := callJSON[vaultSecretResponse](ctx, s.client, http.MethodGet, endpoint, accessToken, nil)
+	payload, err := callJSON[vaultSecretResponse](ctx, s.client, http.MethodGet, withAPIVersion(reference), accessToken, nil)
 	if err != nil {
 		return "", err
 	}
@@ -166,23 +217,18 @@ func (s *Service) CurrentSecretMetadata(ctx context.Context, reference string) (
 		return SecretItem{}, err
 	}
 
-	endpoint := reference + "?api-version=7.4"
-	payload, err := callJSON[vaultSecretResponse](ctx, s.client, http.MethodGet, endpoint, accessToken, nil)
+	source := sourceForReference(reference, sources)
+	payload, err := callJSON[vaultSecretResponse](ctx, s.client, http.MethodGet, withAPIVersion(reference), accessToken, nil)
 	if err != nil {
+		// Key Vault refuses `get` on a disabled secret (403), so its attributes
+		// have to come from the versions list, which carries no value. Without
+		// this a secret disabled in the portal never shows as disabled here.
+		if isForbidden(err) {
+			return s.metadataFromVersions(ctx, accessToken, reference, source)
+		}
 		return SecretItem{}, err
 	}
-
-	source := sourceForReference(reference, sources)
-	return SecretItem{
-		ID:          reference,
-		Name:        payload.Name(),
-		VaultName:   sourceLabel(source),
-		VaultURL:    source.VaultURL,
-		ContentType: payload.ContentType,
-		ExpiresAt:   unixTimePtr(payload.Attributes.ExpiresUnix),
-		Enabled:     payload.Attributes.Enabled,
-		Version:     secretVersionFromID(payload.ID),
-	}, nil
+	return secretItemFromBundle(reference, payload.secretBundle, source), nil
 }
 
 func (s *Service) ValidateReference(ctx context.Context, reference string) error {
@@ -213,7 +259,7 @@ func (s *Service) loadConfig(ctx context.Context) (RuntimeConfig, []Source, erro
 }
 
 func (s *Service) listSecrets(ctx context.Context, accessToken string, source Source) ([]SecretItem, error) {
-	endpoint := strings.TrimRight(source.VaultURL, "/") + "/secrets?api-version=7.4"
+	endpoint := withAPIVersion(strings.TrimRight(source.VaultURL, "/") + "/secrets")
 	items := []SecretItem{}
 
 	for endpoint != "" {
@@ -228,9 +274,11 @@ func (s *Service) listSecrets(ctx context.Context, accessToken string, source So
 				VaultName:   sourceLabel(source),
 				VaultURL:    source.VaultURL,
 				ContentType: value.ContentType,
+				NotBefore:   unixTimePtr(value.Attributes.NotBeforeUnix),
 				ExpiresAt:   unixTimePtr(value.Attributes.ExpiresUnix),
 				Enabled:     value.Attributes.Enabled,
 				Version:     secretVersionFromID(value.ID),
+				Tags:        value.Tags,
 			})
 		}
 		endpoint = payload.NextLink
@@ -269,7 +317,22 @@ func (s *Service) clientCredentialsToken(ctx context.Context, config RuntimeConf
 	return payload.AccessToken, nil
 }
 
+// callJSON sends a form body (the token request) or none (vault reads).
 func callJSON[T any](ctx context.Context, client *http.Client, method string, endpoint string, accessToken string, body io.Reader) (T, error) {
+	return doJSON[T](ctx, client, method, endpoint, accessToken, body, "application/x-www-form-urlencoded")
+}
+
+// sendJSON sends a JSON body (vault writes).
+func sendJSON[T any](ctx context.Context, client *http.Client, method string, endpoint string, accessToken string, payload any) (T, error) {
+	var zero T
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return zero, err
+	}
+	return doJSON[T](ctx, client, method, endpoint, accessToken, bytes.NewReader(encoded), "application/json")
+}
+
+func doJSON[T any](ctx context.Context, client *http.Client, method string, endpoint string, accessToken string, body io.Reader, contentType string) (T, error) {
 	var zero T
 
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
@@ -281,7 +344,7 @@ func callJSON[T any](ctx context.Context, client *http.Client, method string, en
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 	}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	response, err := client.Do(req)
@@ -309,33 +372,52 @@ type tokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
+type vaultAttributes struct {
+	Enabled       bool   `json:"enabled"`
+	NotBeforeUnix *int64 `json:"nbf"`
+	ExpiresUnix   *int64 `json:"exp"`
+	CreatedUnix   *int64 `json:"created"`
+	UpdatedUnix   *int64 `json:"updated"`
+}
+
+// secretBundle is everything Key Vault returns about one secret version
+// except the value. Lists, PATCH responses and the versions list are exactly
+// this; vaultSecretResponse adds the value for `get` and `set`.
+type secretBundle struct {
+	ID          string            `json:"id"`
+	ContentType string            `json:"contentType"`
+	Attributes  vaultAttributes   `json:"attributes"`
+	Tags        map[string]string `json:"tags"`
+}
+
 type vaultSecretsListResponse struct {
-	Value []struct {
-		ID          string `json:"id"`
-		ContentType string `json:"contentType"`
-		Attributes  struct {
-			Enabled     bool   `json:"enabled"`
-			ExpiresUnix *int64 `json:"exp"`
-		} `json:"attributes"`
-	} `json:"value"`
-	NextLink string `json:"nextLink"`
+	Value    []secretBundle `json:"value"`
+	NextLink string         `json:"nextLink"`
 }
 
 type vaultSecretResponse struct {
-	ID          string `json:"id"`
-	Value       string `json:"value"`
-	ContentType string `json:"contentType"`
-	Attributes  struct {
-		Enabled     bool   `json:"enabled"`
-		ExpiresUnix *int64 `json:"exp"`
-	} `json:"attributes"`
+	secretBundle
+	Value string `json:"value"`
 }
 
-func (r vaultSecretResponse) Name() string {
-	if r.ID == "" {
-		return ""
-	}
-	return secretNameFromID(r.ID)
+// vaultSecretWrite is the PUT body (create, or a new version).
+type vaultSecretWrite struct {
+	Value       string                 `json:"value"`
+	ContentType string                 `json:"contentType,omitempty"`
+	Attributes  vaultAttributesPayload `json:"attributes"`
+	Tags        map[string]string      `json:"tags,omitempty"`
+}
+
+// vaultAttributesPayload has no omitempty on the dates on purpose: on PATCH
+// an explicit null clears a date instead of leaving it as it was.
+type vaultAttributesPayload struct {
+	Enabled       bool   `json:"enabled"`
+	NotBeforeUnix *int64 `json:"nbf"`
+	ExpiresUnix   *int64 `json:"exp"`
+}
+
+type vaultSecretPatch struct {
+	Attributes vaultAttributesPayload `json:"attributes"`
 }
 
 func normalizeSources(values []Source) []Source {
@@ -427,6 +509,50 @@ func secretVaultURLFromReference(reference string) string {
 		return ""
 	}
 	return fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
+}
+
+func withAPIVersion(endpoint string) string {
+	return endpoint + "?api-version=" + apiVersion
+}
+
+func isForbidden(err error) bool {
+	var requestErr RequestError
+	return errors.As(err, &requestErr) && requestErr.StatusCode == http.StatusForbidden
+}
+
+func secretItemFromBundle(reference string, bundle secretBundle, source Source) SecretItem {
+	name := secretNameFromID(reference)
+	if bundle.ID != "" {
+		name = secretNameFromID(bundle.ID)
+	}
+	return SecretItem{
+		ID:          reference,
+		Name:        name,
+		VaultName:   sourceLabel(source),
+		VaultURL:    source.VaultURL,
+		ContentType: bundle.ContentType,
+		NotBefore:   unixTimePtr(bundle.Attributes.NotBeforeUnix),
+		ExpiresAt:   unixTimePtr(bundle.Attributes.ExpiresUnix),
+		Enabled:     bundle.Attributes.Enabled,
+		Version:     secretVersionFromID(bundle.ID),
+		Tags:        bundle.Tags,
+	}
+}
+
+func unixPtr(value *time.Time) *int64 {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	unix := value.UTC().Unix()
+	return &unix
+}
+
+func attributesPayload(attributes SecretAttributes) vaultAttributesPayload {
+	return vaultAttributesPayload{
+		Enabled:       attributes.Enabled,
+		NotBeforeUnix: unixPtr(attributes.NotBefore),
+		ExpiresUnix:   unixPtr(attributes.ExpiresAt),
+	}
 }
 
 func unixTimePtr(value *int64) *time.Time {

@@ -94,6 +94,7 @@ type Resource struct {
 	ObjectVersion                 string                      `json:"objectVersion"`
 	ContentType                   string                      `json:"contentType"`
 	ExpiresAt                     *time.Time                  `json:"expiresAt,omitempty"`
+	NotBefore                     *time.Time                  `json:"notBefore,omitempty"` // Azure `nbf` (active from), synced like ExpiresAt/`exp`
 	Provider                      string                      `json:"provider"`
 	ApplicationID                 string                      `json:"applicationId"`
 	TenantID                      string                      `json:"tenantId"`
@@ -226,6 +227,7 @@ type CreateResourceInput struct {
 	ObjectVersion                 string     `json:"objectVersion"`
 	ContentType                   string     `json:"contentType"`
 	ExpiresAt                     *time.Time `json:"expiresAt"`
+	NotBefore                     *time.Time `json:"notBefore"`
 	Provider                      string     `json:"provider"`
 	ApplicationID                 string     `json:"applicationId"`
 	TenantID                      string     `json:"tenantId"`
@@ -349,14 +351,28 @@ type RevealResult struct {
 }
 
 type KeyVaultSyncResult struct {
-	AttemptedSources  int                  `json:"attemptedSources"`
-	ImportedResources int                  `json:"importedResources"`
-	UpdatedResources  int                  `json:"updatedResources"`
-	RemovedResources  int                  `json:"removedResources"`
-	MissingResources  int                  `json:"missingResources"`
-	SkippedResources  int                  `json:"skippedResources"`
+	AttemptedSources  int `json:"attemptedSources"`
+	ImportedResources int `json:"importedResources"`
+	UpdatedResources  int `json:"updatedResources"`
+	RemovedResources  int `json:"removedResources"`
+	MissingResources  int `json:"missingResources"`
+	// SkippedResources: secrets auto-import left alone because a user
+	// archived their catalog object.
+	SkippedResources int `json:"skippedResources"`
+	// RestoredResources: archived because the secret had vanished from Azure,
+	// restored because it is back.
+	RestoredResources int                  `json:"restoredResources"`
 	Automatic         bool                 `json:"automatic"`
 	Sources           []KeyVaultSyncSource `json:"sources"`
+}
+
+// ArchivedKeyVaultRow is an archived Azure Key Vault catalog object as sync
+// and import need it: which secret it tracked and why it was archived.
+type ArchivedKeyVaultRow struct {
+	ID        string
+	Name      string
+	Reference string
+	Reason    string
 }
 
 // KeyVaultImportItem is one discovered secret selected in the manual import
@@ -369,6 +385,7 @@ type KeyVaultImportItem struct {
 	ObjectName  string     `json:"objectName"`
 	SecretID    string     `json:"secretId"`
 	ContentType string     `json:"contentType"`
+	NotBefore   *time.Time `json:"notBefore"`
 	ExpiresAt   *time.Time `json:"expiresAt"`
 	Enabled     *bool      `json:"enabled"`
 }
@@ -388,6 +405,12 @@ type KeyVaultImportResult struct {
 	// Skipped counts selected secrets that already had a live managed
 	// resource (or appeared twice in the same request) and were not created.
 	Skipped int `json:"skipped"`
+	// Archived counts selected secrets whose object a user archived: they
+	// come back through Restore, which keeps their metadata, not as a copy.
+	Archived int `json:"archived"`
+	// Restored counts objects archived because the secret had vanished from
+	// Azure, brought back instead of creating a second object.
+	Restored int `json:"restored"`
 }
 
 type AppRegistrationImportInput struct {
@@ -443,6 +466,7 @@ type KeyVaultSyncSource struct {
 	RemovedCount    int        `json:"removedCount"`
 	MissingCount    int        `json:"missingCount"`
 	SkippedCount    int        `json:"skippedCount"`
+	RestoredCount   int        `json:"restoredCount"`
 }
 
 func CategoryForType(resourceType ResourceType) string {

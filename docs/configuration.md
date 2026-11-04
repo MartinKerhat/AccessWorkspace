@@ -52,7 +52,8 @@ Azure identity (workload identity / managed identity), so no vault-capable
 secret needs to live in the database. That toggle is a runtime admin setting,
 not an environment variable.
 
-The same applies to Key Vault sources and their sync intervals, app registration
+The same applies to Key Vault sources (sync interval, auto import, and whether
+the workspace may write to that vault), app registration
 sync settings, SMTP delivery, expiry reminder policies, and RDP profile signing:
 they are managed in Administration and stored (encrypted where sensitive) in the
 database, because they are per-deployment operational settings rather than

@@ -107,6 +107,21 @@ owner can unlock the private key.
   launch time), and `none` (passwordless portal logins).
 - Key Vault-backed resources keep metadata locally but fetch the live secret
   value from Azure on demand.
+- Writing to Key Vault (create a secret, set a new value, enabled / active
+  window) is off per vault until an administrator allows it, and the
+  deployment identity also needs a write role there. A new value passes through
+  the backend in memory straight to Azure: it is never stored, logged, or put in
+  an audit event (the event records vault, secret, version and how the value
+  was entered). `keyvault.write` covers new secrets and new values;
+  `keyvault.edit` covers enabled and the active window of each version, which
+  Azure treats as information — only a disabled version is actually unreadable.
+  A state change is audited with the version and its previous state; a reveal of
+  an older version names that version.
+- The workspace has no code path that deletes a secret or a version in Azure.
+  The identity's role still decides what a compromised backend could do, so a
+  role without delete (see [deployment](deployment.md)) is the stronger guard.
+- The generic edit form cannot change the status or dates of a Key Vault-backed
+  object; those mirror Azure and move only through the write path or sync.
 - App registration sync stores credential expiry metadata and owner snapshots,
   but never stores client secret values.
 - Empty `allowed_groups` and `allowed_users` means the resource is visible to

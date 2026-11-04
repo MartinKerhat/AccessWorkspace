@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { BrowserExtensionRuntime, ConnectionCredentialOverride, DirectoryUser, LaunchPayload, LauncherRuntime, MentionTarget, Resource, ResourceSummary } from "../types";
+import type { BrowserExtensionRuntime, ConnectionCredentialOverride, DirectoryUser, LaunchPayload, LauncherRuntime, KeyVaultSecretVersion, MentionTarget, Resource, ResourceSummary } from "../types";
 import { resourceTypeLabel, resourceTypeSummary } from "../resourceMeta";
 import { MentionNotes } from "../components/MentionNotes";
+import { KeyVaultVersions } from "../components/KeyVaultVersions";
 
 function formatDateTime(value?: string) {
   if (!value) {
@@ -70,6 +71,11 @@ type Props = {
   onLaunch: () => Promise<void>;
   onSaveConnectionOverride?: (passwordResourceId: string) => Promise<void>;
   onClearConnectionOverride?: () => Promise<void>;
+  // Key Vault writes. Passed only when the user holds the right and the
+  // secret's vault allows writes from the workspace.
+  onSetKeyVaultValue?: () => void;
+  onEditKeyVaultVersion?: (version: KeyVaultSecretVersion) => void;
+  onRevealKeyVaultVersion?: (version: string) => void;
 };
 
 function launchActionLabel(resource: Resource, launching?: boolean) {
@@ -230,7 +236,10 @@ export function ResourceDetailPage({
   onOpenMention,
   onLaunch,
   onSaveConnectionOverride,
-  onClearConnectionOverride
+  onClearConnectionOverride,
+  onSetKeyVaultValue,
+  onEditKeyVaultVersion,
+  onRevealKeyVaultVersion
 }: Props) {
   const importedKeyVaultDescription =
     resource?.type === "key_vault_secret" && resource.description.startsWith("Imported from Azure Key Vault")
@@ -375,8 +384,10 @@ export function ResourceDetailPage({
             </button>
           ) : null}
           {canRemove && onRemove ? (
+            // Shared objects are archived (an admin can restore them);
+            // personal ones are deleted for good, so the label says so.
             <button className="button ghost" onClick={() => void onRemove()}>
-              Remove
+              {resource.personal ? "Delete" : "Archive"}
             </button>
           ) : null}
         </div>
@@ -393,6 +404,15 @@ export function ResourceDetailPage({
         <div className="detail-section">
           <p className="eyebrow">Azure state</p>
           <p className="detail-description">This Key Vault secret is currently disabled in Azure.</p>
+        </div>
+      ) : null}
+
+      {resource.type === "key_vault_secret" && resource.status === "inactive" ? (
+        <div className="detail-section">
+          <p className="eyebrow">Azure state</p>
+          <p className="detail-description">
+            Active from {formatDateTime(resource.notBefore)}. Azure treats the date as information — the secret can already be read.
+          </p>
         </div>
       ) : null}
 
@@ -736,6 +756,10 @@ export function ResourceDetailPage({
             <dd>{resource.contentType || "n/a"}</dd>
           </div>
           <div>
+            <dt>Active from</dt>
+            <dd>{formatDateTime(resource.notBefore)}</dd>
+          </div>
+          <div>
             <dt>Expires at</dt>
             <dd>{formatDateTime(resource.expiresAt)}</dd>
           </div>
@@ -809,6 +833,17 @@ export function ResourceDetailPage({
             </button>
           ) : null}
         </div>
+      ) : null}
+
+      {resource.type === "key_vault_secret" && resource.sourceKind === "azure_key_vault" ? (
+        <KeyVaultVersions
+          resource={resource}
+          loading={loading}
+          canReveal={showRevealAction}
+          onSetValue={onSetKeyVaultValue}
+          onEditVersion={onEditKeyVaultVersion}
+          onRevealVersion={onRevealKeyVaultVersion}
+        />
       ) : null}
 
       {launch && !isConnection ? (

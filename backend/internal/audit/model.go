@@ -34,6 +34,12 @@ const (
 	// Generator page: a self-signed certificate was produced server-side
 	// (subject/profile only — the material itself is never stored or logged).
 	EventToolCertificateGenerated EventType = "tool_certificate_generated"
+	// Writes to Azure Key Vault through the workspace: a new secret, a new
+	// value (version) of an existing one, and an enabled/active-window change.
+	// Metadata names vault, secret, version and input mode — never the value.
+	EventKeyVaultSecretCreated      EventType = "keyvault_secret_created"
+	EventKeyVaultSecretValueSet     EventType = "keyvault_secret_value_set"
+	EventKeyVaultSecretStateUpdated EventType = "keyvault_secret_state_updated"
 )
 
 type Event struct {

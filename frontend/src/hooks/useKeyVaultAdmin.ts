@@ -43,6 +43,12 @@ function summarizeKeyVaultSync(result: KeyVaultSyncResult): string {
   if (result.importedResources > 0) {
     parts.push(`imported ${result.importedResources} new secrets`);
   }
+  if (result.restoredResources > 0) {
+    parts.push(`restored ${result.restoredResources} whose secret is back`);
+  }
+  if (result.skippedResources > 0) {
+    parts.push(`skipped ${result.skippedResources} archived`);
+  }
   parts.push(`updated ${result.updatedResources} imported secrets`);
   if (result.removedResources > 0) {
     parts.push(`removed ${result.removedResources} missing secrets`);
@@ -132,7 +138,7 @@ export function useKeyVaultAdmin({
       if (session.user.isAdmin) {
         await Promise.all([loadAdminConfig(), loadArchivedResources()]);
       }
-      if (result.updatedResources > 0 || result.removedResources > 0 || result.missingResources > 0 || !automatic) {
+      if (result.updatedResources > 0 || result.removedResources > 0 || result.missingResources > 0 || result.restoredResources > 0 || !automatic) {
         const items = await loadAllResources();
         if (selectedResourceId && items.some((item) => item.id === selectedResourceId)) {
           await loadResource(selectedResourceId);
@@ -219,6 +225,7 @@ export function useKeyVaultAdmin({
         objectName: item.name,
         secretId: item.id,
         contentType: item.contentType,
+        notBefore: item.notBefore,
         expiresAt: item.expiresAt,
         enabled: item.enabled
       }));
@@ -229,11 +236,17 @@ export function useKeyVaultAdmin({
         }
       );
       const createdItems = response.items ?? [];
-      if (createdItems.length === 0) {
-        setMessage("Selected Key Vault secrets were already imported");
-      } else {
-        setMessage(createdItems.length === 1 ? "Key Vault secret imported" : `${createdItems.length} Key Vault secrets imported`);
+      const parts = [];
+      if (createdItems.length > 0) {
+        parts.push(createdItems.length === 1 ? "1 Key Vault secret imported" : `${createdItems.length} Key Vault secrets imported`);
       }
+      if (response.restored) {
+        parts.push(`${response.restored} archived ${response.restored === 1 ? "object" : "objects"} restored`);
+      }
+      if (response.archived) {
+        parts.push(`${response.archived} skipped as archived — restore ${response.archived === 1 ? "it" : "them"} from Archived`);
+      }
+      setMessage(parts.length > 0 ? parts.join(", ") : "Selected Key Vault secrets were already imported");
       await loadAllResources();
       await loadActivity();
       if (session.capabilities.canViewAudit) {

@@ -37,14 +37,33 @@ func TestKeyVaultStatusDisabledWinsOverExpiry(t *testing.T) {
 	now := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
 	expired := now.Add(-time.Hour)
 
-	if got := keyVaultStatus(false, &expired, now); got != "disabled" {
+	if got := keyVaultStatus(false, nil, &expired, now); got != "disabled" {
 		t.Fatalf("expected disabled, got %q", got)
 	}
-	if got := keyVaultStatus(true, &expired, now); got != "expired" {
+	if got := keyVaultStatus(true, nil, &expired, now); got != "expired" {
 		t.Fatalf("expected expired, got %q", got)
 	}
-	if got := keyVaultStatus(true, nil, now); got != "active" {
+	if got := keyVaultStatus(true, nil, nil, now); got != "active" {
 		t.Fatalf("expected active, got %q", got)
+	}
+}
+
+// A future active-from date labels an enabled secret "inactive"; disabled still
+// wins, and once the window has started the expiry vocabulary applies again.
+func TestKeyVaultStatusInactiveBeforeActiveFrom(t *testing.T) {
+	now := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	future := now.Add(48 * time.Hour)
+	past := now.Add(-48 * time.Hour)
+	expired := now.Add(-time.Hour)
+
+	if got := keyVaultStatus(true, &future, nil, now); got != "inactive" {
+		t.Fatalf("expected inactive, got %q", got)
+	}
+	if got := keyVaultStatus(false, &future, nil, now); got != "disabled" {
+		t.Fatalf("expected disabled to win over inactive, got %q", got)
+	}
+	if got := keyVaultStatus(true, &past, &expired, now); got != "expired" {
+		t.Fatalf("expected expired once the window has started, got %q", got)
 	}
 }
 
@@ -54,7 +73,7 @@ func TestKeyVaultStatusSharesAppRegistrationVocabulary(t *testing.T) {
 	now := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
 	insideWindow := now.Add(ExpiryWarningWindow - time.Hour)
 
-	if got := keyVaultStatus(true, &insideWindow, now); got != "expiring" {
+	if got := keyVaultStatus(true, nil, &insideWindow, now); got != "expiring" {
 		t.Fatalf("expected expiring, got %q", got)
 	}
 	if got := expiryStatus(&insideWindow, now); got != "expiring" {

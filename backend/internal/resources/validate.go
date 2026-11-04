@@ -218,7 +218,12 @@ func preserveManagedFields(existing Resource, input UpdateResourceInput, user au
 		input.ObjectType = existing.ObjectType
 		input.ObjectVersion = existing.ObjectVersion
 		input.ContentType = existing.ContentType
+		// Status (enabled), expiry and active-from mirror Azure. The generic
+		// edit form must not change them locally — the next sync would
+		// overwrite the change. They move only through the Azure write path.
+		input.Status = existing.Status
 		input.ExpiresAt = existing.ExpiresAt
+		input.NotBefore = existing.NotBefore
 		input.LinkedSecretRef = existing.LinkedSecretRef
 		input.SecretMode = existing.Secret.Mode
 		input.SecretReference = existing.Secret.Reference
@@ -301,6 +306,7 @@ func resourceToUpdateInput(resource Resource) UpdateResourceInput {
 		ObjectVersion:                 resource.ObjectVersion,
 		ContentType:                   resource.ContentType,
 		ExpiresAt:                     resource.ExpiresAt,
+		NotBefore:                     resource.NotBefore,
 		Provider:                      resource.Provider,
 		ApplicationID:                 resource.ApplicationID,
 		TenantID:                      resource.TenantID,

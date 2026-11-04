@@ -190,6 +190,8 @@ export type CategoryCapabilities = {
   edit: boolean;
   reveal: boolean;
   launch: boolean;
+  // Key Vault only: put a new value into Azure (keyvault.write).
+  write?: boolean;
 };
 
 // Which parts of the Generator a user may use (rights generator.passwords,
@@ -270,6 +272,8 @@ export type KeyVaultSource = {
   syncEnabled: boolean;
   syncIntervalMinutes: number;
   autoImportEnabled: boolean;
+  // The workspace may write to this vault (create, new value, state).
+  writeEnabled: boolean;
   defaultOwner: string;
   defaultOwnerTeam: string;
   defaultEnvironment: string;
@@ -288,6 +292,7 @@ export type KeyVaultDiscoveredSecret = {
   vaultName: string;
   vaultUrl: string;
   contentType: string;
+  notBefore?: string;
   expiresAt?: string;
   enabled: boolean;
 };
@@ -318,8 +323,59 @@ export type KeyVaultImportItem = {
   objectName: string;
   secretId: string;
   contentType: string;
+  notBefore?: string;
   expiresAt?: string;
   enabled: boolean;
+};
+
+// A vault an admin opened for writes from the workspace.
+export type WritableKeyVaultSource = {
+  name: string;
+  vaultUrl: string;
+};
+
+// A value on its way to Azure Key Vault. It is never stored by the workspace.
+export type KeyVaultSecretValueInput = {
+  value: string;
+  contentType: string;
+  fileEncoding: "" | "utf-8" | "base64";
+  fileName: string;
+  inputMode: "typed" | "generated" | "file";
+  enabled: boolean;
+  notBefore?: string;
+  expiresAt?: string;
+};
+
+export type KeyVaultCreateSecretInput = KeyVaultSecretValueInput & {
+  vaultUrl: string;
+  secretName: string;
+  name: string;
+  description: string;
+  ownerTeam: string;
+  environment: string;
+  notes: string;
+  allowedGroups: string[];
+};
+
+export type KeyVaultSecretStateInput = {
+  enabled: boolean;
+  notBefore?: string;
+  expiresAt?: string;
+};
+
+// One version of a Key Vault secret, read live from Azure (never stored).
+// createdBy is known only for versions written from the workspace.
+export type KeyVaultSecretVersion = {
+  version: string;
+  current: boolean;
+  pinned: boolean;
+  enabled: boolean;
+  contentType: string;
+  notBefore?: string;
+  expiresAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
 };
 
 export type KeyVaultSyncSource = {
@@ -344,7 +400,10 @@ export type KeyVaultSyncResult = {
   updatedResources: number;
   removedResources: number;
   missingResources: number;
+  // Secrets auto-import left alone because their object was archived.
   skippedResources: number;
+  // Objects archived while their secret was missing, restored now it is back.
+  restoredResources: number;
   automatic: boolean;
   sources: KeyVaultSyncSource[];
 };
@@ -505,6 +564,8 @@ export type Resource = ResourceSummary & {
   objectType: string;
   objectVersion: string;
   contentType: string;
+  // Key Vault: Azure `nbf` (active from), synced like expiresAt.
+  notBefore?: string;
   tenantId: string;
   clientId: string;
   credentialType: string;

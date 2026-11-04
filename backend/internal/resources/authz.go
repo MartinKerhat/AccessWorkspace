@@ -173,6 +173,9 @@ func categoryAccessRight(user auth.User, category string) string {
 		if slices.Contains(user.Rights, "keyvault.edit") {
 			return "keyvault.edit"
 		}
+		if slices.Contains(user.Rights, "keyvault.write") {
+			return "keyvault.write"
+		}
 		if slices.Contains(user.Rights, "keyvault.read") {
 			return "keyvault.read"
 		}

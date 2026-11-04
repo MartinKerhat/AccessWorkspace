@@ -150,7 +150,12 @@ allowed.
 ### External integrations
 
 - Key Vault adapter: discovery, batch import, manual and automatic sync,
-  archived/restore views
+  archived/restore views; on vaults an admin opened for writes, create a
+  secret, set a new value (typed, generated or uploaded file) and change
+  enabled / active window of any version — written to Azure, then the catalog
+  row is refreshed from Azure's answer. A secret's versions are listed live from
+  Azure on the object page (metadata only, never stored); there is no delete
+  path for secrets or versions
 - App registration adapter: discovery, import, sync, owner snapshots, credential
   expiry metadata
 - Expiry reminders for app registration credentials and Key Vault secrets, in

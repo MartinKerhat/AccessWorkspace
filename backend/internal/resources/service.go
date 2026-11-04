@@ -303,7 +303,7 @@ func (s *Service) Archive(ctx context.Context, user auth.User, id string) error 
 		ResourceName: &resource.Name,
 		Metadata: map[string]any{
 			"type":   resource.Type,
-			"reason": "removed_from_app",
+			"reason": archiveReasonRemovedFromApp,
 		},
 	})
 	return nil
@@ -325,6 +325,9 @@ func (s *Service) Restore(ctx context.Context, user auth.User, id string) error 
 	}
 	if resource.ArchivedAt == nil {
 		return ErrNotFound
+	}
+	if err := s.ensureNoActiveKeyVaultTwin(ctx, resource); err != nil {
+		return err
 	}
 	if err := s.repo.Restore(ctx, id); err != nil {
 		return err

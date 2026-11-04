@@ -23,6 +23,10 @@ type Props = {
   onLaunch?: (item: ResourceSummary) => void;
   onCreate?: () => void;
   onSecondaryAction?: () => void;
+  // A second create-style action next to the primary one (Key Vault: "New
+  // secret" beside the admin-only import).
+  extraActionLabel?: string;
+  onExtraAction?: () => void;
 };
 
 type FolderNode = {
@@ -290,7 +294,9 @@ export function CatalogPage({
   onSelect,
   onLaunch,
   onCreate,
-  onSecondaryAction
+  onSecondaryAction,
+  extraActionLabel,
+  onExtraAction
 }: Props) {
   const connectionCategory = isConnectionCategory(category);
   const folderNodes = useMemo(() => (connectionCategory ? buildFolderTree(items) : []), [connectionCategory, items]);
@@ -334,6 +340,11 @@ export function CatalogPage({
             {secondaryActionLabel && onSecondaryAction ? (
               <button className="button ghost" onClick={onSecondaryAction}>
                 {secondaryActionLabel}
+              </button>
+            ) : null}
+            {extraActionLabel && onExtraAction ? (
+              <button className="button secondary" onClick={onExtraAction}>
+                {extraActionLabel}
               </button>
             ) : null}
             {canCreate && onCreate ? (

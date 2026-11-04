@@ -13,7 +13,9 @@ import (
 // skipping any secret that already has a live managed resource. The check
 // mirrors the automatic sync (see SyncKeyVault): both key on the normalized
 // secret identifier, so a secret auto-imported by one path is recognised as
-// imported by the other.
+// imported by the other. Archived objects are handled the same way too: one a
+// user archived is skipped (Restore brings it back), one archived because its
+// secret had vanished is restored.
 func (s *Service) ImportKeyVaultSecrets(ctx context.Context, user auth.User, input KeyVaultImportInput) (KeyVaultImportResult, error) {
 	if !user.IsAdmin {
 		return KeyVaultImportResult{}, ErrForbidden
@@ -33,6 +35,10 @@ func (s *Service) ImportKeyVaultSecrets(ctx context.Context, user auth.User, inp
 		return KeyVaultImportResult{}, err
 	}
 	existingByReference := managedKeyVaultReferences(existing)
+	archivedByReference, err := s.archivedKeyVaultByReference(ctx)
+	if err != nil {
+		return KeyVaultImportResult{}, err
+	}
 
 	now := time.Now().UTC()
 	result := KeyVaultImportResult{Items: make([]Resource, 0, len(input.Items))}
@@ -43,6 +49,20 @@ func (s *Service) ImportKeyVaultSecrets(ctx context.Context, user auth.User, inp
 		}
 		if _, exists := existingByReference[reference]; exists {
 			result.Skipped++
+			continue
+		}
+		if archived, ok := archivedByReference[reference]; ok {
+			if !archived.reappearsWithSecret() {
+				result.Archived++
+				continue
+			}
+			restored, err := s.restoreReappearedKeyVaultRow(ctx, user, archived, false)
+			if err != nil {
+				return KeyVaultImportResult{}, err
+			}
+			delete(archivedByReference, reference)
+			existingByReference[reference] = restored
+			result.Restored++
 			continue
 		}
 
@@ -65,7 +85,7 @@ func manualImportCreateInput(input KeyVaultImportInput, item KeyVaultImportItem,
 		Owner:           strings.TrimSpace(input.Owner),
 		OwnerTeam:       strings.TrimSpace(input.OwnerTeam),
 		Environment:     strings.TrimSpace(input.Environment),
-		Status:          keyVaultImportStatus(item.Enabled),
+		Status:          keyVaultImportStatus(item, now),
 		SourceKind:      SourceKindAzureKeyVault,
 		SourceObjectID:  reference,
 		LastSyncedAt:    &now,
@@ -75,6 +95,7 @@ func manualImportCreateInput(input KeyVaultImportInput, item KeyVaultImportItem,
 		ObjectType:      "secret",
 		ContentType:     strings.TrimSpace(item.ContentType),
 		ExpiresAt:       item.ExpiresAt,
+		NotBefore:       item.NotBefore,
 		RevealAllowed:   true,
 		CopyAllowed:     true,
 		AllowedGroups:   append([]string{}, input.AllowedGroups...),
@@ -84,11 +105,12 @@ func manualImportCreateInput(input KeyVaultImportInput, item KeyVaultImportItem,
 	}
 }
 
-func keyVaultImportStatus(enabled *bool) string {
-	if enabled != nil && !*enabled {
-		return "disabled"
-	}
-	return "active"
+// keyVaultImportStatus uses the same vocabulary as sync, so an imported row
+// shows "expiring"/"inactive" right away instead of after the first sync.
+// An item without the enabled flag (older clients) counts as enabled.
+func keyVaultImportStatus(item KeyVaultImportItem, now time.Time) string {
+	enabled := item.Enabled == nil || *item.Enabled
+	return keyVaultStatus(enabled, item.NotBefore, item.ExpiresAt, now)
 }
 
 // normalizeKeyVaultReference is the canonical form of a secret identifier

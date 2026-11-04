@@ -9,6 +9,8 @@ type Props = {
   form: KeyVaultImportForm;
   setForm: Dispatch<SetStateAction<KeyVaultImportForm>>;
   importedSecretKeys: Set<string>;
+  // Archive reason per archived secret (keyVaultSecretKey -> reason).
+  archivedSecretReasons: Map<string, string>;
   knownUsers: UserSummary[];
   localGroups: LocalGroup[];
   // Global status/error message mirrored inside the modal: import errors are
@@ -26,6 +28,7 @@ export function KeyVaultImportModal({
   form,
   setForm,
   importedSecretKeys,
+  archivedSecretReasons,
   knownUsers,
   localGroups,
   message,
@@ -59,8 +62,16 @@ export function KeyVaultImportModal({
   }));
   const isAlreadyImported = (item: { vaultName: string; name: string }) =>
     importedSecretKeys.has(keyVaultSecretKey(item.vaultName, item.name));
+  // Mirrors the backend: an object a user archived comes back through
+  // Restore, so its secret is not offered; one archived because the secret
+  // had vanished is restored by importing it.
+  const archivedReason = (item: { vaultName: string; name: string }) =>
+    archivedSecretReasons.get(keyVaultSecretKey(item.vaultName, item.name));
+  const isRestorable = (item: { vaultName: string; name: string }) => archivedReason(item) === "key_vault_secret_not_found";
+  const isBlocked = (item: { vaultName: string; name: string }) =>
+    isAlreadyImported(item) || (archivedReason(item) !== undefined && !isRestorable(item));
   const selectedItems = getSelectedKeyVaultItems(form.selectedSecretIds, discoveries.sources).filter(
-    (item) => !isAlreadyImported(item)
+    (item) => !isBlocked(item)
   );
   const selectedVaultCount = new Set(selectedItems.map((item) => item.vaultUrl)).size;
 
@@ -174,7 +185,7 @@ export function KeyVaultImportModal({
                             type="button"
                             onClick={() =>
                               setSourceSecrets(
-                                sourceResult.items.filter((item) => !isAlreadyImported(item)).map((item) => item.id),
+                                sourceResult.items.filter((item) => !isBlocked(item)).map((item) => item.id),
                                 true
                               )
                             }
@@ -199,12 +210,13 @@ export function KeyVaultImportModal({
                     ) : null}
                     {sourceResult.items.map((item) => {
                       const alreadyImported = isAlreadyImported(item);
+                      const blocked = isBlocked(item);
                       return (
                         <label key={item.id} className="discovery-item">
                           <input
                             type="checkbox"
-                            disabled={alreadyImported}
-                            checked={!alreadyImported && form.selectedSecretIds.includes(item.id)}
+                            disabled={blocked}
+                            checked={!blocked && form.selectedSecretIds.includes(item.id)}
                             onChange={() => toggleSecret(item.id)}
                           />
                           <div>
@@ -214,6 +226,8 @@ export function KeyVaultImportModal({
                             <p>{item.expiresAt ? `expires ${new Date(item.expiresAt).toLocaleDateString()}` : "no expiry"}</p>
                             <p>{item.id}</p>
                             {alreadyImported ? <p>already imported</p> : null}
+                            {!alreadyImported && blocked ? <p>archived — restore it from Archived</p> : null}
+                            {!alreadyImported && isRestorable(item) ? <p>archived while missing from Azure — importing restores it</p> : null}
                           </div>
                         </label>
                       );

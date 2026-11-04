@@ -23,18 +23,32 @@ type fakeResourceStore struct {
 	appCredentials  []AppRegistrationCredential
 	appOwners       []AppRegistrationOwner
 	snapshotUpdates int
+	// archivedKeyVault feeds ListArchivedKeyVault; byID answers Get/GetAny.
+	archivedKeyVault []ArchivedKeyVaultRow
+	byID             map[string]Resource
+	restored         []string
 }
 
 func (s *fakeResourceStore) List(context.Context, Filter) ([]ResourceSummary, error) {
 	return nil, nil
 }
 
-func (s *fakeResourceStore) Get(context.Context, string) (Resource, error) {
+func (s *fakeResourceStore) Get(_ context.Context, id string) (Resource, error) {
+	if item, ok := s.byID[id]; ok {
+		return item, nil
+	}
 	return Resource{}, ErrNotFound
 }
 
-func (s *fakeResourceStore) GetAny(context.Context, string) (Resource, error) {
+func (s *fakeResourceStore) GetAny(_ context.Context, id string) (Resource, error) {
+	if item, ok := s.byID[id]; ok {
+		return item, nil
+	}
 	return Resource{}, ErrNotFound
+}
+
+func (s *fakeResourceStore) ListArchivedKeyVault(context.Context) ([]ArchivedKeyVaultRow, error) {
+	return s.archivedKeyVault, nil
 }
 
 func (s *fakeResourceStore) ListArchived(context.Context) ([]ArchivedResourceSummary, error) {
@@ -79,7 +93,8 @@ func (s *fakeResourceStore) Archive(_ context.Context, id string) error {
 
 func (s *fakeResourceStore) Delete(context.Context, string) error { return nil }
 
-func (s *fakeResourceStore) Restore(context.Context, string) error {
+func (s *fakeResourceStore) Restore(_ context.Context, id string) error {
+	s.restored = append(s.restored, id)
 	return nil
 }
 

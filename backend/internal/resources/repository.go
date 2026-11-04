@@ -166,7 +166,7 @@ func (r *Repository) Get(ctx context.Context, id string) (Resource, error) {
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
 			r.connection_gateway_host,
-			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
+			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at, r.not_before,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
 			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
@@ -197,7 +197,7 @@ func (r *Repository) GetAny(ctx context.Context, id string) (Resource, error) {
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
 			r.connection_gateway_host,
-			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
+			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at, r.not_before,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
 			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
@@ -228,7 +228,7 @@ func (r *Repository) ListManagedKeyVault(ctx context.Context) ([]Resource, error
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
 			r.connection_gateway_host,
-			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
+			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at, r.not_before,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
 			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
@@ -265,7 +265,7 @@ func (r *Repository) ListManagedAppRegistrations(ctx context.Context) ([]Resourc
 			r.connection_domain, r.connection_admin_session, r.connection_automatic_logon, r.connection_window_mode,
 			r.connection_use_multiple_monitors, r.connection_show_connection_bar, r.connection_screen_mode, r.connection_mac_address,
 			r.connection_gateway_host,
-			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at,
+			r.vault_name, r.object_name, r.object_type, r.object_version, r.content_type, r.expires_at, r.not_before,
 			r.provider, r.application_id, r.tenant_id, r.client_id, r.credential_type, r.credential_expires_at,
 			r.display_name_external, r.linked_secret_ref,
 			r.launch_allowed, r.reveal_allowed, r.copy_allowed, r.allowed_groups, r.allowed_users, r.created_at, r.updated_at, r.archived_at,
@@ -334,6 +334,44 @@ func (r *Repository) ListArchived(ctx context.Context) ([]ArchivedResourceSummar
 	return items, rows.Err()
 }
 
+// ListArchivedKeyVault lists archived Azure Key Vault objects with the secret
+// they tracked and the reason of their latest archive event, newest first.
+// Sync and import use it so an archived secret is neither imported a second
+// time nor left archived after it reappears in Azure.
+func (r *Repository) ListArchivedKeyVault(ctx context.Context) ([]ArchivedKeyVaultRow, error) {
+	rows, err := r.db.Query(ctx, `
+		select r.id, r.name, coalesce(nullif(rs.secret_reference, ''), r.source_object_id), coalesce(a.metadata ->> 'reason', '')
+		from resources r
+		join resource_secrets rs on rs.resource_id = r.id
+		left join lateral (
+			select metadata
+			from audit_events
+			where resource_id = r.id
+				and event_type = 'resource_archived'
+			order by created_at desc
+			limit 1
+		) a on true
+		where r.archived_at is not null
+			and r.type = $1
+			and r.source_kind = $2
+		order by r.archived_at desc
+	`, TypeKeyVaultSecret, SourceKindAzureKeyVault)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []ArchivedKeyVaultRow{}
+	for rows.Next() {
+		var item ArchivedKeyVaultRow
+		if err := rows.Scan(&item.ID, &item.Name, &item.Reference, &item.Reason); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 // sharingList keeps allowed_groups / allowed_users writable from callers that
 // skip normalizeInput (the Key Vault and app registration sync jobs go straight
 // to the repository): pgx encodes a nil slice as NULL, which the not-null
@@ -362,7 +400,8 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 			connection_gateway_host,
 			vault_name, object_name, object_type, object_version, content_type, expires_at,
 			provider, application_id, tenant_id, client_id, credential_type, credential_expires_at,
-			display_name_external, linked_secret_ref, launch_allowed, reveal_allowed, copy_allowed, allowed_groups, allowed_users
+			display_name_external, linked_secret_ref, launch_allowed, reveal_allowed, copy_allowed, allowed_groups, allowed_users,
+			not_before
 		) values (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
 			$15, $16, $17, $18, $19, $20, $21,
@@ -370,7 +409,8 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 			$48,
 			$30, $31, $32, $33, $34, $35,
 			$36, $37, $38, $39, $40, $41,
-			$42, $43, $44, $45, $46, $47, $49
+			$42, $43, $44, $45, $46, $47, $49,
+			$50
 		)
 	`, id, input.Name, input.Type, input.Personal, input.Description, input.Owner, input.OwnerUserID, input.OwnerTeam, input.Environment, input.Status, input.FolderPath, input.LaunchMode, input.SourceKind, input.SourceObjectID,
 		input.LastSyncedAt, input.Notes, input.TargetHost, input.TargetPort, input.TargetURL, input.TargetSystem, input.Username,
@@ -379,7 +419,8 @@ func (r *Repository) Create(ctx context.Context, input CreateResourceInput) (Res
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
 		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, sharingList(input.AllowedGroups),
-		input.ConnectionGatewayHost, sharingList(input.AllowedUsers))
+		input.ConnectionGatewayHost, sharingList(input.AllowedUsers),
+		input.NotBefore)
 	if err != nil {
 		return Resource{}, err
 	}
@@ -456,6 +497,7 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 			copy_allowed = $46,
 			allowed_groups = $47,
 			allowed_users = $49,
+			not_before = $50,
 			updated_at = now()
 		where id = $1
 	`, id, input.Name, input.Type, input.Personal, input.Description, input.Owner, input.OwnerUserID, input.OwnerTeam, input.Environment, input.Status, input.FolderPath, input.LaunchMode, input.SourceKind,
@@ -465,7 +507,8 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateResource
 		input.VaultName, input.ObjectName, input.ObjectType, input.ObjectVersion, input.ContentType, input.ExpiresAt,
 		input.Provider, input.ApplicationID, input.TenantID, input.ClientID, input.CredentialType, input.CredentialExpiresAt,
 		input.DisplayNameExternal, input.LinkedSecretRef, input.LaunchAllowed, input.RevealAllowed, input.CopyAllowed, sharingList(input.AllowedGroups),
-		input.ConnectionGatewayHost, sharingList(input.AllowedUsers))
+		input.ConnectionGatewayHost, sharingList(input.AllowedUsers),
+		input.NotBefore)
 	if err != nil {
 		return Resource{}, err
 	}
@@ -779,6 +822,7 @@ func scanResource(scanner summaryScanner) (Resource, error) {
 	var targetPort pgtype.Int4
 	var lastSyncedAt pgtype.Timestamptz
 	var expiresAt pgtype.Timestamptz
+	var notBefore pgtype.Timestamptz
 	var credentialExpiresAt pgtype.Timestamptz
 	if err := scanner.Scan(
 		&item.ID, &item.Name, &item.Type, &item.Personal, &item.Description, &item.Owner, &item.OwnerUserID, &item.OwnerTeam, &item.Environment, &item.Status,
@@ -787,7 +831,7 @@ func scanResource(scanner summaryScanner) (Resource, error) {
 		&item.ConnectionDomain, &item.ConnectionAdminSession, &item.ConnectionAutomaticLogon, &item.ConnectionWindowMode,
 		&item.ConnectionUseMultipleMonitors, &item.ConnectionShowConnectionBar, &item.ConnectionScreenMode, &item.ConnectionMacAddress,
 		&item.ConnectionGatewayHost,
-		&item.VaultName, &item.ObjectName, &item.ObjectType, &item.ObjectVersion, &item.ContentType, &expiresAt,
+		&item.VaultName, &item.ObjectName, &item.ObjectType, &item.ObjectVersion, &item.ContentType, &expiresAt, &notBefore,
 		&item.Provider, &item.ApplicationID, &item.TenantID, &item.ClientID, &item.CredentialType, &credentialExpiresAt,
 		&item.DisplayNameExternal, &item.LinkedSecretRef,
 		&item.LaunchAllowed, &item.RevealAllowed, &item.CopyAllowed, &item.AllowedGroups, &item.AllowedUsers, &item.CreatedAt, &item.UpdatedAt, &item.ArchivedAt,
@@ -803,6 +847,7 @@ func scanResource(scanner summaryScanner) (Resource, error) {
 	}
 	item.LastSyncedAt = timeFromPg(lastSyncedAt)
 	item.ExpiresAt = timeFromPg(expiresAt)
+	item.NotBefore = timeFromPg(notBefore)
 	item.CredentialExpiresAt = timeFromPg(credentialExpiresAt)
 	return item, nil
 }

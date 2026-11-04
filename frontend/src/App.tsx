@@ -15,6 +15,7 @@ import { AppRegistrationImportModal } from "./modals/AppRegistrationImportModal"
 import { clearRequestedResourceId, currentView, landingView, requestedResourceId, type View } from "./navigation";
 import { useAuth, authTokenStorageKey } from "./hooks/useAuth";
 import { filterCatalogItems, filterArchivedKeyVaultItems, defaultFilters, type Filters } from "./catalogFilter";
+import { keyVaultSecretKey } from "./keyVault";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { WorkspaceTopbar } from "./components/WorkspaceTopbar";
 import { useLauncher } from "./hooks/useLauncher";
@@ -26,6 +27,8 @@ import { useAdminUsers } from "./hooks/useAdminUsers";
 import { useAdminConfig, defaultAppRegistrationNotificationPolicy } from "./hooks/useAdminConfig";
 import { useKeyVaultAdmin, closedKeyVaultModalState } from "./hooks/useKeyVaultAdmin";
 import { useAppRegistrationAdmin, closedAppRegistrationModalState } from "./hooks/useAppRegistrationAdmin";
+import { useKeyVaultWrites } from "./hooks/useKeyVaultWrites";
+import { KeyVaultCreateSecretModal, KeyVaultSetValueModal, KeyVaultStateModal } from "./modals/KeyVaultSecretModals";
 import { ActivityPage } from "./pages/ActivityPage";
 import { ArchivedKeyVaultPage } from "./pages/ArchivedKeyVaultPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -71,6 +74,7 @@ const availableRights = [
   "connections.create",
   "keyvault.read",
   "keyvault.edit",
+  "keyvault.write",
   "appregistrations.read",
   "appregistrations.edit",
   "passwords.read",
@@ -350,6 +354,16 @@ export default function App() {
     setReveal,
     setLaunch
   });
+  const keyVaultWrites = useKeyVaultWrites({
+    session,
+    setBusy,
+    setMessage,
+    loadAllResources,
+    loadResource,
+    loadActivity,
+    setSelectedResourceId,
+    showReveal: setReveal
+  });
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   // Sharing directory (group names + minimal user records) for the resource
   // form's visibility picker — available to every user, unlike the admin lists.
@@ -618,10 +632,27 @@ export default function App() {
   const categoryItems = categoryView ? filterCategoryItems(allResources, categoryView) : [];
   const currentItems = filterCatalogItems(categoryItems, filters);
   const archivedKeyVaultItems = archivedResources.filter((item) => item.type === "key_vault_secret");
+  // Newest archive first, like the backend's lookup.
+  const archivedKeyVaultReasons = new Map<string, string>();
+  for (const item of archivedKeyVaultItems) {
+    const key = keyVaultSecretKey(item.vaultName ?? "", item.objectName ?? "");
+    if (item.vaultName && item.objectName && !archivedKeyVaultReasons.has(key)) {
+      archivedKeyVaultReasons.set(key, item.archivedReason);
+    }
+  }
   const currentArchivedKeyVaultItems = filterArchivedKeyVaultItems(archivedKeyVaultItems, filters);
   useEffect(() => {
     clearRequestedResourceId();
   }, []);
+
+  // Which vaults take writes decides the Key Vault buttons; re-read on every
+  // visit since an admin can change it at any time.
+  useEffect(() => {
+    if (categoryView === "keyvault") {
+      void keyVaultWrites.loadWritableSources();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryView, session]);
 
   // Two hops on purpose: move to the category that actually lists the record
   // first (a Key Vault secret is not in #appregistrations), then select it once
@@ -914,6 +945,8 @@ export default function App() {
                           }
                       : undefined
                   }
+                  extraActionLabel={categoryView === "keyvault" && keyVaultWrites.canCreate ? "New secret" : undefined}
+                  onExtraAction={categoryView === "keyvault" ? () => void keyVaultWrites.openCreate() : undefined}
                   onCreate={() => {
                     // Drop any stale banner text so the modal starts clean; it
                     // mirrors the message state while open.
@@ -1006,6 +1039,19 @@ export default function App() {
                   onLaunch={handleLaunch}
                   onSaveConnectionOverride={handleSaveConnectionOverride}
                   onClearConnectionOverride={handleClearConnectionOverride}
+                  onSetKeyVaultValue={
+                    selectedResource && keyVaultWrites.canSetValue(selectedResource)
+                      ? () => keyVaultWrites.openSetValue(selectedResource)
+                      : undefined
+                  }
+                  onEditKeyVaultVersion={
+                    selectedResource && keyVaultWrites.canEditState(selectedResource)
+                      ? (version) => keyVaultWrites.openState(selectedResource, version)
+                      : undefined
+                  }
+                  onRevealKeyVaultVersion={
+                    selectedResource ? (version) => void keyVaultWrites.revealVersion(selectedResource, version) : undefined
+                  }
                 />
               </div>
             )}
@@ -1266,6 +1312,7 @@ export default function App() {
             form={keyVaultImportForm}
             setForm={setKeyVaultImportForm}
             importedSecretKeys={importedKeyVaultSecrets}
+            archivedSecretReasons={archivedKeyVaultReasons}
             knownUsers={knownUsers}
             localGroups={localGroups}
             message={message}
@@ -1277,6 +1324,48 @@ export default function App() {
             }}
             onImport={() => void handleImportKeyVaultSecret()}
             onClose={() => setKeyVaultModalState(closedKeyVaultModalState)}
+          />
+        ) : null}
+
+        {keyVaultWrites.modalState.mode === "create" ? (
+          <KeyVaultCreateSecretModal
+            sources={keyVaultWrites.writableSources}
+            groups={directory.groups}
+            generatorCapabilities={session.capabilities.generator}
+            message={message}
+            busy={busy}
+            onSubmit={(input) => void keyVaultWrites.createSecret(input)}
+            onClose={keyVaultWrites.closeModal}
+          />
+        ) : null}
+
+        {keyVaultWrites.modalState.mode === "value" ? (
+          <KeyVaultSetValueModal
+            resource={keyVaultWrites.modalState.resource}
+            generatorCapabilities={session.capabilities.generator}
+            message={message}
+            busy={busy}
+            onSubmit={(input) => {
+              if (keyVaultWrites.modalState.mode === "value") {
+                void keyVaultWrites.setValue(keyVaultWrites.modalState.resource, input);
+              }
+            }}
+            onClose={keyVaultWrites.closeModal}
+          />
+        ) : null}
+
+        {keyVaultWrites.modalState.mode === "state" ? (
+          <KeyVaultStateModal
+            resource={keyVaultWrites.modalState.resource}
+            version={keyVaultWrites.modalState.version}
+            message={message}
+            busy={busy}
+            onSubmit={(input) => {
+              if (keyVaultWrites.modalState.mode === "state") {
+                void keyVaultWrites.updateState(keyVaultWrites.modalState.resource, keyVaultWrites.modalState.version.version, input);
+              }
+            }}
+            onClose={keyVaultWrites.closeModal}
           />
         ) : null}
 

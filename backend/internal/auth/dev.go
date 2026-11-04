@@ -123,6 +123,9 @@ type CategoryCapabilities struct {
 	Edit   bool `json:"edit"`
 	Reveal bool `json:"reveal"`
 	Launch bool `json:"launch"`
+	// Write is Key Vault only: put a new value into Azure (keyvault.write).
+	// Enabled/active-window changes in Azure follow Edit instead.
+	Write bool `json:"write"`
 }
 
 // GeneratorCapabilities says which parts of the Generator page (and, later,
@@ -154,7 +157,7 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 		return WorkspaceCapabilities{
 			Categories: map[string]CategoryCapabilities{
 				"connections":      {View: true, Create: true, Edit: true, Reveal: true, Launch: true},
-				"keyvault":         {View: true, Import: true, Edit: true, Reveal: true},
+				"keyvault":         {View: true, Create: true, Import: true, Edit: true, Reveal: true, Write: true},
 				"appregistrations": {View: true, Import: true, Edit: true},
 				"passwords":        {View: true, Create: true, Edit: true, Reveal: true, Launch: true},
 			},
@@ -189,13 +192,19 @@ func CapabilitiesForUser(user User) WorkspaceCapabilities {
 			Reveal: has("connections.read") || has("connections.edit") || has("connections.create"),
 			Launch: has("connections.read") || has("connections.edit") || has("connections.create"),
 		},
+		// keyvault.write (create a secret / set a new value in Azure) implies
+		// read-level access, like passwords.create: a writer must be able to
+		// see and check what they wrote. keyvault.edit covers catalog metadata
+		// plus enabled and the active window in Azure.
 		"keyvault": {
-			View: has("keyvault.read") || has("keyvault.edit"),
+			View: has("keyvault.read") || has("keyvault.edit") || has("keyvault.write"),
 			// Import/sync endpoints are admin-only; advertising Import here
 			// would promise non-admin editors something the API denies.
 			Import: false,
+			Create: has("keyvault.write"),
 			Edit:   has("keyvault.edit"),
-			Reveal: has("keyvault.read") || has("keyvault.edit"),
+			Reveal: has("keyvault.read") || has("keyvault.edit") || has("keyvault.write"),
+			Write:  has("keyvault.write"),
 		},
 		"appregistrations": {
 			View:   has("appregistrations.read") || has("appregistrations.edit"),

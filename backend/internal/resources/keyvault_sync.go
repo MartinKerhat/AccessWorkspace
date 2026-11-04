@@ -27,6 +27,10 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 		return KeyVaultSyncResult{}, err
 	}
 	existingByReference := managedKeyVaultReferences(items)
+	archivedByReference, err := s.archivedKeyVaultByReference(ctx)
+	if err != nil {
+		return KeyVaultSyncResult{}, err
+	}
 
 	discoveredBySource := map[string]keyvault.DiscoverSourceResult{}
 	needsDiscovery := false
@@ -98,6 +102,27 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 						if _, exists := existingByReference[reference]; exists {
 							continue
 						}
+						if archived, ok := archivedByReference[reference]; ok {
+							if !archived.reappearsWithSecret() {
+								result.SkippedResources++
+								result.Sources[i].SkippedCount++
+								continue
+							}
+							restored, err := s.restoreReappearedKeyVaultRow(ctx, user, archived, automatic)
+							if err != nil {
+								markKeyVaultSyncError(&result.Sources[i], err.Error())
+								result.MissingResources++
+								result.Sources[i].MissingCount++
+								continue
+							}
+							delete(archivedByReference, reference)
+							existingByReference[reference] = restored
+							// Refreshed from Azure by the update loop below.
+							items = append(items, restored)
+							result.RestoredResources++
+							result.Sources[i].RestoredCount++
+							continue
+						}
 						created, err := s.repo.Create(ctx, autoImportCreateInput(source, secret, now))
 						if err != nil {
 							markKeyVaultSyncError(&result.Sources[i], err.Error())
@@ -160,7 +185,7 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 						ResourceName: &item.Name,
 						Metadata: map[string]any{
 							"type":      item.Type,
-							"reason":    "key_vault_secret_not_found",
+							"reason":    archiveReasonKeyVaultNotFound,
 							"automatic": automatic,
 						},
 					})
@@ -180,7 +205,8 @@ func (s *Service) SyncKeyVault(ctx context.Context, user auth.User, sources []Ke
 			update.ObjectVersion = metadata.Version
 			update.ContentType = metadata.ContentType
 			update.ExpiresAt = metadata.ExpiresAt
-			update.Status = keyVaultStatus(metadata.Enabled, metadata.ExpiresAt, now)
+			update.NotBefore = metadata.NotBefore
+			update.Status = keyVaultStatus(metadata.Enabled, metadata.NotBefore, metadata.ExpiresAt, now)
 			update.SourceObjectID = strings.TrimRight(item.SourceObjectID, "/")
 			update.LinkedSecretRef = strings.TrimRight(item.LinkedSecretRef, "/")
 			update.SecretReference = reference
@@ -233,6 +259,12 @@ func summarizeKeyVaultSourceRun(source KeyVaultSyncSource) string {
 	if source.ImportedCount > 0 {
 		parts = append(parts, fmt.Sprintf("Imported %d new resources", source.ImportedCount))
 	}
+	if source.RestoredCount > 0 {
+		parts = append(parts, fmt.Sprintf("Restored %d resources whose secret is back", source.RestoredCount))
+	}
+	if source.SkippedCount > 0 {
+		parts = append(parts, fmt.Sprintf("Skipped %d archived resources", source.SkippedCount))
+	}
 	parts = append(parts, fmt.Sprintf("Updated %d imported resources", source.UpdatedCount))
 	if source.RemovedCount > 0 {
 		parts = append(parts, fmt.Sprintf("Removed %d missing resources", source.RemovedCount))
@@ -247,10 +279,15 @@ func summarizeKeyVaultSourceRun(source KeyVaultSyncSource) string {
 // ("expiring"/"expired"), so the catalog badge that renders any non-active
 // status covers Key Vault secrets with no new UI. Disabled wins over expiry:
 // a disabled secret cannot be used at all, which is the more urgent fact, and
-// the expiry is still on the detail view.
-func keyVaultStatus(enabled bool, expiresAt *time.Time, now time.Time) string {
+// the expiry is still on the detail view. "inactive" = enabled, but the
+// active-from date (`nbf`) is still ahead; Azure treats that window as
+// informational, so this is a label, not a block.
+func keyVaultStatus(enabled bool, notBefore *time.Time, expiresAt *time.Time, now time.Time) string {
 	if !enabled {
 		return "disabled"
+	}
+	if notBefore != nil && notBefore.After(now) {
+		return "inactive"
 	}
 	return expiryStatus(expiresAt, now)
 }
@@ -263,7 +300,7 @@ func autoImportCreateInput(source KeyVaultSyncSourceConfig, secret keyvault.Secr
 		Owner:           strings.TrimSpace(source.DefaultOwner),
 		OwnerTeam:       strings.TrimSpace(source.DefaultOwnerTeam),
 		Environment:     strings.TrimSpace(source.DefaultEnvironment),
-		Status:          keyVaultStatus(secret.Enabled, secret.ExpiresAt, now),
+		Status:          keyVaultStatus(secret.Enabled, secret.NotBefore, secret.ExpiresAt, now),
 		SourceKind:      SourceKindAzureKeyVault,
 		SourceObjectID:  strings.TrimRight(strings.TrimSpace(secret.ID), "/"),
 		LastSyncedAt:    &now,
@@ -274,6 +311,7 @@ func autoImportCreateInput(source KeyVaultSyncSourceConfig, secret keyvault.Secr
 		ObjectVersion:   strings.TrimSpace(secret.Version),
 		ContentType:     strings.TrimSpace(secret.ContentType),
 		ExpiresAt:       secret.ExpiresAt,
+		NotBefore:       secret.NotBefore,
 		LinkedSecretRef: strings.TrimRight(strings.TrimSpace(secret.ID), "/"),
 		RevealAllowed:   true,
 		CopyAllowed:     true,

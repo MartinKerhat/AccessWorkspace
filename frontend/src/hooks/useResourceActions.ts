@@ -460,21 +460,21 @@ export function useResourceActions({
     if (!selectedResourceId || !selectedResource || !session) {
       return;
     }
-    // Ownership alone allows removal (mirrors the backend rule); admins may
-    // remove shared objects they do not own.
+    // Ownership alone allows archiving (mirrors the backend rule); admins may
+    // archive shared objects they do not own.
     const isOwner = selectedResource.ownerUserId === session.user.id;
     if (!isOwner && !(session.user.isAdmin && !selectedResource.personal)) {
-      setMessage("You can only remove objects you own.");
+      setMessage(selectedResource.personal ? "You can only delete objects you own." : "You can only archive objects you own.");
       return;
     }
     const confirmed = window.confirm(
       selectedResource.personal
         ? "Permanently delete this personal object? It is not archived — this cannot be undone."
         : selectedResource.type === "key_vault_secret"
-          ? "Remove this Key Vault object from the app? The Azure secret will not be deleted."
+          ? "Archive this Key Vault object? It moves to Archived, where an admin can restore it. The secret in Azure is not touched, and sync will not import it again."
           : selectedResource.type === "app_registration"
-            ? "Remove this app registration from the workspace? The Entra app registration will not be deleted."
-            : "Remove this object from the app?"
+            ? "Archive this app registration? It moves to Archived, where an admin can restore it. The Entra app registration is not touched."
+            : "Archive this object? It moves to Archived, where an admin can restore it."
     );
     if (!confirmed) {
       return;
@@ -482,7 +482,7 @@ export function useResourceActions({
     setBusy(true);
     try {
       await api.archiveResource(selectedResourceId);
-      setMessage(selectedResource.personal ? "Personal object permanently deleted" : "Object removed from app");
+      setMessage(selectedResource.personal ? "Personal object permanently deleted" : "Object archived");
       await loadAllResources();
       if (session.capabilities.canViewAdmin) {
         await loadArchivedResources();
@@ -496,7 +496,7 @@ export function useResourceActions({
       setLaunch(null);
       closeResourceForm();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remove failed");
+      setMessage(error instanceof Error ? error.message : selectedResource.personal ? "Delete failed" : "Archive failed");
     } finally {
       setBusy(false);
     }

@@ -53,6 +53,7 @@ type KeyVaultSource struct {
 	SyncEnabled          bool       `json:"syncEnabled"`
 	SyncIntervalMinutes  int        `json:"syncIntervalMinutes"`
 	AutoImportEnabled    bool       `json:"autoImportEnabled"`
+	WriteEnabled         bool       `json:"writeEnabled"` // workspace may write to this vault; off by default
 	DefaultOwner         string     `json:"defaultOwner"`
 	DefaultOwnerTeam     string     `json:"defaultOwnerTeam"`
 	DefaultEnvironment   string     `json:"defaultEnvironment"`
@@ -885,6 +886,9 @@ func parseKeyVaultSourcesFromAny(values []any) []KeyVaultSource {
 		}
 		if raw, ok := item["autoImportEnabled"].(bool); ok {
 			source.AutoImportEnabled = raw
+		}
+		if raw, ok := item["writeEnabled"].(bool); ok {
+			source.WriteEnabled = raw
 		}
 		if raw, ok := item["defaultOwner"].(string); ok {
 			source.DefaultOwner = raw

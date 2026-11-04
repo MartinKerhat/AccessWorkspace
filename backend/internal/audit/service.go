@@ -49,6 +49,16 @@ func (s *Service) RecentForUser(ctx context.Context, userID string, limit int) (
 	return events, err
 }
 
+// ForResource returns one object's events of the given types, newest first.
+func (s *Service) ForResource(ctx context.Context, resourceID string, eventTypes []EventType, limit int) ([]Event, error) {
+	types := make([]string, 0, len(eventTypes))
+	for _, eventType := range eventTypes {
+		types = append(types, string(eventType))
+	}
+	events, _, err := s.repo.List(ctx, ListFilter{ResourceID: &resourceID, EventTypes: types, Limit: limit})
+	return events, err
+}
+
 type LogParams struct {
 	EventType    EventType
 	UserID       string

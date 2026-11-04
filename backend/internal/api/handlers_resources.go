@@ -127,6 +127,58 @@ func (s *Server) handleResourceRoutes(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 
+	if len(parts) == 2 && r.Method == http.MethodPut && parts[1] == "keyvault-value" {
+		var input resources.KeyVaultSecretValueInput
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKeyVaultWriteBody)).Decode(&input); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json or request too large"})
+			return
+		}
+		item, err := s.resources.SetKeyVaultSecretValue(r.Context(), user, id, input)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+		return
+	}
+
+	// /keyvault-versions                    GET  the secret's versions (metadata only)
+	// /keyvault-versions/{version}/reveal   POST one version's value
+	// /keyvault-versions/{version}/state    PUT  enabled + active window of one version
+	if len(parts) >= 2 && parts[1] == "keyvault-versions" {
+		switch {
+		case len(parts) == 2 && r.Method == http.MethodGet:
+			items, err := s.resources.ListKeyVaultSecretVersions(r.Context(), user, id)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+			return
+		case len(parts) == 4 && r.Method == http.MethodPost && parts[3] == "reveal":
+			result, err := s.resources.RevealKeyVaultSecretVersion(r.Context(), user, id, parts[2])
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, result)
+			return
+		case len(parts) == 4 && r.Method == http.MethodPut && parts[3] == "state":
+			var input resources.KeyVaultSecretStateInput
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+				return
+			}
+			item, err := s.resources.UpdateKeyVaultSecretVersionState(r.Context(), user, id, parts[2], input)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, item)
+			return
+		}
+	}
+
 	if len(parts) == 2 && parts[1] == "connection-override" {
 		switch r.Method {
 		case http.MethodGet:

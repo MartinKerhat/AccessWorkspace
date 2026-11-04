@@ -11,6 +11,11 @@ import type {
   KeyVaultImportItem,
   KeyVaultImportForm,
   KeyVaultSyncResult,
+  KeyVaultCreateSecretInput,
+  KeyVaultSecretStateInput,
+  KeyVaultSecretVersion,
+  KeyVaultSecretValueInput,
+  WritableKeyVaultSource,
   WorkspaceCapabilities,
   LaunchPayload,
   LauncherLocalStatus,
@@ -533,7 +538,7 @@ export const api = {
     return request<KeyVaultDiscoverResult>("/keyvault/discover");
   },
   importKeyVaultSecrets(input: KeyVaultImportForm & { items: KeyVaultImportItem[] }) {
-    return request<{ items: Resource[]; skipped?: number }>("/keyvault/import", {
+    return request<{ items: Resource[]; skipped?: number; archived?: number; restored?: number }>("/keyvault/import", {
       method: "POST",
       body: JSON.stringify(input)
     });
@@ -542,6 +547,35 @@ export const api = {
     return request<KeyVaultSyncResult>("/keyvault/sync", {
       method: "POST",
       body: JSON.stringify({ automatic })
+    });
+  },
+  listWritableKeyVaultSources() {
+    return request<{ items: WritableKeyVaultSource[] }>("/keyvault/writable-sources");
+  },
+  createKeyVaultSecret(input: KeyVaultCreateSecretInput) {
+    return request<Resource>("/keyvault/secrets", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  setKeyVaultSecretValue(id: string, input: KeyVaultSecretValueInput) {
+    return request<Resource>(`/resources/${encodeURIComponent(id)}/keyvault-value`, {
+      method: "PUT",
+      body: JSON.stringify(input)
+    });
+  },
+  listKeyVaultSecretVersions(id: string) {
+    return request<{ items: KeyVaultSecretVersion[] }>(`/resources/${encodeURIComponent(id)}/keyvault-versions`);
+  },
+  revealKeyVaultSecretVersion(id: string, version: string) {
+    return request<RevealResult>(`/resources/${encodeURIComponent(id)}/keyvault-versions/${encodeURIComponent(version)}/reveal`, {
+      method: "POST"
+    });
+  },
+  updateKeyVaultSecretVersionState(id: string, version: string, input: KeyVaultSecretStateInput) {
+    return request<Resource>(`/resources/${encodeURIComponent(id)}/keyvault-versions/${encodeURIComponent(version)}/state`, {
+      method: "PUT",
+      body: JSON.stringify(input)
     });
   },
   discoverAppRegistrations() {

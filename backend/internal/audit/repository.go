@@ -34,11 +34,13 @@ func (r *Repository) Create(ctx context.Context, event Event) error {
 // ListFilter narrows and pages the audit trail. Query and EventType filter in
 // SQL so searches cover the full history, not just already-fetched pages.
 type ListFilter struct {
-	UserID    *string
-	Query     string
-	EventType string
-	Limit     int
-	Offset    int
+	UserID     *string
+	ResourceID *string
+	Query      string
+	EventType  string
+	EventTypes []string
+	Limit      int
+	Offset     int
 }
 
 func (f ListFilter) conditions() (string, []any) {
@@ -47,6 +49,14 @@ func (f ListFilter) conditions() (string, []any) {
 	if f.UserID != nil {
 		args = append(args, *f.UserID)
 		clauses = append(clauses, fmt.Sprintf("user_id = $%d", len(args)))
+	}
+	if f.ResourceID != nil {
+		args = append(args, *f.ResourceID)
+		clauses = append(clauses, fmt.Sprintf("resource_id = $%d", len(args)))
+	}
+	if len(f.EventTypes) > 0 {
+		args = append(args, f.EventTypes)
+		clauses = append(clauses, fmt.Sprintf("event_type = any($%d)", len(args)))
 	}
 	if f.EventType != "" {
 		args = append(args, f.EventType)

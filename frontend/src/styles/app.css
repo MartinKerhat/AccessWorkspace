@@ -1166,6 +1166,72 @@ dd {
   width: min(1240px, calc(100vw - 40px));
 }
 
+/* Create / new value / state of a Key Vault secret. */
+.keyvault-secret-modal {
+  width: min(860px, calc(100vw - 40px));
+}
+
+.keyvault-value-field {
+  display: grid;
+  gap: 10px;
+}
+
+.keyvault-value-field textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.keyvault-group-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+
+/* Versions of a Key Vault secret on the detail page. */
+.keyvault-versions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.keyvault-version-row strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.keyvault-version-id {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.1rem;
+  cursor: copy;
+}
+
+.keyvault-version-id:hover {
+  text-decoration: underline;
+}
+
+.keyvault-version-row p {
+  margin-top: 2px;
+}
+
+/* State tag and buttons on one line, so a row is one line tall per side.
+   Outranks .credential-row > div:last-child, which stacks them in a grid. */
+.credential-row.keyvault-version-row > .keyvault-version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .keyvault-discovery-toolbar,
 .source-summary,
 .keyvault-selection-summary,

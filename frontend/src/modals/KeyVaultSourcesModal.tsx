@@ -146,6 +146,14 @@ export function KeyVaultSourcesModal({ sources, setSources, knownUsers, localGro
                 />
                 <span>Auto import</span>
               </label>
+              <label className="checkbox" title="Lets the workspace create secrets, set new values and change enabled / active dates in this vault. The app identity also needs a write role on the vault (Key Vault Secrets Officer).">
+                <input
+                  type="checkbox"
+                  checked={source.writeEnabled}
+                  onChange={(event) => updateSource(index, { writeEnabled: event.target.checked })}
+                />
+                <span>Allow writes from the workspace</span>
+              </label>
               <label>
                 <span>Default owner</span>
                 <div className="picker-shell">

@@ -35,6 +35,17 @@ locally. Configuration comes entirely from the environment — see
   and enable the "reader uses ambient identity" toggle in Administration. The
   Entra client secret then serves only Microsoft sign-in, and no vault-capable
   secret is stored in the database. The KEK unwrap uses the same identity.
+- **Key Vault writes (optional).** Creating secrets, setting new values and
+  enabling/disabling them from the workspace needs the backend identity to hold
+  a write role on that vault — with RBAC, **Key Vault Secrets Officer** (secret
+  `set`) instead of Secrets User — and the vault source's **Allow writes from
+  the workspace** switch in Administration. Grant it only on vaults the
+  workspace should manage; leave read-only vaults on Secrets User.
+  Secrets Officer also allows delete. The workspace never deletes, so a custom
+  role with only the data actions it uses is tighter:
+  `Microsoft.KeyVault/vaults/secrets/getSecret/action`,
+  `…/secrets/readMetadata/action`, `…/secrets/setSecret/action` and
+  `…/secrets/update/action`.
 - Both changes are re-wrap-safe and reversible: switching the KEK provider
   re-wraps stored data keys at startup, and the reader toggle can be turned off
   to fall back to the stored client secret.

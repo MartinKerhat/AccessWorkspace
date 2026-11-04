@@ -175,8 +175,9 @@ func New(cfg Config) (*App, error) {
 			items := make([]keyvault.Source, 0, len(sources))
 			for _, source := range sources {
 				items = append(items, keyvault.Source{
-					Name:     source.Name,
-					VaultURL: source.VaultURL,
+					Name:         source.Name,
+					VaultURL:     source.VaultURL,
+					WriteEnabled: source.WriteEnabled,
 				})
 			}
 			return items, nil

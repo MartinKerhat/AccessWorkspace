@@ -138,6 +138,10 @@ export function AzureAdminSection({
                     <dd>{source.autoImportEnabled ? "enabled" : "disabled"}</dd>
                   </div>
                   <div>
+                    <dt>Writes</dt>
+                    <dd>{source.writeEnabled ? "allowed" : "read only"}</dd>
+                  </div>
+                  <div>
                     <dt>Default owner</dt>
                     <dd>{source.defaultOwner || "not set"}</dd>
                   </div>

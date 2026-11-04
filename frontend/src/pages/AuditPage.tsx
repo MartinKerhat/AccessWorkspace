@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { auditEventDetail } from "../auditDetails";
 import type { AuditEvent } from "../types";
 
 type Props = {
@@ -69,6 +70,7 @@ export function AuditPage({ items, total, eventTypes, hasMore = false, onLoadOld
               <p>
                 {item.resourceName ?? "No object"} by {item.userName}
               </p>
+              {auditEventDetail(item) ? <p className="muted">{auditEventDetail(item)}</p> : null}
             </div>
             <time>{new Date(item.createdAt).toLocaleString()}</time>
           </article>

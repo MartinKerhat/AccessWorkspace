@@ -15,6 +15,7 @@ export function emptyKeyVaultSource(): KeyVaultSource {
     syncEnabled: true,
     syncIntervalMinutes: 60,
     autoImportEnabled: false,
+    writeEnabled: false,
     defaultOwner: "",
     defaultOwnerTeam: "",
     defaultEnvironment: "",

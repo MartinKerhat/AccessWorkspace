@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { DirectoryUser, Resource, ResourceForm, UserSummary } from "../types";
 import { defaultPassphraseOptions, generatePassphrase, type PassphraseOptions } from "../generator/passphrase";
 import { defaultPasswordOptions, generatePassword, type PasswordOptions } from "../generator/password";
+import { mergeStoredOptions } from "../generator/preferences";
 import { MentionNotesField } from "./MentionNotesField";
 
 const defaultForm: ResourceForm = {
@@ -90,21 +91,6 @@ function fromDateTimeInputValue(value: string) {
 // and with different placeholder behaviour from passwords. autoComplete is
 // "new-password" so the browser's own password manager does not autofill a
 // credential field and get it saved over the real secret on submit.
-// Stored settings are opaque JSON; only keys of the right type replace the
-// current value.
-function mergeStoredOptions<T extends object>(current: T, stored: Record<string, unknown> | undefined): T {
-  if (!stored) {
-    return current;
-  }
-  const next = { ...current } as Record<string, unknown>;
-  for (const key of Object.keys(current)) {
-    if (typeof stored[key] === typeof (current as Record<string, unknown>)[key]) {
-      next[key] = stored[key];
-    }
-  }
-  return next as T;
-}
-
 function SecretField({
   label,
   value,
@@ -448,7 +434,6 @@ export function ResourceFormCard({
   // it — but a secret IS configured and blank still keeps it. Without the
   // reference clause the hint appeared on some objects and not others.
   const storedSecretPresent = Boolean(resource?.secret?.hasValue) || Boolean(resource?.secret?.reference);
-  const storedSecretPlaceholder = storedSecretPresent ? "•••••••••• — stored, leave blank to keep" : "";
   const isPasswordResource = form.type === "web_portal" || form.type === "shared_secret";
   const isSharedPassword = form.type === "shared_secret";
   const isWebPortalPassword = form.type === "web_portal";
@@ -464,6 +449,13 @@ export function ResourceFormCard({
     form.type === "app_registration" &&
     form.sourceKind === "entra_app_registration";
   const isManagedExternalSource = isImportedKeyVault || isImportedAppRegistration;
+  // An imported Key Vault secret's value exists only in Azure; "stored" would
+  // suggest the workspace keeps a copy.
+  const storedSecretPlaceholder = isImportedKeyVault
+    ? "Kept only in Azure Key Vault — use Set new value on the object page"
+    : storedSecretPresent
+      ? "•••••••••• — stored, leave blank to keep"
+      : "";
   const filteredOwners = availableOwners.filter((owner) => {
     const query = ownerSearch.trim().toLowerCase();
     if (query === "") {
@@ -573,7 +565,7 @@ export function ResourceFormCard({
         </div>
         {resource && onArchive ? (
           <button type="button" className="button ghost" onClick={() => void onArchive()}>
-            Remove from app
+            {resource.personal ? "Delete" : "Archive"}
           </button>
         ) : null}
       </div>
@@ -1158,7 +1150,7 @@ export function ResourceFormCard({
 
       {isImportedKeyVault ? (
         <div className="banner compact">
-          Azure-owned Key Vault fields are read-only here. Only workspace metadata like owner, team, notes, and allowed groups can be changed in the app.
+          Azure-owned Key Vault fields are read-only here. Only workspace metadata like owner, team, notes, and allowed groups can be changed in this form. The value, and each version's enabled state and dates, are changed in Azure from the Versions list on the object page, when the vault allows writes.
         </div>
       ) : null}
 

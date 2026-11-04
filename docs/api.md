@@ -83,12 +83,56 @@ is not unlocked in the current session, so the UI can prompt.
 - `POST /api/resources/{id}/archive`
 - `POST /api/resources/{id}/reveal`
 - `POST /api/resources/{id}/launch`
+- `PUT /api/resources/{id}/keyvault-value`
+- `GET /api/resources/{id}/keyvault-versions`
+- `POST /api/resources/{id}/keyvault-versions/{version}/reveal`
+- `PUT /api/resources/{id}/keyvault-versions/{version}/state`
 
 ## Key Vault
 
 - `GET /api/keyvault/discover`
 - `POST /api/keyvault/import`
 - `POST /api/keyvault/sync`
+- `GET /api/keyvault/writable-sources`
+- `POST /api/keyvault/secrets`
+
+Writes go to Azure first; the catalog row is then refreshed from Azure's answer.
+They work only on vault sources an administrator marked **Allow writes from the
+workspace**; any other vault answers 403.
+
+- `GET /api/keyvault/writable-sources` — name and URL of each write-enabled
+  vault. Needs `keyvault.write` or `keyvault.edit` (or admin).
+- `POST /api/keyvault/secrets` — create a secret and its catalog row
+  (`keyvault.write`). Body: `vaultUrl`, `secretName` (1–127 letters, digits,
+  dashes), the value fields below, and catalog metadata (`name`, `description`,
+  `ownerTeam`, `environment`, `notes`, `allowedGroups`). A name that already
+  exists — disabled or soft-deleted included — answers 409; setting a new value
+  is a separate call. Non-admins become the owner.
+- `PUT /api/resources/{id}/keyvault-value` — a new version of the secret behind a
+  catalog object (`keyvault.write` plus access to the object). Tags of the
+  current version carry over. Refused for an object pinned to one version.
+- `GET /api/resources/{id}/keyvault-versions` — every version of the secret,
+  newest first (`items`: `version`, `current`, `pinned`, `enabled`,
+  `contentType`, `notBefore`, `expiresAt`, `createdAt`, `updatedAt`, and
+  `createdBy` for versions written from the workspace). Read live from Azure,
+  never stored; anyone who can view the object may list them, and it works on
+  read-only vaults too.
+- `POST /api/resources/{id}/keyvault-versions/{version}/reveal` — the value of
+  one version, under the same rule as the object's reveal. The audit event names
+  the version. Azure refuses a disabled version.
+- `PUT /api/resources/{id}/keyvault-versions/{version}/state` — `enabled`,
+  `notBefore`, `expiresAt` of one version (`keyvault.edit` plus access to the
+  object). An omitted date clears it. The audit event records the version and
+  its previous state.
+
+The workspace has no call that deletes a secret or a version in Azure.
+
+Value fields: `value` (at most 25 KB), `contentType`, `enabled`, `notBefore`,
+`expiresAt` (RFC 3339), `inputMode` (`typed` | `generated` | `file`, audit only),
+and for uploads `fileName` (audit only) and `fileEncoding` (`utf-8` | `base64`),
+which is also written as the `file-encoding` tag the az CLI uses, so
+`az keyvault secret download` restores the original file. The value is never
+stored, logged or put into an audit event; request bodies are capped at 256 KB.
 
 ## App registrations
 

@@ -76,6 +76,7 @@ func (s *Server) handleKeyVaultImport(w http.ResponseWriter, r *http.Request, us
 			ObjectName:  item.ObjectName,
 			SecretID:    secretID,
 			ContentType: item.ContentType,
+			NotBefore:   item.NotBefore,
 			ExpiresAt:   item.ExpiresAt,
 			Enabled:     item.Enabled,
 		})
@@ -95,6 +96,33 @@ func (s *Server) handleKeyVaultImport(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"items": result.Items, "skipped": result.Skipped})
+}
+
+// maxKeyVaultWriteBody bounds requests that carry a secret value: Key Vault
+// takes at most 25 KB, and JSON escaping can inflate text several times over.
+const maxKeyVaultWriteBody = 256 * 1024
+
+func (s *Server) handleKeyVaultWritableSources(w http.ResponseWriter, r *http.Request, user auth.User) {
+	items, err := s.resources.ListWritableKeyVaultSources(r.Context(), user)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) handleKeyVaultCreateSecret(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var input resources.KeyVaultCreateSecretInput
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxKeyVaultWriteBody)).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json or request too large"})
+		return
+	}
+	item, err := s.resources.CreateKeyVaultSecret(r.Context(), user, input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, item)
 }
 
 func (s *Server) handleKeyVaultSync(w http.ResponseWriter, r *http.Request, user auth.User) {

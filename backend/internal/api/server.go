@@ -43,6 +43,12 @@ type ResourceService interface {
 	ResolveLaunchTicket(ctx context.Context, ticket string) (resources.LaunchPayload, error)
 	SyncKeyVault(ctx context.Context, user auth.User, sources []resources.KeyVaultSyncSourceConfig, automatic bool) (resources.KeyVaultSyncResult, error)
 	ImportKeyVaultSecrets(ctx context.Context, user auth.User, input resources.KeyVaultImportInput) (resources.KeyVaultImportResult, error)
+	ListWritableKeyVaultSources(ctx context.Context, user auth.User) ([]keyvault.Source, error)
+	CreateKeyVaultSecret(ctx context.Context, user auth.User, input resources.KeyVaultCreateSecretInput) (resources.Resource, error)
+	SetKeyVaultSecretValue(ctx context.Context, user auth.User, id string, input resources.KeyVaultSecretValueInput) (resources.Resource, error)
+	ListKeyVaultSecretVersions(ctx context.Context, user auth.User, id string) ([]resources.KeyVaultSecretVersion, error)
+	RevealKeyVaultSecretVersion(ctx context.Context, user auth.User, id string, version string) (resources.RevealResult, error)
+	UpdateKeyVaultSecretVersionState(ctx context.Context, user auth.User, id string, version string, input resources.KeyVaultSecretStateInput) (resources.Resource, error)
 	ImportAppRegistrations(ctx context.Context, user auth.User, input resources.AppRegistrationImportInput) ([]resources.Resource, error)
 	SyncAppRegistrations(ctx context.Context, user auth.User, automatic bool) (resources.AppRegistrationSyncResult, error)
 	UpdateAppRegistrationNotificationPolicies(ctx context.Context, user auth.User, id string, input resources.AppRegistrationNotificationPolicyUpdateInput) (resources.Resource, error)
@@ -458,6 +464,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleKeyVaultSync(w, r, user)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/keyvault/writable-sources":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleKeyVaultWritableSources(w, r, user)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/keyvault/secrets":
+		if !requireAuth(w, user, authErr) {
+			return
+		}
+		s.handleKeyVaultCreateSecret(w, r, user)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/appregistrations/discover":
 		if !requireAuth(w, user, authErr) {
 			return
@@ -547,6 +563,7 @@ type keyVaultImportItem struct {
 	ObjectName  string     `json:"objectName"`
 	SecretID    string     `json:"secretId"`
 	ContentType string     `json:"contentType"`
+	NotBefore   *time.Time `json:"notBefore"`
 	ExpiresAt   *time.Time `json:"expiresAt"`
 	Enabled     *bool      `json:"enabled"`
 }
@@ -693,7 +710,23 @@ func writeError(w http.ResponseWriter, err error) {
 	if errors.As(err, &keyVaultErr) {
 		status = http.StatusBadGateway
 		message = keyVaultErr.Error()
+		// 409 from Azure on a write: the name belongs to a soft-deleted secret.
+		if keyVaultErr.StatusCode == http.StatusConflict {
+			status = http.StatusConflict
+		}
 		log.Printf("key vault api error: %v", err)
+	}
+	if errors.Is(err, keyvault.ErrInvalidSecret) {
+		status = http.StatusBadRequest
+		message = err.Error()
+	}
+	if errors.Is(err, keyvault.ErrSourceNotWritable) {
+		status = http.StatusForbidden
+		message = err.Error()
+	}
+	if errors.Is(err, keyvault.ErrSecretExists) {
+		status = http.StatusConflict
+		message = err.Error()
 	}
 	if errors.Is(err, resources.ErrVaultLocked) || errors.Is(err, auth.ErrVaultLocked) {
 		// 423 Locked: the personal vault needs an unlock in this session;
