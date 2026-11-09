@@ -553,7 +553,7 @@ export type ResourceSummary = {
 
 export type VisibleResourceSummary = ResourceSummary & {
   categoryAccessRight: string;
-  visibilityScope: "administrator" | "owner" | "personal" | "everyone" | "matched_groups" | "matched_user";
+  visibilityScope: "administrator" | "owner" | "owner_team" | "personal" | "everyone" | "matched_groups" | "matched_user";
   matchedLocalGroups: string[];
 };
 

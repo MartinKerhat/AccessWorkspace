@@ -1,5 +1,19 @@
 import type { ResourceType } from "./types";
 
+// Mirrors the backend's OwnsResource: the owner user, or — on shared objects —
+// any member of the owner team. Owner-team members manage the object like its
+// owner (full edit, archive, reveal); reassigning the owner user stays admin-only.
+export function ownsResource(
+  resource: { ownerUserId: string; ownerTeam: string; personal: boolean },
+  user: { id: string; localGroups: string[] }
+): boolean {
+  if (resource.ownerUserId && resource.ownerUserId === user.id) {
+    return true;
+  }
+  const team = resource.ownerTeam?.trim();
+  return Boolean(!resource.personal && team && user.localGroups?.includes(team));
+}
+
 export function resourceTypeLabel(type: ResourceType): string {
   switch (type) {
     case "rdp":

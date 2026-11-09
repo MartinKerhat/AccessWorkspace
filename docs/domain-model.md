@@ -45,6 +45,13 @@ Access rule:
 - sharing is expressed as local groups (`allowed_groups`), specific users (`allowed_users`), or any combination — matching either list grants visibility
 - empty `allowed_groups` and `allowed_users` means the resource is visible to everyone who can access that category
 
+Ownership rule:
+
+- a shared resource is owned by its owner user and by every member of its `owner_team` local group; owners always see the resource and can fully edit, archive, and reveal it, even without the category edit right
+- other holders of the category edit right who can see a shared resource may change only its descriptive metadata (description, notes, folder, environment)
+- only admins reassign the owner user, and only the owner user can turn a shared resource into a personal one
+- personal resources have no owner team: they belong to their owner user alone
+
 Common capabilities:
 
 - `view_allowed`

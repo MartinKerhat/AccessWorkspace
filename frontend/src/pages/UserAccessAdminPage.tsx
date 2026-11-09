@@ -64,6 +64,8 @@ function visibilityScopeLabel(resource: VisibleResourceSummary) {
       return "Administrator access bypasses group restrictions.";
     case "everyone":
       return "Visible to everyone because no sharing restriction is set.";
+    case "owner_team":
+      return `Member of the owner team: ${resource.matchedLocalGroups.join(", ")}.`;
     case "matched_groups":
       return `Matched local groups: ${resource.matchedLocalGroups.join(", ")}.`;
     case "matched_user":

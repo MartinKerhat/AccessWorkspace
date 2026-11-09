@@ -16,6 +16,7 @@ import { clearRequestedResourceId, currentView, landingView, requestedResourceId
 import { useAuth, authTokenStorageKey } from "./hooks/useAuth";
 import { filterCatalogItems, filterArchivedKeyVaultItems, defaultFilters, type Filters } from "./catalogFilter";
 import { keyVaultSecretKey } from "./keyVault";
+import { ownsResource } from "./resourceMeta";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { WorkspaceTopbar } from "./components/WorkspaceTopbar";
 import { useLauncher } from "./hooks/useLauncher";
@@ -835,7 +836,7 @@ export default function App() {
     selectedResource &&
       selectedResource.category === "connections" &&
       session.capabilities.categories.connections?.reveal &&
-      (selectedResource.ownerUserId === session.user.id ||
+      (ownsResource(selectedResource, session.user) ||
         (!selectedResource.personal && session.user.isAdmin) ||
         selectedResource.revealAllowed ||
         selectedResource.copyAllowed)
@@ -970,23 +971,24 @@ export default function App() {
                   sharedUsers={directory.users}
                   canEdit={Boolean(
                     selectedResource &&
-                      // Owners always manage their own objects (even without the
-                      // category edit right). Shared objects: any visible holder
-                      // of the edit right may open the form (non-owners get
-                      // metadata-only fields). Personal objects stay owner-only.
-                      (selectedResource.ownerUserId === session.user.id ||
+                      // Owners (user or owner team) always manage their own
+                      // objects (even without the category edit right). Shared
+                      // objects: any visible holder of the edit right may open
+                      // the form (non-owners get metadata-only fields).
+                      // Personal objects stay owner-only.
+                      (ownsResource(selectedResource, session.user) ||
                         (!selectedResource.personal &&
                           session.capabilities.categories[selectedResource.category]?.edit))
                   )}
                   canRemove={Boolean(
                     selectedResource &&
-                    (selectedResource.ownerUserId === session.user.id ||
+                    (ownsResource(selectedResource, session.user) ||
                       (!selectedResource.personal && session.user.isAdmin))
                   )}
                   canOverrideRevealPolicy={Boolean(
                     selectedResource &&
                       selectedResource.category === "passwords" &&
-                      (selectedResource.ownerUserId === session.user.id ||
+                      (ownsResource(selectedResource, session.user) ||
                         (!selectedResource.personal && session.user.isAdmin))
                   )}
                   launcherRuntime={launcherRuntime}
@@ -1208,7 +1210,7 @@ export default function App() {
               Boolean(
                 selectedResource &&
                   !selectedResource.personal &&
-                  selectedResource.ownerUserId !== session.user.id
+                  !ownsResource(selectedResource, session.user)
               )
             }
             message={message}
@@ -1220,7 +1222,7 @@ export default function App() {
               selectedResource &&
               ((selectedResource.category === "passwords" &&
                 ((!selectedResource.personal && session.user.isAdmin) ||
-                  selectedResource.ownerUserId === session.user.id)) ||
+                  ownsResource(selectedResource, session.user))) ||
                 (selectedResource.category === "connections" && canRevealSelectedConnectionSecret))
                 ? handleRevealStoredPassword
                 : undefined
@@ -1229,7 +1231,7 @@ export default function App() {
               formState.mode === "edit" &&
               selectedResource &&
               ((!selectedResource.personal && session.user.isAdmin) ||
-                selectedResource.ownerUserId === session.user.id)
+                ownsResource(selectedResource, session.user))
                 ? handleArchive
                 : undefined
             }

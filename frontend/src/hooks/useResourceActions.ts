@@ -1,6 +1,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { api } from "../api/client";
 import { mentionIdsIn } from "../mentions";
+import { ownsResource } from "../resourceMeta";
 import type {
   ArchivedResourceSummary,
   ConnectionCredentialOverride,
@@ -460,9 +461,9 @@ export function useResourceActions({
     if (!selectedResourceId || !selectedResource || !session) {
       return;
     }
-    // Ownership alone allows archiving (mirrors the backend rule); admins may
-    // archive shared objects they do not own.
-    const isOwner = selectedResource.ownerUserId === session.user.id;
+    // Ownership (user or owner team) alone allows archiving (mirrors the
+    // backend rule); admins may archive shared objects they do not own.
+    const isOwner = ownsResource(selectedResource, session.user);
     if (!isOwner && !(session.user.isAdmin && !selectedResource.personal)) {
       setMessage(selectedResource.personal ? "You can only delete objects you own." : "You can only archive objects you own.");
       return;

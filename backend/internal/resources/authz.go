@@ -30,6 +30,12 @@ func (u devViewer) GetID() string            { return u.ID }
 func (u devViewer) GetLocalGroups() []string { return u.LocalGroups }
 func (u devViewer) GetIsAdmin() bool         { return u.IsAdmin }
 
+// ownsResource: the owner user, or a member of the owner team on a shared
+// object (see OwnsResource).
+func ownsResource(user auth.User, resource ResourceSummary) bool {
+	return OwnsResource(devViewer(user), resource)
+}
+
 func canViewResource(user auth.User, resource ResourceSummary) bool {
 	return auth.CapabilitiesForUser(user).Categories[resource.Category].View && CanAccess(devViewer(user), resource)
 }
@@ -78,8 +84,9 @@ func canRevealStoredPassword(user auth.User, resource Resource) bool {
 		!CanAccess(devViewer(user), resource.Summary()) {
 		return false
 	}
-	// Owners and admins can always reveal — they control the policy flags anyway.
-	if resource.OwnerUserID == user.ID || (user.IsAdmin && !resource.Personal) {
+	// Owners (user or owner team) and admins can always reveal — they control
+	// the policy flags anyway.
+	if ownsResource(user, resource.Summary()) || (user.IsAdmin && !resource.Personal) {
 		return true
 	}
 	return secretUsageAllowed(resource)
@@ -100,7 +107,7 @@ func canRevealConnectionSecret(user auth.User, resource Resource) bool {
 		!CanAccess(devViewer(user), resource.Summary()) {
 		return false
 	}
-	if resource.OwnerUserID == user.ID || (user.IsAdmin && !resource.Personal) {
+	if ownsResource(user, resource.Summary()) || (user.IsAdmin && !resource.Personal) {
 		return true
 	}
 	return secretUsageAllowed(resource)
@@ -139,6 +146,9 @@ func visibilityScopeForResource(user devViewer, item ResourceSummary) (string, [
 	}
 	if item.OwnerUserID == user.ID {
 		return "owner", nil, true
+	}
+	if IsOwnerTeamMember(user, item) {
+		return "owner_team", []string{strings.TrimSpace(item.OwnerTeam)}, true
 	}
 	if user.GetIsAdmin() {
 		return "administrator", nil, true
@@ -209,7 +219,8 @@ func canCreatePassword(user auth.User, input CreateResourceInput) bool {
 func canUpdateResource(user auth.User, existing Resource) bool {
 	// Ownership alone grants full edit on the object — the creator keeps control
 	// even without the category edit right (e.g. a connections.create-only user).
-	isOwner := existing.OwnerUserID == user.ID
+	// Members of the owner team count as owners on shared objects.
+	isOwner := ownsResource(user, existing.Summary())
 	// Personal resources can only be managed by their owner. Admins are excluded
 	// so they cannot flip a personal secret to shared and then reveal it.
 	if existing.Personal {
@@ -228,9 +239,10 @@ func canUpdateResource(user auth.User, existing Resource) bool {
 }
 
 // isSharedMetadataEditor identifies an editor of a shared object who is
-// neither its owner nor an admin — allowed to touch descriptive metadata only.
+// neither an owner (user or owner team) nor an admin — allowed to touch
+// descriptive metadata only.
 func isSharedMetadataEditor(user auth.User, existing Resource) bool {
-	return !user.IsAdmin && !existing.Personal && existing.OwnerUserID != user.ID
+	return !user.IsAdmin && !existing.Personal && !ownsResource(user, existing.Summary())
 }
 
 // restrictToSharedMetadata keeps everything crucial (identity, ownership,
@@ -276,8 +288,8 @@ func enforceCreatorOwnership(user auth.User, input CreateResourceInput) CreateRe
 }
 
 func canArchiveResource(user auth.User, resource Resource) bool {
-	// Ownership alone is enough — see canUpdateResource.
-	isOwner := resource.OwnerUserID == user.ID
+	// Ownership (user or owner team) alone is enough — see canUpdateResource.
+	isOwner := ownsResource(user, resource.Summary())
 	// Personal resources can only be managed by their owner — admins included.
 	if resource.Personal {
 		return isOwner
