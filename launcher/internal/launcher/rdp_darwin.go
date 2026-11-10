@@ -3,11 +3,15 @@
 package launcher
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/MartinKerhat/AccessWorkspace/launcher/internal/payload"
 )
@@ -39,6 +43,17 @@ const freeRDPStdinPasswordArg = "/from-stdin:force"
 func freeRDPGatewayArg(gatewayHost string) string {
 	return "/gateway:g:" + gatewayHost
 }
+
+// freeRDPTLSSecLevelArg lets the bundled OpenSSL 3 complete the TLS handshake
+// with Windows hosts that sign it with SHA-1 (rsa_pkcs1_sha1) — older or
+// unpatched servers with their default self-signed RDP certificate. From
+// security level 1 up OpenSSL 3 no longer offers SHA-1 signatures, such a
+// server drops the connection, and the client reports a generic TLS failure
+// before ever asking for a password. mstsc accepts these hosts; level 0 gives
+// parity. The negotiated protocol is still the best both sides support
+// (TLS 1.2 with ECDHE on those hosts), and the server certificate is still
+// pinned on first use (/cert:tofu).
+const freeRDPTLSSecLevelArg = "/tls:seclevel:0"
 
 // findFreeRDPClient returns the bundled client's executable. For development
 // builds that do not run from a .app bundle, ACCESS_WORKSPACE_MACFREERDP may
@@ -90,22 +105,174 @@ func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewa
 	// (the Cocoa client does not do dynamic resolution).
 	width, height := preferredRDPDesktopSize()
 	args := append(buildFreeRDPArgs(item, host, port, gatewayHost),
-		fmt.Sprintf("/size:%dx%d", width, height), "/smart-sizing")
+		fmt.Sprintf("/size:%dx%d", width, height), "/smart-sizing", freeRDPTLSSecLevelArg)
 	secret := payload.MetadataSecret(item.Metadata, "secretValue")
 	if strings.TrimSpace(secret) == "" {
 		// No stored credential: the Cocoa client has its own password dialog,
 		// so it runs directly — no terminal needed as on Linux.
+		secret = ""
 		Logf("rdp: no stored credentials, starting %s with its own prompt", client)
-		command := exec.Command(client, args...)
-		closeClientLog := attachRDPClientLog(command)
-		err := command.Start()
-		closeClientLog()
-		if err != nil {
-			return fmt.Errorf("start %s: %w", client, err)
-		}
-		Logf("rdp: %s started (pid=%d, args=%v)", client, command.Process.Pid, sanitizeRDPArgsForLog(args))
-		go func() { _ = command.Wait() }()
-		return nil
 	}
-	return startFreeRDPWithStoredCredential(client, args, secret)
+	run, err := startMacRDPClient(client, args, secret)
+	if err != nil {
+		return err
+	}
+	if secret != "" {
+		// With a stored credential nothing is asked first, so an exit within
+		// this window means no session window ever appeared.
+		select {
+		case <-run.done:
+			if !run.rejected.Seen() {
+				return fmt.Errorf("the remote desktop client exited immediately (code %d, err=%v) — the connection was refused; details in logs/rdp-client.log", exitCodeOf(run.command), run.waitErr)
+			}
+		case <-time.After(2500 * time.Millisecond):
+		}
+	}
+	backgroundWork.Add(1)
+	go func() {
+		defer backgroundWork.Done()
+		superviseMacRDP(client, args, run)
+	}()
+	return nil
+}
+
+// maxRDPCredentialAttempts bounds how often the password prompt is offered
+// for one launch, counting the first attempt.
+const maxRDPCredentialAttempts = 3
+
+// freeRDPCredentialFailureMarkers are the FreeRDP last-error names that mean
+// the server rejected the user name, password or domain. FreeRDP logs the
+// name of every last error at ERROR level, which the client log keeps. Older
+// Windows hosts (CredSSP 5 and below) send no error code and just close the
+// connection with a TLS "access denied" alert, which FreeRDP reports as
+// AUTHENTICATION_FAILED. Deliberately absent: CONNECT_CANCELLED (the user
+// pressed Cancel), locked or disabled accounts, expired passwords and network
+// failures — asking for the password again would not help with those.
+var freeRDPCredentialFailureMarkers = []string{
+	"ERRCONNECT_AUTHENTICATION_FAILED",
+	"ERRCONNECT_LOGON_FAILURE",
+	"ERRCONNECT_WRONG_PASSWORD",
+}
+
+// credentialFailureDetector watches the client's output for a credential
+// rejection. It keeps a short tail across writes, so a marker split between
+// two writes still counts.
+type credentialFailureDetector struct {
+	mu   sync.Mutex
+	tail []byte
+	seen bool
+}
+
+func (d *credentialFailureDetector) Write(p []byte) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.tail = append(d.tail, p...)
+	for _, marker := range freeRDPCredentialFailureMarkers {
+		if bytes.Contains(d.tail, []byte(marker)) {
+			d.seen = true
+		}
+	}
+	const keep = 64 // longer than any marker
+	if len(d.tail) > keep {
+		d.tail = append(d.tail[:0], d.tail[len(d.tail)-keep:]...)
+	}
+	return len(p), nil
+}
+
+func (d *credentialFailureDetector) Seen() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.seen
+}
+
+// macRDPRun is one run of the bundled client. done is closed once it exited;
+// waitErr is set before that.
+type macRDPRun struct {
+	command  *exec.Cmd
+	rejected *credentialFailureDetector
+	done     chan struct{}
+	waitErr  error
+}
+
+// startMacRDPClient starts the client with its output going both to
+// logs/rdp-client.log and to a credential-failure detector. A non-empty
+// secret is handed over on stdin (freeRDPStdinPasswordArg) so it never
+// appears in the process list the way /p: would; without one the client asks
+// in its own dialog.
+func startMacRDPClient(client string, args []string, secret string) (*macRDPRun, error) {
+	if secret != "" {
+		args = append(append([]string{}, args...), freeRDPStdinPasswordArg)
+	}
+	command := exec.Command(client, args...)
+	var stdin io.WriteCloser
+	if secret != "" {
+		var err error
+		if stdin, err = command.StdinPipe(); err != nil {
+			return nil, fmt.Errorf("prepare rdp credential handoff: %w", err)
+		}
+	}
+	run := &macRDPRun{command: command, rejected: &credentialFailureDetector{}, done: make(chan struct{})}
+	var output io.Writer = run.rejected
+	logFile := openRDPClientLog()
+	if logFile != nil {
+		output = io.MultiWriter(logFile, run.rejected)
+	}
+	command.Stdout = output
+	command.Stderr = output
+	if err := command.Start(); err != nil {
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		return nil, fmt.Errorf("start %s: %w", client, err)
+	}
+	if stdin != nil {
+		go func() {
+			_, _ = io.WriteString(stdin, secret+"\n")
+			_ = stdin.Close()
+		}()
+	}
+	Logf("rdp: %s started (pid=%d, args=%v)", client, command.Process.Pid, sanitizeRDPArgsForLog(args))
+	go func() {
+		// The output is copied through a pipe, so the log file stays open
+		// until Wait has drained it.
+		run.waitErr = command.Wait()
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		close(run.done)
+	}()
+	return run, nil
+}
+
+// superviseMacRDP waits for the client to exit and, when the server rejected
+// the credentials, starts it again without a stored password so its dialog
+// asks for them — the Cocoa client itself only shows "Authentication
+// failure" and quits, where mstsc would simply ask again. A retry never
+// reuses a stored password: it was just rejected.
+func superviseMacRDP(client string, args []string, run *macRDPRun) {
+	for attempt := 1; ; attempt++ {
+		<-run.done
+		Logf("rdp: %s pid=%d exited (code=%d, err=%v)", filepath.Base(client), run.command.Process.Pid, exitCodeOf(run.command), run.waitErr)
+		if !run.rejected.Seen() {
+			return
+		}
+		if attempt >= maxRDPCredentialAttempts {
+			Logf("rdp: credentials rejected %d times, not asking again", attempt)
+			return
+		}
+		Logf("rdp: credentials rejected (attempt %d of %d), asking again", attempt, maxRDPCredentialAttempts)
+		next, err := startMacRDPClient(client, args, "")
+		if err != nil {
+			Logf("rdp: %v", err)
+			return
+		}
+		run = next
+	}
+}
+
+func exitCodeOf(command *exec.Cmd) int {
+	if command.ProcessState == nil {
+		return 0
+	}
+	return command.ProcessState.ExitCode()
 }

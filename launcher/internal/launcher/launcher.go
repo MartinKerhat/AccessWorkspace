@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf16"
 
@@ -187,6 +188,18 @@ func ensureRDPReachable(host string, port string, gatewayHost string) error {
 	return nil
 }
 
+// backgroundWork counts work a launch leaves running after Run returned and
+// that needs this process alive: the macOS RDP supervisor, which offers the
+// password prompt again after the server rejected the credentials.
+var backgroundWork sync.WaitGroup
+
+// WaitForBackgroundWork blocks until that work is done. A process started for
+// a single launch (the macOS URL handler) calls it before it may exit; the
+// launcher is a background app there, so staying alive costs nothing visible.
+func WaitForBackgroundWork() {
+	backgroundWork.Wait()
+}
+
 func waitForEarlyRDPExit(command *exec.Cmd, window time.Duration) error {
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
@@ -204,7 +217,7 @@ func waitForEarlyRDPExit(command *exec.Cmd, window time.Duration) error {
 			if command.ProcessState != nil {
 				exitCode = command.ProcessState.ExitCode()
 			}
-			Logf("rdp: mstsc pid=%d exited (code=%d, err=%v)", command.Process.Pid, exitCode, waitErr)
+			Logf("rdp: %s pid=%d exited (code=%d, err=%v)", filepath.Base(command.Path), command.Process.Pid, exitCode, waitErr)
 		}()
 		return nil
 	}

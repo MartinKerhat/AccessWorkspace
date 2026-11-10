@@ -112,6 +112,7 @@ func main() {
 		launcher.ShowLaunchFailure(err)
 		exitWithError(err)
 	}
+	launcher.WaitForBackgroundWork()
 }
 
 // launchProtocolURL runs one access-workspace:// launch end to end. In a
@@ -128,6 +129,9 @@ func launchProtocolURL(rawURI string) error {
 		launcher.ShowLaunchFailure(err)
 		return err
 	}
+	// Keep this process alive while the launch still needs it (on macOS: to ask
+	// for the password again after the server rejected it). Empty elsewhere.
+	launcher.WaitForBackgroundWork()
 	return nil
 }
 

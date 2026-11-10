@@ -42,7 +42,7 @@ out_dir="$(cd "$out_dir" && pwd)"
 app="$out_dir/MacFreeRDP.app"
 stamp="$out_dir/MacFreeRDP.stamp"
 arches="${MACOS_ARCHES:-arm64 x86_64}"
-stamp_value="freerdp=$FREERDP_VERSION openssl=$OPENSSL_VERSION target=$DEPLOYMENT_TARGET arches=$arches"
+stamp_value="freerdp=$FREERDP_VERSION openssl=$OPENSSL_VERSION openssl-legacy=builtin target=$DEPLOYMENT_TARGET arches=$arches"
 
 if [ -d "$app" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$stamp_value" ]; then
   echo "MacFreeRDP.app is up to date ($stamp_value)"
@@ -82,16 +82,26 @@ for arch in $arches; do
   echo "== OpenSSL $OPENSSL_VERSION ($arch)"
   ssl_src="$work/openssl-src-$arch"
   ssl_prefix="$work/openssl-$arch"
-  if [ ! -f "$ssl_prefix/lib/libssl.a" ]; then
+  if [ ! -f "$ssl_prefix/lib/libssl.a" ] || [ ! -f "$ssl_prefix/.legacy-builtin" ]; then
     rm -rf "$ssl_src" && mkdir -p "$ssl_src"
     tar -xzf "$openssl_tarball" -C "$ssl_src" --strip-components=1
     (
       cd "$ssl_src"
-      ./Configure "darwin64-$arch-cc" no-shared no-tests no-docs no-apps \
+      # no-module compiles the legacy provider (MD4, RC4) into libcrypto.
+      # With no-shared alone OpenSSL still expects it as a loadable
+      # ossl-modules/legacy.dylib, which nothing ships: the client then has
+      # no MD4, so NTLM — the NLA authentication used with a domain or local
+      # account — cannot work, and RC4 (licensing, RDP security) is gone too.
+      ./Configure "darwin64-$arch-cc" no-shared no-module no-tests no-docs no-apps \
         --prefix="$ssl_prefix" --libdir=lib "-mmacosx-version-min=$DEPLOYMENT_TARGET" >/dev/null
       make -j "$jobs" >/dev/null
       make install_sw >/dev/null
     )
+    # (grep reads to the end: with -q it would quit early and pipefail would
+    # report nm's SIGPIPE as a failure)
+    [ "$(nm "$ssl_prefix/lib/libcrypto.a" 2>/dev/null | grep -c ' T _ossl_legacy_provider_init$')" -gt 0 ] \
+      || { echo "OpenSSL ($arch) was built without the built-in legacy provider (no MD4/RC4)" >&2; exit 1; }
+    touch "$ssl_prefix/.legacy-builtin"
   fi
 
   echo "== FreeRDP $FREERDP_VERSION ($arch)"

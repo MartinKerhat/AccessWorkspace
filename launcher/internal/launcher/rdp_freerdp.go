@@ -91,21 +91,31 @@ func startFreeRDPWithStoredCredential(client string, args []string, secret strin
 // was started (or failed to start); like all logging here, a failure to open
 // the file never blocks the launch.
 func attachRDPClientLog(command *exec.Cmd) (closeLog func()) {
-	baseDir, err := launcherDataDir()
-	if err != nil {
-		return func() {}
-	}
-	logsDir := filepath.Join(baseDir, "logs")
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		return func() {}
-	}
-	file, err := os.OpenFile(filepath.Join(logsDir, "rdp-client.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
+	file := openRDPClientLog()
+	if file == nil {
 		return func() {}
 	}
 	command.Stdout = file
 	command.Stderr = file
 	return func() { _ = file.Close() }
+}
+
+// openRDPClientLog truncates and opens logs/rdp-client.log, or returns nil
+// when it cannot (the launch goes ahead without it).
+func openRDPClientLog() *os.File {
+	baseDir, err := launcherDataDir()
+	if err != nil {
+		return nil
+	}
+	logsDir := filepath.Join(baseDir, "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		return nil
+	}
+	file, err := os.OpenFile(filepath.Join(logsDir, "rdp-client.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil
+	}
+	return file
 }
 
 // sanitizeRDPArgsForLog keeps credentials out of the launcher log.
