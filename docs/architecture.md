@@ -12,7 +12,7 @@ Two companion clients talk to the same backend rather than being separate
 platforms:
 
 - a local desktop **launcher** for SSH and RDP (Windows, Linux and macOS; on macOS with the RDP client bundled inside)
-- a **browser extension** for portal credential fill (Chrome, Edge, Firefox)
+- a **browser extension** for portal credential fill (Chrome, Edge, Firefox, Safari)
 
 ## Components
 
@@ -68,7 +68,10 @@ Per-category storage and retrieval rules are in [object-model.md](object-model.m
 - executes SSH in a visible terminal, including launcher-managed password
   sessions (Windows console; auto-detected terminal emulator on Linux)
 - self-installs per user, registers the `access-workspace://` handler, and
-  arranges bridge autostart (registry on Windows, XDG desktop entries on Linux)
+  arranges bridge autostart (registry on Windows, XDG desktop entries on Linux,
+  a LaunchAgent on macOS)
+- takes launches through that handler from browsers that cannot reach the
+  bridge — Safari; see [Launching](#launching) for what is lost on that path
 
 The launch payload stays **semantic** — host, port, user, domain, gateway,
 options. Platform mechanics (`.rdp` files, `cmdkey`, `rdpsign`, FreeRDP
@@ -146,6 +149,27 @@ app verifies launcher presence, version, and capabilities through the localhost
 bridge, then hands off. The launcher executes RDP and SSH natively per platform.
 Web portal launches open in the browser, with extension-assisted fill where
 allowed.
+
+**Safari is the exception.** Chrome, Edge and Firefox let an HTTPS page call
+`http://127.0.0.1`; WebKit treats that as mixed content and blocks it
+([WebKit bug 171934](https://bugs.webkit.org/show_bug.cgi?id=171934)), so from
+Safari — and other WebKit browsers — the bridge is unreachable. There the web
+app opens an `access-workspace://launch` link instead, carrying only the
+one-time ticket. What that costs:
+
+- Safari asks "allow this page to open Access Workspace Launcher?" on every
+  connect.
+- The web app cannot tell whether a launcher is installed, which version it
+  is, or what it supports. A missing launcher shows up as Safari's own "address
+  is invalid" message; an outdated one is refused when it redeems the ticket
+  and says so in its own dialog.
+- The web app never learns the outcome. It reports the connection as sent, and
+  failures (unreachable host, missing RDP client) appear in the launcher's
+  dialog rather than in the page.
+
+The link is used only when the bridge does not answer, so nothing changes for
+other browsers, and Safari would move to the full flow by itself if WebKit ever
+allows loopback requests.
 
 ### External integrations
 

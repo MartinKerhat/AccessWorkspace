@@ -11,6 +11,7 @@ Shared behavior on every platform:
 - redeems one-time backend launch tickets so secrets do not travel inside the browser URI
 - opens web targets through the platform browser
 - self-installs when the executable is run without launch arguments, registers the `access-workspace://` handler, and arranges autostart of the bridge
+- takes launches through the `access-workspace://` handler as well as the bridge. Safari (any WebKit browser) blocks a page's requests to `http://127.0.0.1`, so the web app uses the handler there: the browser asks for permission on every connect, the web app cannot check the launcher's presence, version or capabilities first, and failures are reported only by the launcher's own dialog. An outdated launcher is refused when it redeems the ticket and says which version is required.
 
 Windows specifics:
 

@@ -97,6 +97,25 @@ func resolveLaunchPayload(item payload.LaunchPayload) (payload.LaunchPayload, er
 			err, request.URL.Host)
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusPreconditionFailed {
+		// The workspace refuses launchers older than its newest published
+		// build. From most browsers the web app catches that before the
+		// hand-off; a launch that arrived through the access-workspace:// handler
+		// (Safari) is checked nowhere else, so this message is all the user gets.
+		var refusal struct {
+			RequiredVersion string `json:"requiredVersion"`
+		}
+		_ = json.NewDecoder(response.Body).Decode(&refusal)
+		required := strings.TrimSpace(refusal.RequiredVersion)
+		if required == "" {
+			required = "a newer version"
+		} else {
+			required = "version " + required
+		}
+		return payload.LaunchPayload{}, fmt.Errorf(
+			"this launcher (version %s) is too old for the workspace, which requires %s — download the current launcher from the web app (Download launcher) and install it",
+			launcherinfo.Version, required)
+	}
 	if response.StatusCode != http.StatusOK {
 		return payload.LaunchPayload{}, fmt.Errorf("resolve launcher ticket: unexpected status %d", response.StatusCode)
 	}

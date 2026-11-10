@@ -18,7 +18,7 @@ Access Workspace pulls that into one workspace where access is discoverable, per
 
 ### Connections — a launcher-first RDP and SSH catalog
 
-Shared connections live in the workspace with folder organization, per-connection credentials, and permissions. Connecting hands off to a small local launcher that opens the native client on your machine — **mstsc on Windows, FreeRDP on Linux, and on macOS a FreeRDP client bundled inside the launcher so there is nothing else to install** — with the credential injected straight from the vault. SSH sessions open in the platform's terminal, Terminal.app on a Mac. Remote Desktop Gateway hosts, admin sessions, and Wake-on-LAN travel with the connection record, so nobody sets them up per machine. Secrets never travel in a browser URL: the web app requests a one-time launch ticket that only the launcher can redeem.
+Shared connections live in the workspace with folder organization, per-connection credentials, and permissions. Connecting hands off to a small local launcher that opens the native client on your machine — **mstsc on Windows, FreeRDP on Linux, and on macOS a FreeRDP client bundled inside the launcher so there is nothing else to install** — with the credential injected straight from the vault. SSH sessions open in the platform's terminal, Terminal.app on a Mac. Remote Desktop Gateway hosts, admin sessions, and Wake-on-LAN travel with the connection record, so nobody sets them up per machine. Secrets never travel in a browser URL: the web app requests a one-time launch ticket that only the launcher can redeem. Connecting works from Chrome, Edge, Firefox and Safari; Safari does not let a web page talk to a local app directly, so there it asks for permission on every connect and the web app cannot check the launcher beforehand ([details](docs/architecture.md#launching)).
 
 Users can attach **their own saved credentials** to a shared connection, so a jump host shared with the whole team can still be entered with each person's individual account.
 
@@ -48,7 +48,7 @@ Reusable saved credentials for websites, tools, and legacy systems, shared with 
 
 ### Browser extension — fill on approved portals
 
-A companion extension for Chrome, Edge, Firefox, and Safari connects to your workspace, offers the credentials your workspace has approved for the site you are on, fills them on request, and can save new portal logins back into your personal vault. If you switch it on in the Browser extensions dialog, it also offers a strong password on sign-up and change-password forms, generated with your own Generator settings, fills both password boxes, and saves the new login for you. Fills are audited like any other sensitive action.
+A companion extension for Chrome, Edge, Firefox, and Safari connects to your workspace, offers the credentials your workspace has approved for the site you are on, fills them on request, and can save new portal logins back into your personal vault. If you switch it on in the Browser extensions dialog, it also offers a strong password on sign-up and change-password forms, generated with your own Generator settings, fills both password boxes, and saves the new login for you. Fills are audited like any other sensitive action. In Safari the extension comes as a small Mac app: install it, switch the extension on in Safari's settings, and allow it on the sites where it should fill.
 
 ### Administration you can actually answer questions with
 

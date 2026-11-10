@@ -1,5 +1,6 @@
 import type { LauncherRuntime } from "../types";
 import { formatArtifactMeta } from "../format";
+import { browserBlocksLauncherBridge } from "../launcherProtocol";
 import { detectClientLauncherPlatform, launcherPlatformLabel, matchesLauncherPlatform } from "../platform";
 import { scrimDismissProps } from "./scrim";
 
@@ -36,6 +37,14 @@ export function LauncherDownloadsModal({ runtime, onClose }: Props) {
             launcher registers the <code>access-workspace://</code> handler on your machine.
           </p>
           <p className="detail-description">Required version: {runtime.requiredVersion}</p>
+          {browserBlocksLauncherBridge() ? (
+            <p className="detail-description muted">
+              This browser cannot check the launcher from the web app: Safari and other WebKit browsers block the
+              local connection that Chrome, Edge and Firefox use for it. Connect goes through that handler instead,
+              so the browser asks for permission each time, and a missing or outdated launcher shows up only as
+              nothing opening or as a message from the launcher itself.
+            </p>
+          ) : null}
         </div>
         {downloads.length > 0 ? (
           <ul className="artifact-file-list">

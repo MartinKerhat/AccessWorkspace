@@ -1,5 +1,11 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { api } from "../api/client";
+import {
+  browserBlocksLauncherBridge,
+  buildLauncherProtocolUri,
+  launcherProtocolHandOffMessage,
+  openLauncherProtocol
+} from "../launcherProtocol";
 import { mentionIdsIn } from "../mentions";
 import { ownsResource } from "../resourceMeta";
 import type {
@@ -315,9 +321,22 @@ export function useResourceActions({
           runtime = await api.launcherRuntime();
           setLauncherRuntime(runtime);
         }
+        const launcherTicket = typeof response.metadata.launcherTicket === "string" ? response.metadata.launcherTicket : "";
         const status = await refreshLauncherStatus(runtime);
         if (!status) {
-          setMessage("Launcher not detected. Download and install the desktop launcher first.");
+          // Safari and other WebKit browsers cannot reach the localhost bridge
+          // at all, so no answer says nothing about the launcher there: hand
+          // off through its URL handler instead, without the checks below.
+          const protocolUri = browserBlocksLauncherBridge()
+            ? buildLauncherProtocolUri(response, launcherTicket ? api.launcherTicketResolveUrl(launcherTicket) : "")
+            : null;
+          if (!protocolUri) {
+            setMessage("Launcher not detected. Download and install the desktop launcher first.");
+            return;
+          }
+          openLauncherProtocol(protocolUri);
+          setMessage(launcherProtocolHandOffMessage);
+          await refreshAfterSensitiveAction();
           return;
         }
         if (isVersionOlder(status.version, runtime.requiredVersion)) {
@@ -332,7 +351,6 @@ export function useResourceActions({
           setMessage(launcherCapabilityMessage(launchType, status.platform));
           return;
         }
-        const launcherTicket = typeof response.metadata.launcherTicket === "string" ? response.metadata.launcherTicket : "";
         const preparedPayload: LaunchPayload = launcherTicket
           ? {
               ...response,

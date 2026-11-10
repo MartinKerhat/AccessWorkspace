@@ -175,3 +175,10 @@ ticket, and the launcher redeems it against the deployment that issued it — so
 secrets never appear in a browser URI. The launcher's own loopback bridge
 (`127.0.0.1:47654`) exposes `/status` (version, platform, per-feature
 capabilities) and `/launch`.
+
+Safari blocks a page's requests to that bridge, so there the web app opens
+`access-workspace://launch?payload=<base64url JSON>` instead. The payload holds
+the resource id, type and target plus `launcherTicket` and `launcherResolveUrl`
+— the ticket, never the credential. Ticket redemption answers `412` with
+`requiredVersion` to a launcher older than the newest published build, which is
+the only version check on that path.
