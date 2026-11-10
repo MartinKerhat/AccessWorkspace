@@ -15,6 +15,16 @@ import (
 // capability report tells the web app when it is missing.
 var freeRDPClientCandidates = []string{"xfreerdp3", "xfreerdp", "sdl-freerdp3", "sdl-freerdp", "wlfreerdp"}
 
+// freeRDPStdinPasswordArg: the command-line clients ask for the password on
+// stdin when the server requests it, so the plain flag is enough.
+const freeRDPStdinPasswordArg = "/from-stdin"
+
+// freeRDPGatewayArg uses the short spelling, the only one FreeRDP 2 knows
+// (`xfreerdp` is still FreeRDP 2 on several distributions).
+func freeRDPGatewayArg(gatewayHost string) string {
+	return "/g:" + gatewayHost
+}
+
 // findFreeRDPClient returns the first FreeRDP client binary on PATH.
 func findFreeRDPClient() (string, error) {
 	for _, candidate := range freeRDPClientCandidates {

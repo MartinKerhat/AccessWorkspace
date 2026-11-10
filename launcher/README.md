@@ -20,7 +20,7 @@ Windows specifics:
 
 Linux specifics:
 
-- starts RDP through the system FreeRDP client (`xfreerdp`/`xfreerdp3`), mapping connection fields — target, credentials, domain, Remote Desktop Gateway, admin session — to arguments; the password is handed over on stdin (`/from-stdin`), never on the command line. No profile files and no profile signing are involved.
+- starts RDP through the system FreeRDP client (`xfreerdp`/`xfreerdp3`), mapping connection fields — target, credentials, domain, Remote Desktop Gateway, admin session — to arguments; the password is handed over on stdin (`/from-stdin`), never on the command line. No profile files and no profile signing are involved. The client's output is kept in `logs/rdp-client.log` under the state directory.
 - FreeRDP is a preflight-checked system package (`sudo apt install freerdp3-x11` / `sudo dnf install freerdp`); when missing, the web app shows an install hint via the capability report
 - starts launcher-managed SSH sessions inside the user's terminal emulator (auto-detected: `xdg-terminal-exec`, gnome-terminal, konsole, and friends); key-driven setups fall through to the native `ssh` client in the same terminal
 - installs per-user with XDG conventions: binary in `~/.local/bin`, URI-handler `.desktop` entry, autostart entry, state under `~/.local/share/access-workspace-launcher`
@@ -29,7 +29,8 @@ Linux specifics:
 macOS specifics:
 
 - ships as one signed, notarized `.dmg` with everything inside: the universal (Apple silicon + Intel) launcher app and, under `Contents/Helpers`, FreeRDP's native Cocoa client (`MacFreeRDP`, built from source with OpenSSL linked statically by `scripts/build_freerdp_macos.sh`). Mac users are not asked to find and install an RDP client — the opposite of the Linux model.
-- starts RDP through that bundled client with the same argument mapping as Linux (target, credentials, domain, gateway, admin session, window title; password on stdin via `/from-stdin`), in a window sized to the display with smart sizing; the green button goes fullscreen
+- starts RDP through that bundled client with the same argument mapping as Linux (target, credentials, domain, gateway, admin session, window title), in a window sized to the display with smart sizing; the green button goes fullscreen. The password goes over stdin via `/from-stdin:force` — the Cocoa client only reads stdin in that form — and the gateway is passed as `/gateway:g:<host>`, since the bundled build does not include the short `/g:` alias
+- the bundled client's own output is kept in `logs/rdp-client.log` (overwritten per launch) under the state directory; its dialogs are generic ("Error connecting to server"), the log has the reason
 - starts launcher-managed SSH sessions in Terminal.app (part of macOS, next to the system OpenSSH client), through a self-deleting `.command` script so no Automation permission prompt appears
 - installs the platform way: drag the app from the `.dmg` to Applications and open it once. That first open registers a per-user LaunchAgent (`~/Library/LaunchAgents/io.github.martinkerhat.accessworkspace.launcher.plist`) that keeps the localhost bridge running and restarts it at login; the `access-workspace://` scheme comes from the bundle's `Info.plist`, registered by LaunchServices. Upgrading is the same gesture: replace the app, open it once.
 - state lives under `~/Library/Application Support/access-workspace-launcher` (logs, payloads)

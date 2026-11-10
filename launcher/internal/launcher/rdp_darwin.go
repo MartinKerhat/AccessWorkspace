@@ -17,10 +17,28 @@ import (
 // nothing to find and install separately (the opposite of the Linux model,
 // where the distribution's FreeRDP package is the user's job). The client is
 // built by scripts/build_freerdp_macos.sh and placed by scripts/build_macos.sh
-// at Contents/Helpers/MacFreeRDP.app; it accepts the same arguments as the
-// other FreeRDP clients, including /from-stdin for the password.
+// at Contents/Helpers/MacFreeRDP.app; it shares the command-line parser of the
+// other FreeRDP clients, with the two differences below.
 
 const bundledFreeRDPRelativePath = "Contents/Helpers/MacFreeRDP.app/Contents/MacOS/MacFreeRDP"
+
+// freeRDPStdinPasswordArg must be the ":force" form here. Plain /from-stdin
+// only tells the client to read the password from stdin when the server asks
+// for it, and that read lives in the command-line clients' authentication
+// callback; the Cocoa client replaces the callback with its own password
+// window and never looks at stdin, so the stored password was silently
+// dropped. ":force" makes the shared parser read it at startup, before any
+// client-specific code runs.
+const freeRDPStdinPasswordArg = "/from-stdin:force"
+
+// freeRDPGatewayArg uses the FreeRDP 3 spelling: the short /g: is a
+// deprecated alias that only exists in builds configured with
+// WITH_FREERDP_DEPRECATED_COMMANDLINE, which build_freerdp_macos.sh does not
+// set — the bundled client rejects it and quits. Given the host alone, the
+// gateway hop reuses the connection's credentials.
+func freeRDPGatewayArg(gatewayHost string) string {
+	return "/gateway:g:" + gatewayHost
+}
 
 // findFreeRDPClient returns the bundled client's executable. For development
 // builds that do not run from a .app bundle, ACCESS_WORKSPACE_MACFREERDP may
@@ -79,7 +97,10 @@ func runRDPPlatform(item payload.LaunchPayload, host string, port string, gatewa
 		// so it runs directly — no terminal needed as on Linux.
 		Logf("rdp: no stored credentials, starting %s with its own prompt", client)
 		command := exec.Command(client, args...)
-		if err := command.Start(); err != nil {
+		closeClientLog := attachRDPClientLog(command)
+		err := command.Start()
+		closeClientLog()
+		if err != nil {
 			return fmt.Errorf("start %s: %w", client, err)
 		}
 		Logf("rdp: %s started (pid=%d, args=%v)", client, command.Process.Pid, sanitizeRDPArgsForLog(args))

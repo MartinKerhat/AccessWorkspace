@@ -22,7 +22,7 @@ func TestBuildFreeRDPArgsMapsConnectionFields(t *testing.T) {
 		},
 	}
 	args := buildFreeRDPArgs(item, "host.example", "3390", "gateway.example")
-	want := []string{"/v:host.example:3390", "/u:someone", "/d:CORP", "/g:gateway.example", "/admin", "/t:Jump host", "+clipboard", "/cert:tofu"}
+	want := []string{"/v:host.example:3390", "/u:someone", "/d:CORP", freeRDPGatewayArg("gateway.example"), "/admin", "/t:Jump host", "+clipboard", "/cert:tofu"}
 	if strings.Join(args, " ") != strings.Join(want, " ") {
 		t.Fatalf("args = %v, want %v", args, want)
 	}

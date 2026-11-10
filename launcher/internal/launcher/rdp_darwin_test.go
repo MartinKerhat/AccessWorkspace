@@ -45,6 +45,19 @@ func TestFindFreeRDPClientDarwin(t *testing.T) {
 	}
 }
 
+// The bundled Cocoa client differs from the command-line clients in two
+// spellings, and getting either wrong fails without a useful message: plain
+// /from-stdin never delivers the stored password, and /g: is not compiled
+// into the bundled build at all.
+func TestFreeRDPDarwinArgumentSpellings(t *testing.T) {
+	if freeRDPStdinPasswordArg != "/from-stdin:force" {
+		t.Fatalf("stdin password argument = %q, want /from-stdin:force", freeRDPStdinPasswordArg)
+	}
+	if got := freeRDPGatewayArg("gateway.example"); got != "/gateway:g:gateway.example" {
+		t.Fatalf("gateway argument = %q, want /gateway:g:gateway.example", got)
+	}
+}
+
 // currentDisplaySize answers (0, 0) without a WindowServer session (go test
 // over SSH, a headless CI job) and preferredRDPDesktopSize then substitutes a
 // fixed size; the session window must be usable either way.

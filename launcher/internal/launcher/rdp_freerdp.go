@@ -5,7 +5,9 @@ package launcher
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,9 +38,10 @@ func buildFreeRDPArgs(item payload.LaunchPayload, host string, port string, gate
 	}
 	if gatewayHost != "" {
 		// FreeRDP reuses the connection credentials for the gateway hop when no
-		// separate /gu:/gp: are given — same behavior the Windows flow arranges
-		// via cmdkey (promptcredentialonce).
-		args = append(args, "/g:"+gatewayHost)
+		// separate gateway user/password are given — same behavior the Windows
+		// flow arranges via cmdkey (promptcredentialonce). The spelling of the
+		// option depends on the client build, see freeRDPGatewayArg.
+		args = append(args, freeRDPGatewayArg(gatewayHost))
 	}
 	if payload.MetadataBool(item.Metadata, "connectionAdminSession") {
 		args = append(args, "/admin")
@@ -54,18 +57,21 @@ func buildFreeRDPArgs(item payload.LaunchPayload, host string, port string, gate
 }
 
 // startFreeRDPWithStoredCredential launches the client with the password
-// handed over on stdin (/from-stdin) so it never appears in the process list
-// the way /p: would, then watches for an early exit: the client dying within
-// the window means no session window ever appeared (bad credentials, refused
-// certificate, ...).
+// handed over on stdin (freeRDPStdinPasswordArg) so it never appears in the
+// process list the way /p: would, then watches for an early exit: the client
+// dying within the window means no session window ever appeared (bad
+// credentials, refused certificate, ...).
 func startFreeRDPWithStoredCredential(client string, args []string, secret string) error {
-	args = append(append([]string{}, args...), "/from-stdin")
+	args = append(append([]string{}, args...), freeRDPStdinPasswordArg)
 	command := exec.Command(client, args...)
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("prepare rdp credential handoff: %w", err)
 	}
-	if err := command.Start(); err != nil {
+	closeClientLog := attachRDPClientLog(command)
+	err = command.Start()
+	closeClientLog()
+	if err != nil {
 		return fmt.Errorf("start %s: %w", client, err)
 	}
 	go func() {
@@ -74,6 +80,32 @@ func startFreeRDPWithStoredCredential(client string, args []string, secret strin
 	}()
 	Logf("rdp: %s started (pid=%d, args=%v)", client, command.Process.Pid, sanitizeRDPArgsForLog(args))
 	return waitForEarlyRDPExit(command, 2500*time.Millisecond)
+}
+
+// attachRDPClientLog sends the client's own output to logs/rdp-client.log
+// (overwritten per launch) next to launcher.log. Without it that output goes
+// nowhere, and the client's dialogs are too generic to act on — the Cocoa
+// client reports every failure except a rejected password as "Error
+// connecting to server". FreeRDP does not log credentials. The returned
+// function closes the launcher's handle and must be called once the client
+// was started (or failed to start); like all logging here, a failure to open
+// the file never blocks the launch.
+func attachRDPClientLog(command *exec.Cmd) (closeLog func()) {
+	baseDir, err := launcherDataDir()
+	if err != nil {
+		return func() {}
+	}
+	logsDir := filepath.Join(baseDir, "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		return func() {}
+	}
+	file, err := os.OpenFile(filepath.Join(logsDir, "rdp-client.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return func() {}
+	}
+	command.Stdout = file
+	command.Stderr = file
+	return func() { _ = file.Close() }
 }
 
 // sanitizeRDPArgsForLog keeps credentials out of the launcher log.
