@@ -12,7 +12,7 @@ COPY frontend/ ./
 # from a mounted volume (dev) or Azure Blob (prod). See artifacts/README.md.
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.30-alpine
 
 COPY deploy/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /src/dist /usr/share/nginx/html

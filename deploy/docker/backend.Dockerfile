@@ -9,7 +9,7 @@ RUN go mod download
 COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/access-workspace ./cmd/server
 
-FROM alpine:3.21
+FROM alpine:3.24
 
 WORKDIR /app
 COPY --from=build /out/access-workspace /app/access-workspace

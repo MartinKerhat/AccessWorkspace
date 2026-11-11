@@ -1,6 +1,6 @@
 module github.com/MartinKerhat/AccessWorkspace/launcher
 
-go 1.26.0
+go 1.26.11
 
 require (
 	golang.org/x/crypto v0.57.0
