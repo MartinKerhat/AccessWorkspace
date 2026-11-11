@@ -277,6 +277,12 @@ export function UserAccessAdminPage({
               <span>One-time link</span>
               <input readOnly value={inviteLinkURL(pendingInvite.invite)} onFocus={(event) => event.target.select()} />
             </label>
+            {pendingInvite.invite.username ? (
+              <label className="wide">
+                <span>Username for signing in afterwards (email also works)</span>
+                <input readOnly value={pendingInvite.invite.username} onFocus={(event) => event.target.select()} />
+              </label>
+            ) : null}
           </div>
           <div className="action-row">
             <button
@@ -494,6 +500,9 @@ export function UserAccessAdminPage({
                   <p className="eyebrow">User details</p>
                   <h2>{selectedUser.name}</h2>
                   <p className="detail-description">{selectedUser.email}</p>
+                  <p className="detail-description">
+                    {selectedUser.username ? `Username: ${selectedUser.username}` : "Signs in with Microsoft"}
+                  </p>
                 </div>
                 <div className="detail-header-actions user-access-header-actions">
                   {selectedUser.isAdmin ? <span className="resource-type">Administrator</span> : null}

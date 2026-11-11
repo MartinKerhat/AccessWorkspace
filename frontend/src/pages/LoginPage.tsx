@@ -121,8 +121,8 @@ export function LoginPage({ loading, message, microsoftEnabled, inviteToken, onS
 
         <div className="form-grid">
           <label className="wide">
-            <span>Username</span>
-            <input value={username} onChange={(event) => setUsername(event.target.value)} />
+            <span>Username or email</span>
+            <input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} />
           </label>
           <label className="wide">
             <span>Password</span>

@@ -117,7 +117,7 @@ func (s *Service) Bootstrap() Bootstrap {
 }
 
 func (s *Service) Login(ctx context.Context, username, password string) (LoginResult, error) {
-	user, err := s.repo.Authenticate(ctx, username, password)
+	user, password, err := s.repo.authenticate(ctx, username, password)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -345,6 +345,8 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (UserAc
 	switch {
 	case input.Username == "":
 		return UserAccessDetail{}, fmt.Errorf("%w: username is required", ErrInvalidInput)
+	case !isLocalPasswordAccount(strings.ToLower(input.Username)):
+		return UserAccessDetail{}, fmt.Errorf("%w: username prefix %q is reserved for Microsoft accounts", ErrInvalidInput, externalUsernamePrefix)
 	case input.DisplayName == "":
 		return UserAccessDetail{}, fmt.Errorf("%w: display name is required", ErrInvalidInput)
 	case input.Email == "":
@@ -433,6 +435,7 @@ func (s *Service) GetUserAccess(ctx context.Context, id string) (UserAccessDetai
 		ID:                        resolved.ID,
 		Name:                      resolved.Name,
 		Email:                     resolved.Email,
+		Username:                  user.Username,
 		IsAdmin:                   resolved.IsAdmin,
 		Blocked:                   user.Blocked,
 		ExternalGroups:            append([]string{}, user.Groups...),

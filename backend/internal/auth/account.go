@@ -39,8 +39,11 @@ const (
 )
 
 type UserInvite struct {
-	Token                    string    `json:"token"`
-	UserID                   string    `json:"userId"`
+	Token  string `json:"token"`
+	UserID string `json:"userId"`
+	// Username is what the user signs in with after setting their password,
+	// returned so the admin can pass it along with a manually shared link.
+	Username                 string    `json:"username,omitempty"`
 	Purpose                  string    `json:"purpose"`
 	ExpiresAt                time.Time `json:"expiresAt"`
 	PersonalResourcesDeleted int       `json:"personalResourcesDeleted,omitempty"`
@@ -74,9 +77,13 @@ func (s *Service) emailInvite(ctx context.Context, user User, invite UserInvite)
 		subject = "Access Workspace password reset"
 		intro = "Your Access Workspace password was reset by an administrator."
 	}
+	signIn := ""
+	if user.Username != "" {
+		signIn = fmt.Sprintf("\nAfterwards, sign in with your username %q (or your email address) and the new password.\n", user.Username)
+	}
 	body := fmt.Sprintf(
-		"Hi %s,\n\n%s Set your password using this one-time link:\n\n%s\n\nThe link can be used once and expires %s.\n",
-		user.Name, intro, link, invite.ExpiresAt.Local().Format("2006-01-02 15:04"),
+		"Hi %s,\n\n%s Set your password using this one-time link:\n\n%s\n%s\nThe link can be used once and expires %s.\n",
+		user.Name, intro, link, signIn, invite.ExpiresAt.Local().Format("2006-01-02 15:04"),
 	)
 	return s.inviteMailer.SendPlainEmail(ctx, user.Email, subject, body) == nil
 }
@@ -139,7 +146,7 @@ func (s *Service) IssueUserInvite(ctx context.Context, actor User, userID string
 	if err != nil {
 		return UserInvite{}, err
 	}
-	invite := UserInvite{Token: token, UserID: userID, Purpose: purpose, ExpiresAt: expiresAt}
+	invite := UserInvite{Token: token, UserID: userID, Username: target.Username, Purpose: purpose, ExpiresAt: expiresAt}
 	invite.EmailSent = s.emailInvite(ctx, target, invite)
 	return invite, nil
 }

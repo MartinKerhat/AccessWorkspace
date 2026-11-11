@@ -24,6 +24,9 @@ type User struct {
 	// only a placeholder hash, so "change password" does not apply to them —
 	// their vault doors are the passphrase/passkeys in vault settings.
 	HasLocalPassword bool `json:"hasLocalPassword"`
+	// Username is the local sign-in name. Loaded only where admin views need
+	// it; kept out of session payloads.
+	Username string `json:"-"`
 	// VaultPrivateKey is the session-unlocked personal-vault private key,
 	// unwrapped per request from the session row via the raw bearer token.
 	// Never serialized. nil = vault locked (or absent) for this request.
@@ -78,9 +81,12 @@ type ResolvedLocalGroup struct {
 }
 
 type UserAccessDetail struct {
-	ID                        string                `json:"id"`
-	Name                      string                `json:"name"`
-	Email                     string                `json:"email"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	// Username is the local sign-in name; empty for Microsoft-backed accounts,
+	// which have no local sign-in.
+	Username                  string                `json:"username,omitempty"`
 	IsAdmin                   bool                  `json:"isAdmin"`
 	Blocked                   bool                  `json:"blocked"`
 	ExternalGroups            []string              `json:"externalGroups"`

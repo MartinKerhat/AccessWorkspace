@@ -47,44 +47,104 @@ const (
 // ErrLockedOut is returned while an account is in its brute-force cooldown.
 var ErrLockedOut = errors.New("account temporarily locked")
 
-func (r *Repository) Authenticate(ctx context.Context, username, password string) (User, error) {
-	var user User
-	var passwordHash string
-	var blocked bool
-	var failedAttempts int
-	var lockedUntil *time.Time
-	err := r.db.QueryRow(ctx, `
+func (r *Repository) Authenticate(ctx context.Context, login, password string) (User, error) {
+	user, _, err := r.authenticate(ctx, login, password)
+	return user, err
+}
+
+// authenticate verifies a local sign-in and also returns the exact password
+// variant that matched, so the caller derives the vault key from the same
+// string the stored hash (and vault wrap) were made from.
+//
+// login is the username or, failing an exact username match, the email of
+// exactly one local account. Users who joined through an invite or reset
+// link were signed in automatically and may never have seen their username.
+//
+// Only local-password accounts can sign in here: Microsoft-provisioned rows
+// carry a hash of a constant placeholder that must never work as a password.
+func (r *Repository) authenticate(ctx context.Context, login, password string) (User, string, error) {
+	login = strings.TrimSpace(login)
+	if login == "" {
+		return User{}, "", ErrUnauthenticated
+	}
+	rows, err := r.db.Query(ctx, `
 		select id, display_name, email, groups, is_admin, workspace_blocked, direct_rights, password_hash,
-		       failed_login_attempts, locked_until
+		       failed_login_attempts, locked_until, lower(username) = lower($1) as username_match
 		from app_users
-		where lower(username) = lower($1)
-	`, strings.TrimSpace(username)).Scan(&user.ID, &user.Name, &user.Email, &user.Groups, &user.IsAdmin, &blocked, &user.DirectRights, &passwordHash,
-		&failedAttempts, &lockedUntil)
+		where (lower(username) = lower($1) or (email <> '' and lower(email) = lower($1)))
+		  and username not like $2
+		order by username_match desc
+		limit 2
+	`, login, externalUsernamePrefix+"%")
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrUnauthenticated
+		return User{}, "", err
+	}
+	type candidate struct {
+		user           User
+		passwordHash   string
+		blocked        bool
+		failedAttempts int
+		lockedUntil    *time.Time
+		usernameMatch  bool
+	}
+	candidates := []candidate{}
+	for rows.Next() {
+		var c candidate
+		if err := rows.Scan(&c.user.ID, &c.user.Name, &c.user.Email, &c.user.Groups, &c.user.IsAdmin, &c.blocked, &c.user.DirectRights, &c.passwordHash,
+			&c.failedAttempts, &c.lockedUntil, &c.usernameMatch); err != nil {
+			rows.Close()
+			return User{}, "", err
 		}
-		return User{}, err
+		candidates = append(candidates, c)
 	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return User{}, "", err
+	}
+	// An exact username wins; an email only counts when it names exactly one
+	// local account (emails are not unique).
+	if len(candidates) == 0 || (!candidates[0].usernameMatch && len(candidates) > 1) {
+		return User{}, "", ErrUnauthenticated
+	}
+	c := candidates[0]
+	user := c.user
 	user.HasLocalPassword = true
-	if lockedUntil != nil && lockedUntil.After(time.Now()) {
-		return User{}, ErrLockedOut
+	if c.lockedUntil != nil && c.lockedUntil.After(time.Now()) {
+		return User{}, "", ErrLockedOut
 	}
-	if blocked {
-		return User{}, ErrBlocked
+	if c.blocked {
+		return User{}, "", ErrBlocked
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
-		r.recordFailedLogin(ctx, user.ID, failedAttempts+1)
-		return User{}, ErrUnauthenticated
+	matched, ok := matchPassword(c.passwordHash, password)
+	if !ok {
+		r.recordFailedLogin(ctx, user.ID, c.failedAttempts+1)
+		return User{}, "", ErrUnauthenticated
 	}
 	// Successful password: clear any accumulated failure state.
-	if failedAttempts != 0 || lockedUntil != nil {
+	if c.failedAttempts != 0 || c.lockedUntil != nil {
 		_, _ = r.db.Exec(ctx, `
 			update app_users set failed_login_attempts = 0, locked_until = null where id = $1
 		`, user.ID)
 	}
-	return user, nil
+	return user, matched, nil
+}
+
+// matchPassword compares the password as typed, then with surrounding
+// whitespace removed. Invite acceptance, user creation and password change
+// all store the trimmed password, so a pasted value with a stray trailing
+// space or newline must still sign in; the as-typed comparison keeps any
+// untrimmed hash (the bootstrap admin from env) working.
+func matchPassword(hash, password string) (string, bool) {
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil {
+		return password, true
+	}
+	if trimmed := strings.TrimSpace(password); trimmed != password && trimmed != "" {
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(trimmed)) == nil {
+			return trimmed, true
+		}
+	}
+	return "", false
 }
 
 // recordFailedLogin increments the failure counter and locks the account once
@@ -507,6 +567,9 @@ func (r *Repository) userByID(ctx context.Context, id string) (User, error) {
 		return User{}, err
 	}
 	item.HasLocalPassword = isLocalPasswordAccount(username)
+	if item.HasLocalPassword {
+		item.Username = username
+	}
 	return item, nil
 }
 

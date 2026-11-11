@@ -78,6 +78,8 @@ export type UserAccessDetail = {
   id: string;
   name: string;
   email: string;
+  // Local sign-in name; absent for Microsoft-backed accounts.
+  username?: string;
   isAdmin: boolean;
   blocked: boolean;
   externalGroups: string[];
@@ -175,6 +177,7 @@ export type CertificateResult = {
 export type UserInvite = {
   token: string;
   userId: string;
+  username?: string;
   purpose: string;
   expiresAt: string;
   personalResourcesDeleted?: number;
