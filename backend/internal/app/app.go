@@ -216,6 +216,9 @@ func New(cfg Config) (*App, error) {
 	// available; the link is always returned for manual sharing regardless.
 	authService.ConfigureInviteDelivery(notificationService, cfg.FrontendURL)
 	resourceService := resources.NewService(resourceRepo, auditService, keyVaultService, appRegistrationService, notificationService, secretCipher, rdpSigningProvider{store: adminStore}, authRepo)
+	// "X shared Y with you": resources decides who gained access (it owns the
+	// access rules), notifications records and emails it.
+	resourceService.ConfigureShareNotifications(authService, notificationService)
 
 	artifactSource, err := artifacts.NewSource(artifacts.Config{
 		Source:      cfg.ArtifactsSource,

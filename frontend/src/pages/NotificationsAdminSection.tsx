@@ -141,6 +141,36 @@ export function NotificationsAdminSection({
       <section className="panel">
         <div className="panel-header">
           <div>
+            <p className="eyebrow">Sharing</p>
+            <h2>Shared with you</h2>
+          </div>
+        </div>
+        <p className="section-copy">
+          Tells people when someone shares an object with them. A user picked by name gets an in-app notification and an
+          email (when outbound email is on); members of a picked group get an in-app notification only; objects shared with
+          everyone notify nobody. Only newly added people are notified, never the person sharing, and never anyone who
+          cannot open the object. Key Vault sync and imports never notify.
+        </p>
+        <div className="form-grid">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={form.shareNotificationsEnabled}
+              onChange={(event) => setForm((current) => ({ ...current, shareNotificationsEnabled: event.target.checked }))}
+            />
+            <span>Notify people when an object is shared with them</span>
+          </label>
+        </div>
+        <div className="action-row">
+          <button className="button primary" disabled={busy} onClick={onSaveSettings}>
+            Save notification settings
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <div>
             <p className="eyebrow">Email sender</p>
             <h2>SMTP delivery</h2>
           </div>
@@ -205,17 +235,17 @@ export function NotificationsAdminSection({
         <div className="panel-header">
           <div>
             <p className="eyebrow">Delivery log</p>
-            <h2>Recent email reminders</h2>
+            <h2>Recent notification emails</h2>
           </div>
           <button className="button ghost" disabled={busy} onClick={onRefreshLog}>
             Refresh log
           </button>
         </div>
         <p className="section-copy">
-          Recent app registration reminder emails, including failed delivery attempts, so we can diagnose SMTP issues without opening backend logs.
+          Recent expiry reminder and share emails, including failed delivery attempts, so we can diagnose SMTP issues without opening backend logs.
         </p>
         {deliveries.length === 0 ? (
-          <p className="section-copy">No app registration reminder emails have been attempted yet.</p>
+          <p className="section-copy">No notification emails have been attempted yet.</p>
         ) : (
           <div className="notification-delivery-list">
             {deliveries.map((item) => (
@@ -237,14 +267,23 @@ export function NotificationsAdminSection({
                     <dt>Resource</dt>
                     <dd>{item.resourceName}</dd>
                   </div>
-                  <div>
-                    <dt>Credential</dt>
-                    <dd>{item.credentialType} {item.credentialDisplayName}</dd>
-                  </div>
-                  <div>
-                    <dt>Reminder day</dt>
-                    <dd>{item.reminderDay}</dd>
-                  </div>
+                  {item.kind === "share" ? (
+                    <div>
+                      <dt>Kind</dt>
+                      <dd>Shared with user</dd>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <dt>Credential</dt>
+                        <dd>{item.credentialType} {item.credentialDisplayName}</dd>
+                      </div>
+                      <div>
+                        <dt>Reminder day</dt>
+                        <dd>{item.reminderDay}</dd>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <dt>Created</dt>
                     <dd>{new Date(item.createdAt).toLocaleString()}</dd>

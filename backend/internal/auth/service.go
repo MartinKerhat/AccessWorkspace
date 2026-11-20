@@ -304,6 +304,32 @@ func (s *Service) ListUsers(ctx context.Context) ([]UserSummary, error) {
 	return items, nil
 }
 
+// ListResolvedUsers returns every stored user with local groups and rights
+// resolved exactly as at sign-in, so a caller can ask "could this person open
+// that object" without a session. Used to decide who a share notification may
+// go to: notifying someone who cannot open the object would leak its name.
+func (s *Service) ListResolvedUsers(ctx context.Context) ([]User, error) {
+	users, err := s.repo.listStoredUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	localGroups, err := s.repo.ListLocalGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	directRights, err := s.repo.loadDirectRightsMap(ctx, s.defaultDirectRightsJSON)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]User, 0, len(users))
+	for _, user := range users {
+		resolved := resolveAuthorizationFromInputs(user, localGroups, directRights)
+		resolved.Blocked = user.Blocked
+		items = append(items, resolved)
+	}
+	return items, nil
+}
+
 // ListDirectory returns the minimal sharing directory (local group names and
 // active users) available to every authenticated user, so non-admins can pick
 // sharing targets without access to the admin user-management endpoints.

@@ -2,7 +2,7 @@ import type { LauncherRuntime } from "../types";
 import { formatArtifactMeta } from "../format";
 import { browserBlocksLauncherBridge } from "../launcherProtocol";
 import { detectClientLauncherPlatform, launcherPlatformLabel, matchesLauncherPlatform } from "../platform";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape } from "./scrim";
 
 type Props = {
   runtime: LauncherRuntime;
@@ -19,6 +19,8 @@ export function LauncherDownloadsModal({ runtime, onClose }: Props) {
     const bMatch = matchesLauncherPlatform(b, clientPlatform) ? 0 : 1;
     return aMatch - bMatch;
   });
+  useModalEscape(onClose);
+
   return (
     <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card browser-extension-manager-modal" onClick={(event) => event.stopPropagation()}>

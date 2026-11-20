@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { ResourceFormCard } from "../components/ResourceForm";
 import type { DirectoryUser, Resource, ResourceForm, UserSummary } from "../types";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape } from "./scrim";
 
 type Props = {
   mode: "create" | "edit";
@@ -44,8 +45,12 @@ export function ResourceFormModal({
   onClose,
   canGeneratePassword = false
 }: Props) {
+  // Once anything is typed or toggled, a click outside no longer closes the
+  // form; Close and Esc still do.
+  const [dirty, setDirty] = useState(false);
+  useModalEscape(onClose);
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card resource-form-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
@@ -71,6 +76,7 @@ export function ResourceFormModal({
           onRevealStoredPassword={onRevealStoredPassword}
           onArchive={onArchive}
           canGeneratePassword={canGeneratePassword}
+          onDirtyChange={setDirty}
         />
       </div>
     </div>

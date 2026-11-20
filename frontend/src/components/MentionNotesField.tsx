@@ -85,6 +85,14 @@ export function MentionNotesField({ value, rows = 3, onChange }: Props) {
           syncFragment(event.target.value, event.target.selectionStart ?? 0);
         }}
         onClick={(event) => syncFragment(value, event.currentTarget.selectionStart ?? 0)}
+        onKeyDown={(event) => {
+          // Claim Esc while suggestions are open so the surrounding modal
+          // stays open; the next Esc closes the modal.
+          if (event.key === "Escape" && fragment) {
+            event.preventDefault();
+            setFragment(null);
+          }
+        }}
         onKeyUp={(event) => {
           if (event.key === "Escape") {
             setFragment(null);

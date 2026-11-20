@@ -38,6 +38,7 @@ type AdminConfigView struct {
 	NotificationEmailPasswordSet       bool                               `json:"notificationEmailPasswordSet"`
 	NotificationEmailFrom              string                             `json:"notificationEmailFrom"`
 	NotificationEmailConfigured        bool                               `json:"notificationEmailConfigured"`
+	ShareNotificationsEnabled          bool                               `json:"shareNotificationsEnabled"`
 	AppRegistrationAutoSyncEnabled     bool                               `json:"appRegistrationAutoSyncEnabled"`
 	AppRegistrationSyncIntervalMinutes int                                `json:"appRegistrationSyncIntervalMinutes"`
 	AppRegistrationLastSyncedAt        *time.Time                         `json:"appRegistrationLastSyncedAt,omitempty"`
@@ -83,6 +84,7 @@ type UpdateAdminConfigInput struct {
 	NotificationEmailUsername          string                             `json:"notificationEmailUsername"`
 	NotificationEmailPassword          string                             `json:"notificationEmailPassword"`
 	NotificationEmailFrom              string                             `json:"notificationEmailFrom"`
+	ShareNotificationsEnabled          bool                               `json:"shareNotificationsEnabled"`
 	AppRegistrationAutoSyncEnabled     bool                               `json:"appRegistrationAutoSyncEnabled"`
 	AppRegistrationSyncIntervalMinutes int                                `json:"appRegistrationSyncIntervalMinutes"`
 	RDPSigningEnabled                  bool                               `json:"rdpSigningEnabled"`
@@ -160,6 +162,7 @@ func (c Config) AdminView() AdminConfigView {
 		AppRegistrationNotificationPolicy:  defaultAppRegistrationNotificationPolicy(),
 		KeyVaultNotificationPolicy:         defaultKeyVaultNotificationPolicy(),
 		NotificationEmailPort:              587,
+		ShareNotificationsEnabled:          true,
 		AppRegistrationAutoSyncEnabled:     true,
 		AppRegistrationSyncIntervalMinutes: 60,
 		RDPSigning: RDPSigningConfigView{
@@ -352,6 +355,7 @@ func (s *AdminConfigStore) Get(ctx context.Context) (any, error) {
 		view.NotificationEmailPort = 587
 	}
 	view.NotificationEmailConfigured = view.NotificationEmailHost != "" && view.NotificationEmailFrom != ""
+	view.ShareNotificationsEnabled = shareNotificationsEnabled(settings)
 	view.AppRegistrationAutoSyncEnabled = settings["app_registration_sync_enabled"] != "false"
 	if value := strings.TrimSpace(settings["app_registration_sync_interval_minutes"]); value != "" {
 		if interval, err := parseIntSetting(value, 60); err == nil {
@@ -433,6 +437,21 @@ func (s *AdminConfigStore) GetNotificationEmailRuntime(ctx context.Context) (not
 	}
 	config.Configured = config.Host != "" && config.From != ""
 	return config, nil
+}
+
+// GetShareNotificationsEnabled reports the admin switch for "X shared Y with
+// you" notifications. On unless an admin turned it off, so the setting needs no
+// migration and existing installs get the feature.
+func (s *AdminConfigStore) GetShareNotificationsEnabled(ctx context.Context) (bool, error) {
+	settings, err := s.loadSettings(ctx)
+	if err != nil {
+		return false, err
+	}
+	return shareNotificationsEnabled(settings), nil
+}
+
+func shareNotificationsEnabled(settings map[string]string) bool {
+	return settings["share_notifications_enabled"] != "false"
 }
 
 func (s *AdminConfigStore) GetAppRegistrationNotificationPolicy(ctx context.Context) (resources.ExpiryNotificationPolicy, error) {
@@ -644,6 +663,13 @@ func (s *AdminConfigStore) Update(ctx context.Context, payload any) (any, error)
 		}
 		if value, ok := values["notificationEmailPassword"].(string); ok {
 			input.NotificationEmailPassword = strings.TrimSpace(value)
+		}
+		if value, ok := values["shareNotificationsEnabled"].(bool); ok {
+			input.ShareNotificationsEnabled = value
+			items["share_notifications_enabled"] = "false"
+			if value {
+				items["share_notifications_enabled"] = "true"
+			}
 		}
 		if value, ok := values["appRegistrationAutoSyncEnabled"].(bool); ok {
 			input.AppRegistrationAutoSyncEnabled = value

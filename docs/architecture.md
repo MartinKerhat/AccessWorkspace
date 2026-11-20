@@ -185,6 +185,10 @@ allows loopback requests.
 - Expiry reminders for app registration credentials and Key Vault secrets, in
   the notification center and as one batched digest email per recipient per sync
   run, with a delivery log
+- Share notifications: when a save gives someone access to an object, users
+  picked by name get a notification and an email, members of a picked group a
+  notification only, and "shared with everyone" stays silent (admin switch,
+  on by default)
 - Admin-managed Entra and Key Vault runtime configuration; Azure access can run
   through a dedicated reader identity (workload identity) separate from the
   OIDC login app

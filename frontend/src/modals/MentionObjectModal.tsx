@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { MentionTarget } from "../types";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape } from "./scrim";
 
 
 type Props = {
@@ -76,6 +76,8 @@ export function MentionObjectModal({ target, busy, onReveal, onClose }: Props) {
     }
     setVisible(true);
   }
+
+  useModalEscape(onClose);
 
   return (
     <div className="modal-scrim" {...scrimDismissProps(onClose)}>

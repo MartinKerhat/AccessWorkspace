@@ -1,4 +1,4 @@
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape } from "./scrim";
 
 type Props = {
   title: string;
@@ -9,6 +9,8 @@ type Props = {
 };
 
 export function RevealSecretModal({ title, secretValue, copyMessage, onClose, onCopy }: Props) {
+  useModalEscape(onClose);
+
   return (
     <div className="modal-scrim" {...scrimDismissProps(onClose)}>
       <div className="modal-card reveal-modal" onClick={(event) => event.stopPropagation()}>

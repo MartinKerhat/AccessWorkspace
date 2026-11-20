@@ -304,6 +304,36 @@ finds and then sends each recipient a single digest covering all of them,
 grouped by how far off the expiry is, with a link back to each object. Fifty
 credentials expiring on the same day is one email, not fifty.
 
+## Share notifications
+
+When a person saves an object (create or edit) and someone gains access to it
+through "Shared with", the people who gained access are told:
+
+| Shared with                      | Notification center | Email |
+|----------------------------------|---------------------|-------|
+| a user picked by name            | yes                 | yes   |
+| a local group (each member)      | yes                 | no    |
+| nobody listed (= everyone)       | no                  | no    |
+
+- Only access added in that save counts. Re-saving an object that is already
+  shared, or narrowing "everyone" down to a group, notifies nobody; a group
+  member who could already open the object is not notified either.
+- A user both picked by name and in a picked group gets one notification, the
+  direct one.
+- Never the person saving, never a blocked user, and never anyone who cannot
+  open the object (no category access) — the notification would otherwise
+  reveal that the object exists.
+- Personal objects are never shared, so never notify.
+- Only saves made by a person notify. Key Vault sync and the Key Vault / app
+  registration imports apply default groups to many objects at once and stay
+  silent.
+- The notification and email carry who shared it, the object's name and type,
+  and a link — never the username, password, description or notes. Email goes
+  out immediately (not through the expiry digest) and only when outbound email
+  is configured.
+- Administrators can switch share notifications off in Administration →
+  Notifications; they are on by default.
+
 ## Import source
 
 Records carry a source kind that distinguishes app-authored objects from

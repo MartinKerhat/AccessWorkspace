@@ -103,6 +103,8 @@ type Service struct {
 	vaults           VaultPublicKeyResolver
 	launchTickets    *launchTicketStore
 	rdpSigning       RDPSigningConfigProvider
+	shareUsers       ShareUserDirectory
+	shareNotifier    ShareNotifier
 	syncMu           sync.Mutex
 }
 
@@ -207,6 +209,7 @@ func (s *Service) Create(ctx context.Context, user auth.User, input CreateResour
 		_ = s.notifications.EvaluateResource(ctx, resource.ID)
 		_ = s.notifications.FlushPendingEmails(ctx)
 	}
+	s.notifyNewShares(ctx, user, nil, resource)
 	return resource, nil
 }
 
@@ -261,6 +264,7 @@ func (s *Service) Update(ctx context.Context, user auth.User, id string, input U
 		_ = s.notifications.EvaluateResource(ctx, resource.ID)
 		_ = s.notifications.FlushPendingEmails(ctx)
 	}
+	s.notifyNewShares(ctx, user, &existing, resource)
 	return resource, nil
 }
 

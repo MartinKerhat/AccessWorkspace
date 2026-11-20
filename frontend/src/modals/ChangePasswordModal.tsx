@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type Props = {
   busy: boolean;
@@ -16,8 +16,13 @@ export function ChangePasswordModal({ busy, onSave, onClose }: Props) {
   const tooShort = newPassword !== "" && newPassword.length < 8;
   const ready = currentPassword !== "" && newPassword.length >= 8 && newPassword === confirmPassword;
 
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges([currentPassword, newPassword, confirmPassword]);
+  useModalEscape(onClose);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

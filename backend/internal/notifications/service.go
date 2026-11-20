@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mime"
 	"net/smtp"
 	"net/url"
 	"slices"
@@ -32,6 +33,7 @@ type PolicyStore interface {
 	GetAppRegistrationNotificationPolicy(ctx context.Context) (resources.ExpiryNotificationPolicy, error)
 	GetKeyVaultNotificationPolicy(ctx context.Context) (resources.ExpiryNotificationPolicy, error)
 	GetNotificationEmailRuntime(ctx context.Context) (NotificationEmailRuntimeConfig, error)
+	GetShareNotificationsEnabled(ctx context.Context) (bool, error)
 }
 
 // expiringItem is the one shape both notifiable sources reduce to: an app
@@ -290,6 +292,7 @@ func reminderNotification(resource resources.Resource, item expiringItem, recipi
 	}
 	return resources.UserNotification{
 		ID:                    uuid.NewString(),
+		Kind:                  resources.NotificationKindExpiry,
 		UserID:                recipient.ID,
 		ResourceID:            resource.ID,
 		ResourceName:          resource.Name,
@@ -467,10 +470,16 @@ func (s *Service) SendPlainEmail(ctx context.Context, toEmail, subject, body str
 	if !config.Enabled || !config.Configured || strings.TrimSpace(toEmail) == "" {
 		return errors.New("notification email delivery is not configured")
 	}
+	// Declared UTF-8: object and person names carry diacritics ("Kerhát"), and
+	// without a charset mail clients read the body as Latin-1 and garble them.
+	// The subject is a header, so it is RFC 2047-encoded (a no-op for ASCII).
 	var message bytes.Buffer
 	message.WriteString(fmt.Sprintf("To: %s\r\n", toEmail))
 	message.WriteString(fmt.Sprintf("From: %s\r\n", config.From))
-	message.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+	message.WriteString(fmt.Sprintf("Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject)))
+	message.WriteString("MIME-Version: 1.0\r\n")
+	message.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	message.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 	message.WriteString("\r\n")
 	message.WriteString(body)
 	message.WriteString("\r\n")
@@ -501,6 +510,7 @@ func (r *Repository) supersedeStaleReminders(ctx context.Context, resourceID str
 		update expiry_notifications n
 		set read_at = now(), updated_at = now()
 		where n.resource_id = $1
+		  and n.kind = 'expiry'
 		  and n.read_at is null
 		  and not exists (
 		      select 1
@@ -514,11 +524,12 @@ func (r *Repository) supersedeStaleReminders(ctx context.Context, resourceID str
 
 func (r *Repository) ensureReminder(ctx context.Context, notification resources.UserNotification) (resources.UserNotification, bool, error) {
 	row := r.db.QueryRow(ctx, `
-		select id, user_id, resource_id, resource_name, credential_key_id, credential_display_name,
+		select id, kind, user_id, resource_id, resource_name, credential_key_id, credential_display_name,
 		       credential_type, credential_end_date_time, reminder_day, title, body, channels,
 		       read_at, email_status, email_sent_at, email_error, created_at
 		from expiry_notifications
-		where user_id = $1
+		where kind = 'expiry'
+		  and user_id = $1
 		  and resource_id = $2
 		  and credential_key_id = $3
 		  and credential_end_date_time is not distinct from $4
@@ -559,7 +570,7 @@ func (r *Repository) ensureReminder(ctx context.Context, notification resources.
 
 func (r *Repository) getByID(ctx context.Context, id string) (resources.UserNotification, error) {
 	row := r.db.QueryRow(ctx, `
-		select id, user_id, resource_id, resource_name, credential_key_id, credential_display_name,
+		select id, kind, user_id, resource_id, resource_name, credential_key_id, credential_display_name,
 		       credential_type, credential_end_date_time, reminder_day, title, body, channels,
 		       read_at, email_status, email_sent_at, email_error, created_at
 		from expiry_notifications
@@ -573,7 +584,7 @@ func (r *Repository) listForUser(ctx context.Context, userID string, limit int) 
 		limit = 25
 	}
 	rows, err := r.db.Query(ctx, `
-		select id, user_id, resource_id, resource_name, credential_key_id, credential_display_name,
+		select id, kind, user_id, resource_id, resource_name, credential_key_id, credential_display_name,
 		       credential_type, credential_end_date_time, reminder_day, title, body, channels,
 		       read_at, email_status, email_sent_at, email_error, created_at
 		from expiry_notifications
@@ -643,13 +654,14 @@ type pendingEmailReminder struct {
 // undeliverable reminder would drag a stale line into months of later mail.
 func (r *Repository) listPendingEmailReminders(ctx context.Context) ([]pendingEmailReminder, error) {
 	rows, err := r.db.Query(ctx, `
-		select n.id, n.user_id, n.resource_id, n.resource_name, n.credential_key_id, n.credential_display_name,
+		select n.id, n.kind, n.user_id, n.resource_id, n.resource_name, n.credential_key_id, n.credential_display_name,
 		       n.credential_type, n.credential_end_date_time, n.reminder_day, n.title, n.body, n.channels,
 		       n.read_at, n.email_status, n.email_sent_at, n.email_error, n.created_at,
 		       coalesce(u.email, '') as user_email
 		from expiry_notifications n
 		left join app_users u on u.id = n.user_id
-		where 'email' = any(n.channels)
+		where n.kind = 'expiry'
+		  and 'email' = any(n.channels)
 		  and n.read_at is null
 		  and (
 		      n.email_status = ''
@@ -670,7 +682,7 @@ func (r *Repository) listPendingEmailReminders(ctx context.Context) ([]pendingEm
 		var emailSentAt pgtype.Timestamptz
 		var channels []string
 		if err := rows.Scan(
-			&item.ID, &item.UserID, &item.ResourceID, &item.ResourceName, &item.CredentialKeyID, &item.CredentialDisplayName,
+			&item.ID, &item.Kind, &item.UserID, &item.ResourceID, &item.ResourceName, &item.CredentialKeyID, &item.CredentialDisplayName,
 			&item.CredentialType, &credentialEnd, &item.ReminderDay, &item.Title, &item.Body, &channels,
 			&readAt, &item.EmailStatus, &emailSentAt, &item.EmailError, &item.CreatedAt,
 			&item.userEmail,
@@ -709,7 +721,7 @@ func (r *Repository) listRecentEmailDeliveries(ctx context.Context, limit int) (
 		limit = 20
 	}
 	rows, err := r.db.Query(ctx, `
-		select n.id, n.user_id, coalesce(u.display_name, n.user_id) as user_name, coalesce(u.email, '') as user_email,
+		select n.id, n.kind, n.user_id, coalesce(u.display_name, n.user_id) as user_name, coalesce(u.email, '') as user_email,
 		       n.resource_id, n.resource_name, n.credential_key_id, n.credential_display_name, n.credential_type,
 		       n.reminder_day, n.title, n.email_status, n.email_sent_at, n.email_error, n.created_at
 		from expiry_notifications n
@@ -729,7 +741,7 @@ func (r *Repository) listRecentEmailDeliveries(ctx context.Context, limit int) (
 		var item resources.NotificationDeliveryRecord
 		var emailSentAt pgtype.Timestamptz
 		if err := rows.Scan(
-			&item.ID, &item.UserID, &item.UserName, &item.UserEmail,
+			&item.ID, &item.Kind, &item.UserID, &item.UserName, &item.UserEmail,
 			&item.ResourceID, &item.ResourceName, &item.CredentialKeyID, &item.CredentialDisplayName, &item.CredentialType,
 			&item.ReminderDay, &item.Title, &item.EmailStatus, &emailSentAt, &item.EmailError, &item.CreatedAt,
 		); err != nil {
@@ -752,7 +764,7 @@ func scanNotification(row scanner) (resources.UserNotification, error) {
 	var emailSentAt pgtype.Timestamptz
 	var channels []string
 	if err := row.Scan(
-		&item.ID, &item.UserID, &item.ResourceID, &item.ResourceName, &item.CredentialKeyID, &item.CredentialDisplayName,
+		&item.ID, &item.Kind, &item.UserID, &item.ResourceID, &item.ResourceName, &item.CredentialKeyID, &item.CredentialDisplayName,
 		&item.CredentialType, &credentialEnd, &item.ReminderDay, &item.Title, &item.Body, &channels,
 		&readAt, &item.EmailStatus, &emailSentAt, &item.EmailError, &item.CreatedAt,
 	); err != nil {

@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import type { BrowserExtensionPackage } from "../types";
 import { formatArtifactMeta } from "../format";
 import { browserExtensionStatusLabel } from "../browserExtension";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape } from "./scrim";
 
 type Props = {
   visiblePackages: BrowserExtensionPackage[];
@@ -41,6 +41,8 @@ export function BrowserExtensionManagerModal({ visiblePackages, currentPackage, 
       onMessage(error instanceof Error ? error.message : "Saving the setting failed");
     }
   }
+
+  useModalEscape(onClose);
 
   return (
     <div className="modal-scrim" {...scrimDismissProps(onClose)}>

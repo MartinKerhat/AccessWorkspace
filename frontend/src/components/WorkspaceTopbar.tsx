@@ -140,7 +140,7 @@ export function WorkspaceTopbar({
                 ) : null}
               </div>
               {notifications.length === 0 ? (
-                <p className="section-copy">No expiry reminders yet.</p>
+                <p className="section-copy">No notifications yet.</p>
               ) : (
                 <div className="notification-list">
                   {notifications.map((item) => (
