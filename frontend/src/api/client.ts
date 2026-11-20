@@ -452,6 +452,7 @@ export const api = {
     notificationEmailPort?: number;
     notificationEmailUsername?: string;
     notificationEmailFrom?: string;
+    shareNotificationsEnabled?: boolean;
     appRegistrationAutoSyncEnabled?: boolean;
     appRegistrationSyncIntervalMinutes?: number;
     entraClientSecret?: string;

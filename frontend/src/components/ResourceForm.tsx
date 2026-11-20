@@ -183,6 +183,9 @@ type Props = {
   // saved passwords, web logins and SSH/RDP connections gets a Generate
   // button that uses the user's remembered Generator settings.
   canGeneratePassword?: boolean;
+  // Reports whether the form differs from what it opened with. The modal
+  // around it stops closing on a click outside once this is true.
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 type PickerOption<T extends string> = {
@@ -219,13 +222,22 @@ export function ResourceFormCard({
   onSubmit,
   onArchive,
   onRevealStoredPassword,
-  canGeneratePassword = false
+  canGeneratePassword = false,
+  onDirtyChange
 }: Props) {
   // Non-owners editing a shared object may change only descriptive metadata
   // (description, notes, folder path, environment); everything else is locked.
   // The backend enforces the same rule, this is just honest UI.
   const coreLocked = sharedMetadataOnly;
   const [form, setForm] = useState<ResourceForm>(defaultForm);
+  // What the form opened with, set together with the form whenever it is
+  // (re)initialised. Null until then: the first render shows defaultForm for
+  // one frame before the effect below fills it, which is not a user change.
+  const [baseline, setBaseline] = useState<ResourceForm | null>(null);
+  const dirty = baseline !== null && JSON.stringify(form) !== JSON.stringify(baseline);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [passwordRevealLoading, setPasswordRevealLoading] = useState(false);
   // The user's remembered Generator settings: which kind the Passwords
@@ -276,16 +288,18 @@ export function ResourceFormCard({
   useEffect(() => {
     if (!resource) {
       const nextType = initialType ?? defaultForm.type;
-      setForm({
+      const initial: ResourceForm = {
         ...defaultForm,
         type: nextType,
         personal: defaultPersonalPassword && categoryForType(nextType) === "passwords"
-      });
+      };
+      setForm(initial);
+      setBaseline(initial);
       setPasswordVisible(false);
       return;
     }
     setPasswordVisible(false);
-    setForm({
+    const initial: ResourceForm = {
       name: resource.name,
       type: resource.type,
       personal: resource.personal,
@@ -337,7 +351,9 @@ export function ResourceFormCard({
       secretMode: resource.secret.mode,
       secretValue: "",
       secretReference: resource.secret.reference
-    });
+    };
+    setForm(initial);
+    setBaseline(initial);
   }, [resource, initialType]);
 
   function update<K extends keyof ResourceForm>(key: K, value: ResourceForm[K]) {
@@ -386,6 +402,9 @@ export function ResourceFormCard({
         const revealed = await onRevealStoredPassword();
         if (revealed) {
           update("secretValue", revealed);
+          // Showing the stored password is not an edit: move the baseline
+          // with it so the form does not count as changed.
+          setBaseline((current) => (current ? { ...current, secretValue: revealed } : current));
         }
       } finally {
         setPasswordRevealLoading(false);
@@ -417,6 +436,15 @@ export function ResourceFormCard({
       setSecretModePickerOpen(false);
     }
   }
+
+  const anyPickerOpen =
+    groupPickerOpen ||
+    typePickerOpen ||
+    ownerPickerOpen ||
+    ownerTeamPickerOpen ||
+    statusPickerOpen ||
+    sourceKindPickerOpen ||
+    secretModePickerOpen;
 
   const category = form.type === "ssh" || form.type === "rdp"
     ? "Connections"
@@ -556,7 +584,17 @@ export function ResourceFormCard({
   }
 
   return (
-    <section className="panel form-panel">
+    <section
+      className="panel form-panel"
+      onKeyDown={(event) => {
+        // Esc closes an open dropdown first; the modal only closes on the
+        // next Esc (see useModalEscape).
+        if (event.key === "Escape" && anyPickerOpen) {
+          event.preventDefault();
+          closeOtherPickers();
+        }
+      }}
+    >
       <div className="panel-header">
         <div>
           <p className="eyebrow">Admin</p>

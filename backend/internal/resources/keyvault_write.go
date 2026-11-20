@@ -149,6 +149,7 @@ func (s *Service) CreateKeyVaultSecret(ctx context.Context, user auth.User, inpu
 
 	s.logKeyVaultWrite(ctx, user, audit.EventKeyVaultSecretCreated, resource, item, input.KeyVaultSecretValueInput)
 	s.evaluateExpiry(ctx, resource.ID)
+	s.notifyNewShares(ctx, user, nil, resource)
 	return resource, nil
 }
 

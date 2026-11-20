@@ -57,6 +57,7 @@ export function toNotificationAdminForm(config: AdminConfig | null): Notificatio
     notificationEmailUsername: config?.notificationEmailUsername ?? "",
     notificationEmailPassword: "",
     notificationEmailFrom: config?.notificationEmailFrom ?? "",
+    shareNotificationsEnabled: config?.shareNotificationsEnabled ?? true,
     appRegistrationAutoSyncEnabled: config?.appRegistrationAutoSyncEnabled ?? true,
     appRegistrationSyncIntervalMinutes: config?.appRegistrationSyncIntervalMinutes ?? 60
   };
@@ -160,6 +161,7 @@ export function useAdminConfig({ session, setBusy, setMessage, onEntraHint }: Us
           notificationEmailUsername: notificationAdminForm.notificationEmailUsername,
           notificationEmailPassword: notificationAdminForm.notificationEmailPassword,
           notificationEmailFrom: notificationAdminForm.notificationEmailFrom,
+          shareNotificationsEnabled: notificationAdminForm.shareNotificationsEnabled,
           appRegistrationAutoSyncEnabled: notificationAdminForm.appRegistrationAutoSyncEnabled,
           appRegistrationSyncIntervalMinutes: notificationAdminForm.appRegistrationSyncIntervalMinutes
         }

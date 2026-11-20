@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { AppRegistrationDiscoverResult, AppRegistrationImportForm, LocalGroup, UserSummary } from "../types";
 import { getSelectedAppRegistrationItems, nextDiscoveredCredential, discoveredCredentialSummary } from "../appRegistration";
 import { formatShortDate } from "../format";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type Props = {
   discoveries: AppRegistrationDiscoverResult;
@@ -115,8 +115,13 @@ export function AppRegistrationImportModal({
     });
   }
 
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges(form);
+  useModalEscape(onClose);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card keyvault-import-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

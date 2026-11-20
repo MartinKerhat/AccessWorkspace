@@ -39,6 +39,7 @@ export type NotificationAdminForm = {
   notificationEmailUsername: string;
   notificationEmailPassword: string;
   notificationEmailFrom: string;
+  shareNotificationsEnabled: boolean;
   appRegistrationAutoSyncEnabled: boolean;
   appRegistrationSyncIntervalMinutes: number;
 };
@@ -252,6 +253,7 @@ export type AdminConfig = {
   notificationEmailPasswordSet: boolean;
   notificationEmailFrom: string;
   notificationEmailConfigured: boolean;
+  shareNotificationsEnabled: boolean;
   appRegistrationAutoSyncEnabled: boolean;
   appRegistrationSyncIntervalMinutes: number;
   appRegistrationLastSyncedAt?: string;
@@ -605,8 +607,13 @@ export type AppRegistrationCredentialPolicyInput = {
   policy?: ExpiryNotificationPolicy;
 };
 
+// "expiry": a credential / secret expiry reminder. "share": someone shared an
+// object with this user; the credential fields are empty.
+export type NotificationKind = "expiry" | "share";
+
 export type UserNotification = {
   id: string;
+  kind: NotificationKind;
   userId: string;
   resourceId: string;
   resourceName: string;
@@ -627,6 +634,7 @@ export type UserNotification = {
 
 export type NotificationDeliveryRecord = {
   id: string;
+  kind: NotificationKind;
   userId: string;
   userName: string;
   userEmail: string;

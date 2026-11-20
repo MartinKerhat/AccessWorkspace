@@ -42,7 +42,7 @@ Key Vault secrets that carry an expiry date go through the same pipeline, with t
 
 ### Passwords and portal logins
 
-Reusable saved credentials for websites, tools, and legacy systems, shared with groups or individual users under explicit reveal/copy policy. Web portal logins can launch straight into the browser, including passwordless portals where only the URL and username are stored.
+Reusable saved credentials for websites, tools, and legacy systems, shared with groups or individual users under explicit reveal/copy policy. When you share something with a colleague by name, they get a notification and an email; sharing with a group puts a notification in each member's notification center. Web portal logins can launch straight into the browser, including passwordless portals where only the URL and username are stored.
 
 **Personal passwords are genuinely private.** They are sealed to a per-user vault that administrators and database operators cannot read — not "shouldn't", cannot.
 

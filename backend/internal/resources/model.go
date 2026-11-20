@@ -289,8 +289,16 @@ type AppRegistrationNotificationPolicyUpdateInput struct {
 	CredentialPolicies []AppRegistrationCredentialPolicyInput `json:"credentialPolicies"`
 }
 
+// Notification kinds. An expiry reminder carries the credential columns; a
+// share notification ("X shared Y with you") leaves them empty.
+const (
+	NotificationKindExpiry = "expiry"
+	NotificationKindShare  = "share"
+)
+
 type UserNotification struct {
 	ID                    string                `json:"id"`
+	Kind                  string                `json:"kind"`
 	UserID                string                `json:"userId"`
 	ResourceID            string                `json:"resourceId"`
 	ResourceName          string                `json:"resourceName"`
@@ -311,6 +319,7 @@ type UserNotification struct {
 
 type NotificationDeliveryRecord struct {
 	ID                    string     `json:"id"`
+	Kind                  string     `json:"kind"`
 	UserID                string     `json:"userId"`
 	UserName              string     `json:"userName"`
 	UserEmail             string     `json:"userEmail"`

@@ -16,7 +16,7 @@ import type {
   Resource,
   WritableKeyVaultSource
 } from "../types";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 // Key Vault's limit for one secret value, checked here so the user learns it
 // before the upload, and again by the backend.
@@ -417,9 +417,26 @@ function DatesFields({ dates, setDates }: { dates: DatesState; setDates: (update
   );
 }
 
-function ModalFrame({ eyebrow, title, message, onClose, children }: { eyebrow: string; title: string; message?: string; onClose: () => void; children: ReactNode }) {
+// `dirty`: something was typed or changed, so a click outside no longer closes
+// the modal. Close and Esc always do.
+function ModalFrame({
+  eyebrow,
+  title,
+  message,
+  dirty,
+  onClose,
+  children
+}: {
+  eyebrow: string;
+  title: string;
+  message?: string;
+  dirty: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  useModalEscape(onClose);
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card keyvault-secret-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
@@ -467,9 +484,10 @@ export function KeyVaultCreateSecretModal({
 
   const nameError = secretName && !SECRET_NAME_PATTERN.test(secretName) ? "Letters, digits and dashes only, at most 127." : "";
   const problem = !vaultUrl ? "Choose a vault." : !secretName ? "Enter the secret name." : nameError || valueError(value) || datesError(dates);
+  const dirty = useUnsavedChanges({ vaultUrl, secretName, displayName, environment, ownerTeam, description, notes, allowedGroups, value, dates });
 
   return (
-    <ModalFrame eyebrow="Key Vault" title="New secret in Azure" message={message} onClose={onClose}>
+    <ModalFrame eyebrow="Key Vault" title="New secret in Azure" message={message} dirty={dirty} onClose={onClose}>
       {sources.length === 0 ? (
         <p className="section-copy">
           No vault allows writes from the workspace yet. An administrator turns this on per vault in Administration → Azure → Key
@@ -596,9 +614,16 @@ export function KeyVaultSetValueModal({
   // 2026-11-04): same enabled flag and window, editable before saving.
   const [dates, setDates] = useState<DatesState>(datesFromResource(resource));
   const problem = valueError(value) || datesError(dates);
+  const dirty = useUnsavedChanges({ value, dates });
 
   return (
-    <ModalFrame eyebrow="Key Vault" title={`New value for ${resource.objectName || resource.name}`} message={message} onClose={onClose}>
+    <ModalFrame
+      eyebrow="Key Vault"
+      title={`New value for ${resource.objectName || resource.name}`}
+      message={message}
+      dirty={dirty}
+      onClose={onClose}
+    >
       <p className="section-copy">
         Azure keeps the current value as an older version; everything that reads this secret without a pinned version gets the new
         value right away. Tags carry over to the new version.
@@ -645,12 +670,14 @@ export function KeyVaultStateModal({
     expiresAt: toLocalInput(version.expiresAt)
   });
   const problem = datesError(dates);
+  const dirty = useUnsavedChanges(dates);
 
   return (
     <ModalFrame
       eyebrow="Key Vault"
       title={`${resource.objectName || resource.name} · version ${version.version.slice(0, 8)}`}
       message={message}
+      dirty={dirty}
       onClose={onClose}
     >
       <p className="section-copy">

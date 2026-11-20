@@ -44,6 +44,10 @@ func (s stubPolicyStore) GetNotificationEmailRuntime(context.Context) (Notificat
 	return NotificationEmailRuntimeConfig{}, nil
 }
 
+func (s stubPolicyStore) GetShareNotificationsEnabled(context.Context) (bool, error) {
+	return true, nil
+}
+
 func testPolicies() stubPolicyStore {
 	return stubPolicyStore{
 		appRegistration: resources.ExpiryNotificationPolicy{

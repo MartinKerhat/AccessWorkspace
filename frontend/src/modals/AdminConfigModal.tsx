@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { AdminForm } from "../types";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type Props = {
   form: AdminForm;
@@ -12,8 +12,13 @@ type Props = {
 };
 
 export function AdminConfigModal({ form, setForm, clientSecretSet, busy, onSave, onClose }: Props) {
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges(form);
+  useModalEscape(onClose);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

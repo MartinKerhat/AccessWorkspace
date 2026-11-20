@@ -1,6 +1,6 @@
 import type { SessionInfo } from "../types";
 import { relativeTime, sessionKindLabel } from "../sessions";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape } from "./scrim";
 
 type Props = {
   sessions: SessionInfo[];
@@ -42,6 +42,8 @@ export function SessionsModal({ sessions, message, busy, onRevoke, onRevokeOther
       void onRevokeOthers();
     }
   }
+
+  useModalEscape(onClose);
 
   return (
     <div className="modal-scrim" {...scrimDismissProps(onClose)}>

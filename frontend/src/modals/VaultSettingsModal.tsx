@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { VaultMethodDetail, VaultStatus } from "../types";
 import { suggestPasskeyNickname } from "../hooks/useVault";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type Props = {
   status: VaultStatus;
@@ -106,8 +106,13 @@ export function VaultSettingsModal({
     }
   }
 
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges([passphrase, passphraseConfirm, renaming]);
+  useModalEscape(onClose);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card vault-settings-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
@@ -181,6 +186,8 @@ export function VaultSettingsModal({
                               });
                             }
                             if (event.key === "Escape") {
+                              // Cancels the rename only; the next Esc closes the modal.
+                              event.preventDefault();
                               setRenaming(null);
                             }
                           }}

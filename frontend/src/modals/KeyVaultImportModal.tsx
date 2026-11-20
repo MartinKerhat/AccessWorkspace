@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { KeyVaultDiscoverResult, KeyVaultImportForm, LocalGroup, UserSummary } from "../types";
 import { getSelectedKeyVaultItems, keyVaultSecretKey } from "../keyVault";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type Props = {
   discoveries: KeyVaultDiscoverResult;
@@ -133,8 +133,13 @@ export function KeyVaultImportModal({
     }));
   }
 
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges(form);
+  useModalEscape(onClose);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card keyvault-import-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type Props = {
   // hasVault false = first-time setup; true = unlock an existing vault.
@@ -32,8 +32,13 @@ export function VaultUnlockModal({ hasVault, passkeyCapable, hasPasskey, busy, m
   const tooShort = setup && passphrase !== "" && passphrase.length < 8;
   const ready = setup ? passphrase.length >= 8 && passphrase === confirm : passphrase !== "";
 
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges([passphrase, confirm]);
+  useModalEscape(onCancel);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onCancel)}>
+    <div className="modal-scrim" {...scrimDismissProps(onCancel, { locked: dirty })}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

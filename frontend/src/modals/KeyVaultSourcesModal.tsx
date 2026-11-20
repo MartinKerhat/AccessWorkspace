@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { KeyVaultSource, LocalGroup, UserSummary } from "../types";
 import { emptyKeyVaultSource } from "../keyVault";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type PickerState = { index: number; kind: "owner" | "ownerTeam" | "group" } | null;
 
@@ -85,8 +85,13 @@ export function KeyVaultSourcesModal({ sources, setSources, knownUsers, localGro
     setSources((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges(sources);
+  useModalEscape(onClose);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>

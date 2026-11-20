@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { NotificationPolicyModalState } from "../types";
-import { scrimDismissProps } from "./scrim";
+import { scrimDismissProps, useModalEscape, useUnsavedChanges } from "./scrim";
 
 type ResourceState = Extract<NotificationPolicyModalState, { mode: "resource" }>;
 
@@ -25,8 +25,13 @@ export function NotificationPolicyModal({ state, setState, busy, onSave, onClose
     });
   }
 
+  // Click outside closes only while nothing has been changed; Close and Esc
+  // always close.
+  const dirty = useUnsavedChanges(state);
+  useModalEscape(onClose);
+
   return (
-    <div className="modal-scrim" {...scrimDismissProps(onClose)}>
+    <div className="modal-scrim" {...scrimDismissProps(onClose, { locked: dirty })}>
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
